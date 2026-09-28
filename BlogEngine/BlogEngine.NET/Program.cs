@@ -2,6 +2,7 @@ using BlogEngine.Core;
 using BlogEngine.Core.Data;
 using BlogEngine.Core.Data.Contracts;
 using BlogEngine.NET.AppCode.Api;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -66,6 +67,30 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.Name = ".AUXBLOGENGINE";
         options.Cookie.HttpOnly = true;
         options.Cookie.IsEssential = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Events = new CookieAuthenticationEvents
+        {
+            // Port of Security.ContextAuthenticateRequest: rejects tickets of another blog instance or
+            // with a stale SecurityValidationKey; roles are resolved per request (CustomPrincipal)
+            OnValidatePrincipal = Security.ValidatePrincipalAsync,
+            // API and other non-page callers get status codes instead of a login page redirect
+            OnRedirectToLogin = context => RedirectOrStatus(context, StatusCodes.Status401Unauthorized),
+            OnRedirectToAccessDenied = context => RedirectOrStatus(context, StatusCodes.Status403Forbidden)
+        };
+
+        static Task RedirectOrStatus(RedirectContext<CookieAuthenticationOptions> context, int statusCode)
+        {
+            if (context.Request.Path.StartsWithSegments("/api"))
+            {
+                context.Response.StatusCode = statusCode;
+            }
+            else
+            {
+                context.Response.Redirect(context.RedirectUri);
+            }
+            return Task.CompletedTask;
+        }
     });
 
 builder.Services.AddAuthorization();
@@ -129,6 +154,17 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Port of setup/Web.config (<deny users="?"/>): anonymous users get nothing under /setup
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/setup") && !Security.IsAuthenticated)
+    {
+        await context.ChallengeAsync();
+        return;
+    }
+    await next();
+});
 app.UseAntiforgery();
 
 app.MapStaticAssets();
