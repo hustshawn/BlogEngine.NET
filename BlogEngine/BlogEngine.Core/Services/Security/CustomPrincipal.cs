@@ -1,20 +1,29 @@
-using System.Security.Claims;
-﻿namespace BlogEngine.Core
+namespace BlogEngine.Core
 {
+    using System.Security.Claims;
     using System.Security.Principal;
-    using BlogEngine.Core.Services.Security;
 
     /// <summary>
-    /// Custom IPrincipal class used for authorization.
+    /// Custom principal used for authorization. Role membership is resolved per call from the
+    /// role service (as the original did with Roles.IsUserInRole), never from a claims snapshot.
     /// </summary>
     public class CustomPrincipal : ClaimsPrincipal
     {
-        private IIdentity _identity;
+        private readonly IIdentity _identity;
+
+        /// <summary>
+        /// Creates a new instance using the given IIdentity object.
+        /// </summary>
+        public CustomPrincipal(IIdentity identity)
+            : base(identity as ClaimsIdentity ?? new ClaimsIdentity())
+        {
+            _identity = identity;
+        }
 
         /// <summary>
         /// Gets the identity of the current principal.
         /// </summary>
-        public IIdentity Identity
+        public override IIdentity Identity
         {
             get { return _identity; }
         }
@@ -24,7 +33,7 @@ using System.Security.Claims;
         /// </summary>
         /// <param name="roleName">The name of the role for which to check membership.</param>
         /// <returns>true if the current principal is a member of the specified role; otherwise, false.</returns>
-        public bool IsInRole(string roleName)
+        public override bool IsInRole(string roleName)
         {
             if (Identity == null || !Identity.IsAuthenticated || string.IsNullOrEmpty(Identity.Name))
                 return false;
@@ -32,35 +41,7 @@ using System.Security.Claims;
             // Note: Cannot use "Security.CurrentUser.IsInRole" or anything similar since
             // Security.CurrentUser.IsInRole will look to this IsInRole() method here --
             // resulting in an endless loop. Need to query the role service directly.
-
-            // Access the role service via reflection from Security class (same pattern as CustomIdentity)
-            try
-            {
-                var field = typeof(Security).GetField("_roleService",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                if (field != null)
-                {
-                    var roleService = field.GetValue(null) as IRoleService;
-                    if (roleService != null)
-                    {
-                        return roleService.IsUserInRole(Identity.Name, roleName);
-                    }
-                }
-            }
-            catch
-            {
-                // Fall through
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Creates a new instance using the given IIdentity object.
-        /// </summary>
-        public CustomPrincipal(IIdentity identity)
-        {
-            _identity = identity;
+            return Security.RoleService?.IsUserInRole(Identity.Name, roleName) ?? false;
         }
     }
 }

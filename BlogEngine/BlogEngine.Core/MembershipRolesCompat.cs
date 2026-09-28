@@ -15,10 +15,12 @@ namespace BlogEngine.Core
 
         public static Services.Security.IMembershipService Provider => _service;
 
+        /// <summary>
+        /// Gets the user with the given name, or null if there is no such user.
+        /// </summary>
         public static MembershipUser GetUser(string username)
         {
-            // REVIEW: Delegate to IMembershipService when available
-            return new MembershipUser { UserName = username };
+            return MembershipUser.From(_service?.GetUser(username));
         }
 
         public static MembershipUser GetUser(string username, bool userIsOnline)
@@ -26,10 +28,12 @@ namespace BlogEngine.Core
             return GetUser(username);
         }
 
+        /// <summary>
+        /// Creates a user; returns null if the provider failed to create it.
+        /// </summary>
         public static MembershipUser CreateUser(string username, string password, string email)
         {
-            // REVIEW: Delegate to IMembershipService.CreateUser
-            return new MembershipUser { UserName = username, Email = email };
+            return MembershipUser.From(_service?.CreateUser(username, password, email));
         }
 
         public static bool DeleteUser(string username)
@@ -37,9 +41,21 @@ namespace BlogEngine.Core
             return _service?.DeleteUser(username, true) ?? false;
         }
 
+        /// <summary>
+        /// Persists the e-mail and last login date of the user (not the password).
+        /// </summary>
         public static void UpdateUser(MembershipUser user)
         {
-            // REVIEW: Delegate to IMembershipService.UpdateUser
+            var stored = user == null ? null : _service?.GetUser(user.UserName);
+            if (stored == null)
+            {
+                return;
+            }
+
+            stored.Email = user.Email;
+            stored.LastLoginDate = user.LastLoginDate;
+            stored.IsApproved = user.IsApproved;
+            _service.UpdateUser(stored);
         }
 
         public static bool ValidateUser(string username, string password)
@@ -52,7 +68,10 @@ namespace BlogEngine.Core
             return new MembershipUserCollection(_service);
         }
 
-        public static int MinRequiredPasswordLength => 6;
+        /// <summary>
+        /// Minimum password length (the original XmlMembershipProvider/DbMembershipProvider used 5).
+        /// </summary>
+        public static int MinRequiredPasswordLength => 5;
 
         public static string GetUserNameByEmail(string email)
         {
@@ -64,17 +83,19 @@ namespace BlogEngine.Core
         {
             try
             {
-                var user = _service?.CreateUser(username, password, email);
-                if (user != null)
+                if (_service?.GetUser(username) != null)
                 {
-                    status = MembershipCreateStatus.Success;
-                    return new MembershipUser { UserName = user.UserName, Email = user.Email };
+                    status = MembershipCreateStatus.DuplicateUserName;
+                    return null;
                 }
-                status = MembershipCreateStatus.ProviderError;
-                return null;
+
+                var user = MembershipUser.From(_service?.CreateUser(username, password, email));
+                status = user != null ? MembershipCreateStatus.Success : MembershipCreateStatus.ProviderError;
+                return user;
             }
-            catch
+            catch (System.Exception ex)
             {
+                Utils.Log("Membership.CreateUser failed", ex);
                 status = MembershipCreateStatus.ProviderError;
                 return null;
             }
@@ -116,8 +137,15 @@ namespace BlogEngine.Core
         public System.Collections.IEnumerator GetEnumerator() => ((IEnumerable<MembershipUser>)this).GetEnumerator();
         IEnumerator<MembershipUser> IEnumerable<MembershipUser>.GetEnumerator()
         {
-            // REVIEW: GetAllUsers should be implemented in IMembershipService
-            yield break;
+            if (_service == null)
+            {
+                yield break;
+            }
+
+            foreach (var user in _service.GetAllUsers(out _))
+            {
+                yield return MembershipUser.From(user);
+            }
         }
     }
 
@@ -132,6 +160,27 @@ namespace BlogEngine.Core
         public System.DateTime LastLoginDate { get; set; }
         public bool IsLockedOut { get; set; }
         public bool IsApproved { get; set; }
+
+        /// <summary>
+        /// Maps a membership service user to the facade type (null stays null).
+        /// </summary>
+        internal static MembershipUser From(BlogMembershipUser user)
+        {
+            if (user == null)
+            {
+                return null;
+            }
+
+            return new MembershipUser
+            {
+                UserName = user.UserName,
+                Email = user.Email,
+                CreationDate = user.CreationDate,
+                LastLoginDate = user.LastLoginDate,
+                IsLockedOut = user.IsLockedOut,
+                IsApproved = user.IsApproved
+            };
+        }
 
         public bool ChangePassword(string oldPassword, string newPassword)
         {

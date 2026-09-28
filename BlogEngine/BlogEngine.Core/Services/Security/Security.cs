@@ -1,20 +1,40 @@
-using Microsoft.AspNetCore.Authentication;
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.Tasks;
 using BlogEngine.Core.Services.Security;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 
 namespace BlogEngine.Core
 {
     /// <summary>
     /// Class to provide a unified area of authentication/authorization checking.
-    /// Converted from IHttpModule to a service class with static helpers.
+    /// Converted from IHttpModule to a service class with static helpers; the per-request
+    /// ticket validation of the original AuthenticateRequest handler lives in <see cref="ValidatePrincipalAsync"/>.
     /// </summary>
     public partial class Security
     {
+        /// <summary>
+        /// The authentication scheme used for the BlogEngine auth cookie (configured in Program.cs).
+        /// </summary>
+        public const string AuthenticationScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+
+        /// <summary>
+        /// Claim holding the id of the blog instance the user signed in to.
+        /// </summary>
+        public const string BlogInstanceIdClaimType = "BlogEngine.BlogInstanceId";
+
+        /// <summary>
+        /// Claim holding a hash of the blog's SecurityValidationKey at sign-in time.
+        /// </summary>
+        public const string SecurityValidationClaimType = "BlogEngine.SecurityValidation";
+
         /// <summary>
         /// Static reference to the role service.
         /// </summary>
@@ -49,36 +69,38 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
+        /// The role service used to resolve roles per request (CustomPrincipal).
+        /// </summary>
+        internal static IRoleService RoleService => _roleService;
+
+        /// <summary>
+        /// The membership service used to validate credentials (CustomIdentity).
+        /// </summary>
+        internal static IMembershipService MembershipService => _membershipService;
+
+        /// <summary>
         /// Gets the current HttpContext, or null if unavailable.
         /// </summary>
         private static HttpContext CurrentHttpContext => _httpContextAccessor?.HttpContext;
-
-        /// <summary>
-        /// Name of the authentication cookie for the current blog instance.
-        /// </summary>
-        public static string AuthCookieName
-        {
-            get
-            {
-                const string baseCookieName = ".BlogEngine.Auth";
-                if (BlogConfig.SingleSignOn)
-                {
-                    return baseCookieName;
-                }
-                return baseCookieName + "-" + Blog.CurrentInstance.Id.ToString();
-            }
-        }
 
         /// <summary>
         /// Signs out user out of the current blog instance.
         /// </summary>
         public static void SignOut()
         {
+            SignOutAsync().GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Signs out user out of the current blog instance.
+        /// </summary>
+        public static async Task SignOutAsync()
+        {
             var context = CurrentHttpContext;
             if (context != null)
             {
-                // Sign out using ASP.NET Core cookie authentication
-                context.SignOutAsync(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme).GetAwaiter().GetResult();
+                await context.SignOutAsync(AuthenticationScheme);
+                context.User = new CustomPrincipal(new CustomIdentity(string.Empty, false));
             }
 
             // admin UI injects user info in JavaScript resource file
@@ -89,6 +111,8 @@ namespace BlogEngine.Core
 
         /// <summary>
         /// Attempts to sign the user into the current blog instance.
+        /// Unlike the original (which issued Response.Redirect), the caller is responsible for redirecting
+        /// afterwards, e.g. to <see cref="GetSafeReturnUrl"/>.
         /// </summary>
         /// <param name="username">The user's username.</param>
         /// <param name="password">The user's password.</param>
@@ -96,95 +120,162 @@ namespace BlogEngine.Core
         /// <returns>True if the user is successfully authenticated and signed in; false otherwise.</returns>
         public static bool AuthenticateUser(string username, string password, bool rememberMe)
         {
+            return AuthenticateUserAsync(username, password, rememberMe).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// Attempts to sign the user into the current blog instance.
+        /// </summary>
+        /// <param name="username">The user's username.</param>
+        /// <param name="password">The user's password.</param>
+        /// <param name="rememberMe">Whether or not to persist the user's sign-in state.</param>
+        /// <returns>True if the user is successfully authenticated and signed in; false otherwise.</returns>
+        public static async Task<bool> AuthenticateUserAsync(string username, string password, bool rememberMe)
+        {
             string un = (username ?? string.Empty).Trim();
             string pw = (password ?? string.Empty).Trim();
 
-            if (!string.IsNullOrWhiteSpace(un) && !string.IsNullOrWhiteSpace(pw))
-            {
-                bool isValidated = false;
-                if (_membershipService != null)
-                {
-                    isValidated = _membershipService.ValidateUser(un, pw);
-                }
-
-                if (isValidated)
-                {
-                    var context = CurrentHttpContext;
-                    if (context != null)
-                    {
-                        // Build claims-based identity
-                        var claims = new List<Claim>
-                        {
-                            new Claim(ClaimTypes.Name, un)
-                        };
-
-                        // Add role claims
-                        if (_roleService != null)
-                        {
-                            var roles = _roleService.GetRolesForUser(un);
-                            foreach (var role in roles)
-                            {
-                                claims.Add(new Claim(ClaimTypes.Role, role));
-                            }
-                        }
-
-                        // Add blog instance claim for security validation
-                        if (!BlogConfig.SingleSignOn)
-                        {
-                            claims.Add(new Claim("BlogInstanceId", Blog.CurrentInstance.Id.ToString()));
-                            claims.Add(new Claim("SecurityValidationKey", SecurityValidationKey));
-                        }
-
-                        var identity = new ClaimsIdentity(claims, Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme);
-                        var principal = new ClaimsPrincipal(identity);
-                        context.User = principal;
-
-                        // Use ASP.NET Core's cookie authentication for persistence
-                        var authProperties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties
-                        {
-                            IsPersistent = rememberMe,
-                            ExpiresUtc = rememberMe ? DateTimeOffset.UtcNow.AddDays(30) : (DateTimeOffset?)null
-                        };
-
-                        context.SignInAsync(
-                            Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme,
-                            principal,
-                            authProperties).GetAwaiter().GetResult();
-
-                        string returnUrl = context.Request.Query["returnUrl"];
-
-                        // ignore Return URLs not beginning with a forward slash, such as remote sites.
-                        if (IsLocalUrl(returnUrl))
-                        {
-                            context.Response.Redirect(returnUrl);
-                        }
-                        else
-                        {
-                            context.Response.Redirect(Utils.RelativeWebRoot);
-                        }
-
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        private static bool IsLocalUrl(string url)
-        {
-            if (string.IsNullOrWhiteSpace(url))
+            if (string.IsNullOrWhiteSpace(un) || string.IsNullOrWhiteSpace(pw) || _membershipService == null)
             {
                 return false;
             }
-            else
+
+            if (!_membershipService.ValidateUser(un, pw))
             {
-                return ((url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'))) || // "/" or "/foo" but not "//" or "/\"
-                        (url.Length > 1 && url[0] == '~' && url[1] == '/')); // "~/" or "~/foo"
+                return false;
             }
+
+            var context = CurrentHttpContext;
+            if (context == null)
+            {
+                return false;
+            }
+
+            // use the stored user name casing
+            var user = _membershipService.GetUser(un);
+            if (user != null && !string.IsNullOrEmpty(user.UserName))
+            {
+                un = user.UserName;
+            }
+
+            // Roles are intentionally not stored in the cookie: they are resolved per request
+            // from the role service by CustomPrincipal, as the original role provider did.
+            var claims = new List<Claim> { new Claim(ClaimTypes.Name, un) };
+
+            if (!BlogConfig.SingleSignOn)
+            {
+                // Original: the forms ticket UserData carried "SecurityValidationKey-|-BlogId" so a ticket
+                // issued for another blog instance (or before the key was changed) is rejected.
+                claims.Add(new Claim(BlogInstanceIdClaimType, Blog.CurrentInstance.Id.ToString()));
+                claims.Add(new Claim(SecurityValidationClaimType, SecurityValidationHash));
+            }
+
+            var identity = new ClaimsIdentity(claims, AuthenticationScheme, ClaimTypes.Name, ClaimTypes.Role);
+
+            // Expiration and sliding renewal come from the cookie options (Program.cs);
+            // a non-persistent cookie is a browser-session cookie, as in the original.
+            var properties = new AuthenticationProperties { IsPersistent = rememberMe };
+
+            await context.SignInAsync(AuthenticationScheme, new ClaimsPrincipal(identity), properties);
+
+            // make the user available for the rest of this request
+            context.User = new CustomPrincipal(identity);
+
+            return true;
         }
 
-        private const string AUTH_TKT_USERDATA_DELIMITER = "-|-";
+        /// <summary>
+        /// Validates the auth cookie principal on every request (port of the original
+        /// AuthenticateRequest handler). Rejects tickets issued for another blog instance or with a
+        /// stale SecurityValidationKey, and replaces the principal with a <see cref="CustomPrincipal"/>
+        /// so that roles are resolved from the role service rather than from the cookie.
+        /// Wire it to <c>CookieAuthenticationEvents.OnValidatePrincipal</c>.
+        /// </summary>
+        public static async Task ValidatePrincipalAsync(CookieValidatePrincipalContext context)
+        {
+            var identity = context.Principal?.Identity as ClaimsIdentity;
+            if (identity == null || !identity.IsAuthenticated || string.IsNullOrEmpty(identity.Name))
+            {
+                await RejectAsync(context);
+                return;
+            }
+
+            if (!BlogConfig.SingleSignOn)
+            {
+                string blogId = identity.FindFirst(BlogInstanceIdClaimType)?.Value;
+                string validation = identity.FindFirst(SecurityValidationClaimType)?.Value;
+
+                if (blogId == null || validation == null ||
+                    !blogId.Equals(Blog.CurrentInstance.Id.ToString(), StringComparison.OrdinalIgnoreCase) ||
+                    !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(validation), Encoding.ASCII.GetBytes(SecurityValidationHash)))
+                {
+                    await RejectAsync(context);
+                    return;
+                }
+            }
+
+            context.ReplacePrincipal(new CustomPrincipal(identity));
+        }
+
+        private static async Task RejectAsync(CookieValidatePrincipalContext context)
+        {
+            context.RejectPrincipal();
+            await context.HttpContext.SignOutAsync(AuthenticationScheme);
+        }
+
+        /// <summary>
+        /// Returns whether the url is a local (same application) url; rejects "//host", "/\host"
+        /// and control characters that browsers strip. Mirrors ASP.NET Core's Url.IsLocalUrl.
+        /// </summary>
+        public static bool IsLocalUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+            {
+                return false;
+            }
+
+            int start;
+            if (url[0] == '/')
+            {
+                start = 1;
+            }
+            else if (url.Length > 1 && url[0] == '~' && url[1] == '/')
+            {
+                start = 2;
+            }
+            else
+            {
+                return false;
+            }
+
+            if (url.Length == start)
+            {
+                return true;
+            }
+
+            if (url[start] == '/' || url[start] == '\\')
+            {
+                return false;
+            }
+
+            return !url.Skip(start).Any(char.IsControl);
+        }
+
+        /// <summary>
+        /// Returns the given return url if it is local, otherwise the blog root.
+        /// "~/" urls are resolved against the blog's relative web root.
+        /// </summary>
+        public static string GetSafeReturnUrl(string returnUrl)
+        {
+            if (!IsLocalUrl(returnUrl))
+            {
+                return Utils.RelativeWebRoot;
+            }
+
+            return returnUrl.StartsWith("~/", StringComparison.Ordinal)
+                ? Utils.RelativeWebRoot + returnUrl.Substring(2)
+                : returnUrl;
+        }
 
         private static string SecurityValidationKey
         {
@@ -200,6 +291,19 @@ namespace BlogEngine.Core
                 }
 
                 return BlogSettings.Instance.SecurityValidationKey;
+            }
+        }
+
+        /// <summary>
+        /// Hash of the SecurityValidationKey stored in the (encrypted) auth cookie,
+        /// so the key itself never leaves the server.
+        /// </summary>
+        private static string SecurityValidationHash
+        {
+            get
+            {
+                var hash = SHA256.HashData(Encoding.UTF8.GetBytes(SecurityValidationKey));
+                return Convert.ToHexString(hash);
             }
         }
 
@@ -222,19 +326,27 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets the current user for the current HttpContext.
         /// </summary>
+        /// <remarks>
+        /// Always a <see cref="CustomPrincipal"/>, whose IsInRole queries the role service, so role and
+        /// right checks reflect the current roles data rather than a snapshot taken at sign-in.
+        /// </remarks>
         public static System.Security.Principal.IPrincipal CurrentUser
         {
             get
             {
-                var context = CurrentHttpContext;
-                if (context?.User?.Identity?.IsAuthenticated == true)
+                var user = CurrentHttpContext?.User;
+                if (user is CustomPrincipal)
                 {
-                    return context.User;
+                    return user;
+                }
+
+                if (user?.Identity?.IsAuthenticated == true && !string.IsNullOrEmpty(user.Identity.Name))
+                {
+                    return new CustomPrincipal(user.Identity);
                 }
 
                 // Anonymous: like System.Web, expose an empty (not null) user name
-                var identity = new CustomIdentity(string.Empty, false);
-                return new CustomPrincipal(identity);
+                return new CustomPrincipal(new CustomIdentity(string.Empty, false));
             }
         }
 
