@@ -1,13 +1,10 @@
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Tests.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using System.Collections.Generic;
-using System.Net;
-using System.Net.Http;
-using System.Web.Http;
-using System.Web.Http.Controllers;
-using System.Web.Http.Hosting;
-using System.Web.Http.Routing;
 
 namespace BlogEngine.Tests.WebApi
 {
@@ -20,15 +17,11 @@ namespace BlogEngine.Tests.WebApi
         public void Init()
         {
             _ctrl = new TagsController(new FakeTagsRepository());
-
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "controller", "tags" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext(),
+                RouteData = new RouteData()
+            };
         }
 
         [TestMethod]
@@ -42,27 +35,20 @@ namespace BlogEngine.Tests.WebApi
         public void TagsControllerUpdate()
         {
             var result = _ctrl.Update(new TagToUpdate());
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
 
         [TestMethod]
         public void TagsControllerDelete()
         {
             var result = _ctrl.Delete("test");
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
 
         [TestMethod]
         public void TagsControllerProcessChecked()
         {
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "id", "delete" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext.RouteData.Values["id"] = "delete";
 
             var items = new List<TagItem>();
             items.Add(new TagItem()
@@ -72,7 +58,7 @@ namespace BlogEngine.Tests.WebApi
             });
 
             var result = _ctrl.ProcessChecked(items);
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
     }
 }

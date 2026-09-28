@@ -1,15 +1,11 @@
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Tests.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Web.Http;
-using System.Web.Http.Controllers;
-using System.Web.Http.Hosting;
-using System.Web.Http.Routing;
 
 namespace BlogEngine.Tests.WebApi
 {
@@ -22,15 +18,11 @@ namespace BlogEngine.Tests.WebApi
         public void Init()
         {
             _ctrl = new CustomFieldsController(new FakeCustomFieldsRepository());
-
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "controller", "customfields" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext(),
+                RouteData = new RouteData()
+            };
         }
 
         [TestMethod]
@@ -44,16 +36,16 @@ namespace BlogEngine.Tests.WebApi
         //public void CustomFieldsControllerPost()
         //{
         //    var result = _ctrl.Post(new CustomField { CustomType = "test", BlogId = new Guid() });
-        //    Assert.AreEqual(HttpStatusCode.Created, result.StatusCode);
+        //    Assert.IsInstanceOfType(result, typeof(CreatedResult));
         //}
 
         [TestMethod]
         public void CustomFieldsControllerUpdate()
         {
             var items = new List<CustomField>();
-            items.Add(new CustomField { CustomType = "test", BlogId = new Guid() });
+            items.Add(new CustomField { CustomType = "test", BlogId = new System.Guid() });
             var result = _ctrl.Put(items);
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
     }
 }

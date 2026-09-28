@@ -1,13 +1,11 @@
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Tests.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
-using System.Web.Http;
-using System.Web.Http.Controllers;
-using System.Web.Http.Hosting;
-using System.Web.Http.Routing;
 
 namespace BlogEngine.Tests.WebApi
 {
@@ -20,15 +18,11 @@ namespace BlogEngine.Tests.WebApi
         public void Init()
         {
             _ctrl = new PackagesController(new FakePackagesRepository());
-
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "controller", "packages" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext(),
+                RouteData = new RouteData()
+            };
         }
 
         [TestMethod]
@@ -49,26 +43,21 @@ namespace BlogEngine.Tests.WebApi
         public void PackageControllerUpdate()
         {
             var result = _ctrl.Update(new Package() { Id = "test" });
-            Assert.IsTrue(result);
+            Assert.IsInstanceOfType(result, typeof(OkObjectResult));
+            var okResult = (OkObjectResult)result;
+            Assert.AreEqual(true, okResult.Value);
         }
 
         [TestMethod]
         public void PackagesControllerProcessChecked()
         {
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "id", "install" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext.RouteData.Values["id"] = "install";
 
             var items = new List<Package>();
             items.Add(new Package() { Id = "test" });
 
             var result = _ctrl.ProcessChecked(items);
-            Assert.IsTrue(result.IsSuccessStatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
     }
 }

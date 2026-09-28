@@ -1,16 +1,12 @@
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Tests.Fakes;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Newtonsoft.Json;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Web.Http;
-using System.Web.Http.Controllers;
-using System.Web.Http.Hosting;
-using System.Web.Http.Routing;
 
 namespace BlogEngine.Tests.WebApi
 {
@@ -23,15 +19,11 @@ namespace BlogEngine.Tests.WebApi
         public void Init()
         {
             _ctrl = new PostsController(new FakePostRepository());
-
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "controller", "posts" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext(),
+                RouteData = new RouteData()
+            };
         }
 
         [TestMethod]
@@ -52,10 +44,10 @@ namespace BlogEngine.Tests.WebApi
         public void PostControllerPost()
         {
             var result = _ctrl.Post(new PostDetail { Id = Guid.NewGuid() });
-            Assert.AreEqual(HttpStatusCode.Created, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(CreatedResult));
 
-            var json = result.Content.ReadAsStringAsync().Result;
-            var item = JsonConvert.DeserializeObject<PostDetail>(json);
+            var createdResult = (CreatedResult)result;
+            var item = createdResult.Value as PostDetail;
 
             Assert.IsNotNull(item);
             Assert.IsTrue(item.Id != Guid.Empty && item.Id != null);
@@ -68,27 +60,20 @@ namespace BlogEngine.Tests.WebApi
             {
                 Id = Guid.NewGuid()
             });
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
 
         [TestMethod]
         public void PostControllerDelete()
         {
             var result = _ctrl.Delete("96d5b379-7e1d-4dac-a6ba-1e50db561b04");
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
 
         [TestMethod]
         public void PostControllerProcessChecked()
         {
-            var config = new HttpConfiguration();
-            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost/be/api");
-            var route = config.Routes.MapHttpRoute("DefaultApi", "api/{controller}/{id}");
-            var routeData = new HttpRouteData(route, new HttpRouteValueDictionary { { "id", "delete" } });
-
-            _ctrl.ControllerContext = new HttpControllerContext(config, routeData, request);
-            _ctrl.Request = request;
-            _ctrl.Request.Properties[HttpPropertyKeys.HttpConfigurationKey] = config;
+            _ctrl.ControllerContext.RouteData.Values["id"] = "delete";
 
             var items = new List<PostDetail>();
             items.Add(new PostDetail()
@@ -98,7 +83,7 @@ namespace BlogEngine.Tests.WebApi
             });
 
             var result = _ctrl.ProcessChecked(items);
-            Assert.AreEqual(HttpStatusCode.OK, result.StatusCode);
+            Assert.IsInstanceOfType(result, typeof(OkResult));
         }
     }
 }
