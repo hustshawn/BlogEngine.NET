@@ -1,6 +1,9 @@
 @page "/frontpageexample"
+@page "/FrontPageExample.aspx"
 
-<PageTitle>Custom front page</PageTitle>
+@* Port of FrontPageExample.aspx: sample custom front page (see the CustomFrontPage setting) *@
+
+<BlogHead Title="Custom front page" />
 
 <div class="page-global">
     <h1>Custom front page</h1>
@@ -9,8 +12,3 @@
     </p>
     <p>For this to work, page has to be in the blog root and named "FrontPage.razor" (Blazor component)</p>
 </div>
-
-@code {
-    // Original code-behind had an empty Page_Load — this is a static template page.
-    private string pageTitle = "Custom front page";
-}

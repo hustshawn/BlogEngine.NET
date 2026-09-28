@@ -1112,27 +1112,60 @@
         /// </returns>
         public static string Translate(string text, string defaultValue, CultureInfo culture)
         {
-            // Replaces HttpContext.GetGlobalResourceObject("labels", ...) from System.Web
             string resource = null;
-            if (LabelResources != null && !string.IsNullOrEmpty(text))
+            var manager = LabelsResourceManager;
+            if (manager != null && !string.IsNullOrEmpty(text))
             {
                 try
                 {
-                    resource = LabelResources.GetString(text, culture ?? CultureInfo.CurrentUICulture);
+                    resource = manager.GetString(text, culture ?? CultureInfo.CurrentUICulture);
                 }
                 catch (System.Resources.MissingManifestResourceException)
                 {
+                    resource = null;
                 }
             }
 
-            return resource ?? (string.IsNullOrEmpty(defaultValue) ? text : defaultValue);
+            return resource ?? (string.IsNullOrEmpty(defaultValue) ? $"Missing Resource [{text}]" : defaultValue);
         }
 
+        private static readonly Lazy<System.Resources.ResourceManager> labelsResourceManager =
+            new Lazy<System.Resources.ResourceManager>(FindLabelsResourceManager);
+
         /// <summary>
-        /// Resource manager for the "labels" resources (the former App_GlobalResources/labels.resx)
-        /// used by <see cref="Translate(string, string, CultureInfo)"/>. Set by the web application at startup.
+        /// Resource manager for the global "labels" resources (replaces App_GlobalResources/labels.resx).
+        /// The resources are embedded in the web application assembly as "{Assembly}.Resources.labels".
         /// </summary>
-        public static System.Resources.ResourceManager LabelResources { get; set; }
+        public static System.Resources.ResourceManager LabelsResourceManager => labelsResourceManager.Value;
+
+        private static System.Resources.ResourceManager FindLabelsResourceManager()
+        {
+            const string suffix = ".labels.resources";
+            var candidates = new[] { Assembly.GetEntryAssembly() }
+                .Concat(AppDomain.CurrentDomain.GetAssemblies())
+                .Where(a => a != null && !a.IsDynamic);
+
+            foreach (var assembly in candidates)
+            {
+                string name;
+                try
+                {
+                    name = assembly.GetManifestResourceNames()
+                        .FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+                }
+                catch (NotSupportedException)
+                {
+                    continue;
+                }
+
+                if (name != null)
+                {
+                    return new System.Resources.ResourceManager(name.Substring(0, name.Length - ".resources".Length), assembly);
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Helper method to quickly check if directory or file is writable

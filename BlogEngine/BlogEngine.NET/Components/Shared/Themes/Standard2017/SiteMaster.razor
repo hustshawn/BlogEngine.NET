@@ -1,0 +1,69 @@
+@* Port of Custom/Themes/Standard-2017/site.master *@
+
+<div class="container">
+    <div class="blog-wrapper">
+        <aside class="blog-sidebar">
+            <header class="blog-header">
+                <div class="blog-info">
+                    <a class="blog-logo" href="@Utils.AbsoluteWebRoot" tabindex="-1">
+                        <img src="@(Utils.AbsoluteWebRoot + Field("Logo", "Custom/Themes/Standard-2017/src/img/logo.png"))" alt="@BlogSettings.Instance.Name" />
+                        @BlogSettings.Instance.Name
+                    </a>
+                    <div class="blog-author">
+                        @((MarkupString)Field("About Author", ""))
+                    </div>
+                    <ul class="social-network">
+                        <li><a href="@Field("Facebook Account", "")" rel="external nofollow"><i class="fa fa-facebook"></i></a></li>
+                        <li><a href="@Field("Twitter Account", "")" rel="external nofollow"><i class="fa fa-twitter"></i></a></li>
+                        <li><a href="@Field("Google Plus Account", "")" rel="external nofollow"><i class="fa fa-google-plus"></i></a></li>
+                        <li><a href="@Field("Linkedin Account", "")" rel="external nofollow"><i class="fa fa-linkedin"></i></a></li>
+                        <li><a href="@Field("Instagramm Account", "")" rel="external nofollow"><i class="fa fa-instagram"></i></a></li>
+                        <li><a href="@Field("Youtube Account", "")" rel="external nofollow"><i class="fa fa-youtube"></i></a></li>
+                        <li><a href="@Field("Github Account", "")" rel="external nofollow"><i class="fa fa-git"></i></a></li>
+                        <li><a href="@Field("Pinterest Account", "")" rel="external nofollow"><i class="fa fa-pinterest"></i></a></li>
+                    </ul>
+                </div>
+                <nav class="blog-nav">
+                    <ul>
+                        <li><a href="@Utils.AbsoluteWebRoot" class="item-home" title="@Utils.Translate("home")"><i class="fa fa-home"></i></a></li>
+                        <li><a href="@(Utils.AbsoluteWebRoot)archive" class="item-archive" title="@Utils.Translate("archive")"><i class="fa fa-align-left"></i></a></li>
+                        <li><a href="@(Utils.AbsoluteWebRoot)contact" class="item-contact" title="@Utils.Translate("contact")"><i class="fa fa-envelope"></i></a></li>
+                        @if (Security.IsAuthenticated)
+                        {
+                            <li><a href="@(Utils.RelativeWebRoot)admin/" class="item-login" title=""><span>@Utils.Translate("admin")</span></a></li>
+                        }
+                        else
+                        {
+                            <li><a href="@(Utils.RelativeWebRoot)Account/login?ReturnURL=@(Utils.RelativeWebRoot)admin/" class="item-login" title=""><span>@Utils.Translate("login")</span></a></li>
+                        }
+                    </ul>
+                </nav>
+            </header>
+            <WidgetZone ZoneName="be_WIDGET_ZONE" />
+            <footer class="blog-footer">
+                <p>
+                    Copyright &copy; @DateTime.Now.Year
+                </p>
+                <p>
+                    Powered by <a href="https://blogengine.io/" target="_blank" title="BlogEngine.NET @BlogSettings.Instance.Version()">BlogEngine.NET</a>
+                </p>
+                <p>
+                    Designed by <a href="http://francis.bio/" rel="nofollow" target="_blank">Francis Bio</a>
+                </p>
+            </footer>
+        </aside>
+        <div class="blog-content admin-alerts-@Field("Home Alert Box (true or false?)", "true")">
+            @Body
+        </div>
+    </div>
+</div>
+<script src="@(Theme.Url)src/js/bootstrap.min.js"></script>
+<script src="@(Theme.Url)src/js/custom.js"></script>
+<TrackingScript />
+
+@code {
+    [Parameter] public RenderFragment Body { get; set; }
+    [Parameter] public bool IsPageLayout { get; set; }
+
+    private static string Field(string key, string defaultValue) => Theme.Field(key, defaultValue, "Standard-2017");
+}

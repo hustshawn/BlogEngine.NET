@@ -19,6 +19,7 @@
         public static IEndpointRouteBuilder MapJavaScriptHandler(this IEndpointRouteBuilder endpoints)
         {
             endpoints.MapGet("/js.axd", HandleAsync);
+            endpoints.MapGet("/{name}.js.axd", HandleAsync);
             return endpoints;
         }
 

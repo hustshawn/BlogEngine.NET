@@ -1,0 +1,59 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/Newsletter/widget.cshtml. The original posted the page-wide WebForms form;
+   this is a static SSR form that posts back to the current page. *@
+
+<div class="Widget widget newsletter">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content" style="padding: 20px">
+        @if (showThanks)
+        {
+            <div style="padding: 20px 40px" id="newsletterthanks">
+                <h2 id="newsletteraction">@Utils.Translate("thankYou")</h2>
+            </div>
+        }
+        else
+        {
+            <form method="post" id="newsletterform" @formname="@FormName" @onsubmit="Subscribe">
+                <AntiforgeryToken />
+                <p>@Utils.Translate("notifiedPublished")</p>
+                <label style="font-weight:bold" for="txtNewsletterEmail">@Utils.Translate("enterEmail")</label>
+                <input type="text" style="width:98%;" class="form-control" id="txtNewsletterEmail" name="txtNewsletterEmail" />
+                @if (showMsg)
+                {
+                    <span>@Utils.Translate("enterEmailAddress")</span>
+                }
+                <div style="text-align:center; margin-top: 10px">
+                    <input type="submit" class="btn btn-primary" id="btnSave" name="btnSave" value="@Utils.Translate("notifyMe")" />
+                </div>
+            </form>
+        }
+    </div>
+</div>
+
+@code {
+    private const string FormName = "newsletter";
+
+    [SupplyParameterFromForm(FormName = FormName, Name = "txtNewsletterEmail")]
+    public string Email { get; set; }
+
+    private bool showThanks;
+    private bool showMsg;
+
+    private void Subscribe()
+    {
+        try
+        {
+            var address = new System.Net.Mail.MailAddress(Email ?? string.Empty);
+            BlogEngine.NET.Custom.Widgets.Newsletter.AddEmail(address.Address);
+            showThanks = true;
+        }
+        catch (FormatException)
+        {
+            showMsg = true;
+        }
+        catch (ArgumentException)
+        {
+            showMsg = true;
+        }
+    }
+}

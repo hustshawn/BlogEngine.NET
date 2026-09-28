@@ -1,0 +1,24 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/Search/widget.cshtml. The original searched through BlogEngine.search (blog.js);
+   the markup is wrapped in a GET form so the search also works without JavaScript. *@
+
+<div class="Widget widget search">
+    <div class="WidgetContent widget-content">
+        <form id="searchbox" method="get" action="@(Utils.RelativeWebRoot)search@(BlogConfig.FileExtension)">
+            <input type="text" id="txt-@Id" name="q" value="@query" placeholder="@(Utils.Translate("search"))..." onkeypress="if (event.keyCode == 13) { BlogEngine.search('@Utils.RelativeWebRoot', 'txt-@Id'); return false; }" />
+            <input type="button" onkeypress="BlogEngine.search('@Utils.RelativeWebRoot', 'txt-@Id');" onclick="BlogEngine.search('@Utils.RelativeWebRoot', 'txt-@Id');" id="searchbutton" value="Search" />
+        </form>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")]
+    public string Query { get; set; }
+
+    private string query;
+
+    protected override void OnParametersSet()
+    {
+        query = Query;
+    }
+}

@@ -467,7 +467,7 @@ namespace BlogEngine.Core.Web
         /// </returns>
         public static string GetQueryString(HttpContext context)
         {
-            var query = context.Request.QueryString.ToString();
+            var query = context.Request.QueryString.ToString().TrimStart('?');
             return !string.IsNullOrEmpty(query) ? $"&{query}" : string.Empty;
         }
 

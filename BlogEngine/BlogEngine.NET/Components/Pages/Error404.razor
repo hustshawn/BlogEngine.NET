@@ -1,10 +1,12 @@
 @page "/error404"
-@using System.Net
-@using BlogEngine.Core
-@inject NavigationManager Navigation
+@page "/error404.aspx"
+@layout PageLayout
+@using Microsoft.AspNetCore.Diagnostics
 @inject IHttpContextAccessor HttpContextAccessor
 
-<PageTitle>@(Utils.Translate("PageNotFound"))</PageTitle>
+@* Port of error404.aspx. Also rendered (status 404) for unknown URLs and NavigationManager.NotFound(). *@
+
+<BlogHead Title="@Utils.Translate("PageNotFound")" NoIndex="true" />
 
 <div class="post error404 page-global">
     <h2 class="page-global-title">Ooops! I can't find the page you're looking for</h2>
@@ -42,7 +44,7 @@
             </p>
             <p>I suggest you try one of the links below:</p>
             <ul>
-                <li><a href="/archive">@Utils.Translate("archive")</a></li>
+                <li><a href="@(Utils.RelativeWebRoot)archive">@Utils.Translate("archive")</a></li>
                 <li><a href="@Utils.RelativeWebRoot">Home page</a></li>
             </ul>
             <p>You can also try to <a href="@(Utils.RelativeWebRoot)search">search for the page you were looking for</a>.</p>
@@ -72,7 +74,7 @@
                 {
                     <li><a href="@item.RelativeLink">@item.Title</a></li>
                 }
-                <li><a href="/archive">@Utils.Translate("archive")</a></li>
+                <li><a href="@(Utils.RelativeWebRoot)archive">@Utils.Translate("archive")</a></li>
                 <li><a href="@Utils.RelativeWebRoot">Home page</a></li>
             </ul>
             <p>You can also try to <a href="@(Utils.RelativeWebRoot)search">search for the page you were looking for</a>.</p>
@@ -105,8 +107,10 @@
     {
         // Set 404 status code via HttpContext (available during SSR)
         var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
+        var reExecute = httpContext?.Features.Get<IStatusCodeReExecuteFeature>();
+        if (httpContext != null && reExecute == null)
         {
+            // a re-executed request keeps its original status code (404, 403, ...)
             httpContext.Response.StatusCode = 404;
         }
 
@@ -128,6 +132,12 @@
         {
             referrerUrl = referrer.ToString();
             referrerHost = referrer.Host;
+        }
+
+        // original URL of a request re-executed by the status code pages middleware
+        if (string.IsNullOrEmpty(AspxErrorPath) && reExecute != null)
+        {
+            AspxErrorPath = reExecute.OriginalPath;
         }
 
         if (!string.IsNullOrEmpty(AspxErrorPath) && AspxErrorPath.Contains("/post/"))
@@ -161,7 +171,7 @@
 
         string from = AspxErrorPath;
         int index = from.LastIndexOf("/") + 1;
-        string title = from.Substring(index).Replace("", string.Empty).Replace("-", " ");
+        string title = from.Substring(index).Replace(".aspx", string.Empty).Replace("-", " ");
 
         List<IPublishable> items = BlogEngine.Core.Search.Hits(title, false);
         if (items.Count > 0)

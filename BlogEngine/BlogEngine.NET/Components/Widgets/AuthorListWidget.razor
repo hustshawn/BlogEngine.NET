@@ -1,0 +1,42 @@
+@inherits WidgetComponentBase
+@using BlogEngine.Core.Data.Services
+@* Port of Custom/Widgets/AuthorList/widget.cshtml *@
+
+<div class="Widget widget authorlist">
+    <h4 class="WidgetHeader widget-header">
+        @Title
+    </h4>
+    <div class="WidgetContent widget-content">
+        <ul id="authorlist" class="authorlist">
+            @foreach (var user in users)
+            {
+                var postCount = Post.GetPostsByAuthor(user.UserName).Count;
+                if (postCount == 0)
+                {
+                    continue;
+                }
+                <li>
+                    <a rel="nofollow" href="@(Utils.RelativeWebRoot)syndication.axd?author=@user.UserName">
+                        <img width="32" height="32" class="author-avatar" alt="author avatar" src="@Avatar.GetSrc(user.Email)">
+                    </a>
+                    <a class="authorlink" title="Author: @user.UserName" href="@(Utils.RelativeWebRoot)author/@user.UserName">
+                        @user.UserName (@postCount)
+                    </a>
+                </li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private IEnumerable<BlogEngine.Core.BlogMembershipUser> users = Enumerable.Empty<BlogEngine.Core.BlogMembershipUser>();
+
+    protected override void OnParametersSet()
+    {
+        var all = Membership.Provider?.GetAllUsers(out _);
+        if (all != null)
+        {
+            users = all.OrderBy(a => a.UserName).ToList();
+        }
+    }
+}

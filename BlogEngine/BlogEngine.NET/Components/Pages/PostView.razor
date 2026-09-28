@@ -1,22 +1,31 @@
-@page "/post"
+@page "/post.aspx"
 @page "/post/{Slug}"
-@using System.Web
-@using BlogEngine.Core
+@page "/post/{Year:int}/{Month:int}/{Slug}"
+@page "/post/{Year:int}/{Month:int}/{Day:int}/{Slug}"
+@using BlogEngine.Core.Web.Controls
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
 
-<PageTitle>@pageTitle</PageTitle>
+@* Port of post.aspx (+ UrlRules.RewritePost for the /post/{slug} URLs) *@
 
-@if (shouldShow404)
+@if (post != null)
 {
-    <div class="error-404">
-        <h1>Post not found</h1>
-        <p>The requested post could not be found.</p>
-    </div>
-}
-else if (CurrentPost != null)
-{
-    @if (showCommentUnsubscription)
+    <BlogHead Title="@post.Title" Description="@BlogHead.MetaDescription(post.Description)" Keywords="@keywords"
+              Author="@(post.AuthorProfile == null ? post.Author : post.AuthorProfile.FullName)">
+        @if (firstPost != null)
+        {
+            <link rel="last" title="@lastPost.Title" href="@lastPost.RelativeLink" />
+            <link rel="first" title="@firstPost.Title" href="@firstPost.RelativeLink" />
+        }
+        <link type="application/rss+xml" rel="alternate" title="@post.Title (RSS)" href="@(postView.CommentFeed)?format=ATOM" />
+        <link type="application/rss+xml" rel="alternate" title="@post.Title (ATOM)" href="@(postView.CommentFeed)?format=ATOM" />
+        @if (ShowFacebookComments)
+        {
+            <meta property="fb:app_id" content="@BlogSettings.Instance.FacebookAppId" />
+        }
+    </BlogHead>
+
+    @if (showUnsubscribed)
     {
         <div id="commentNotificationUnsubscription">
             <h1>@Utils.Translate("commentNotificationUnsubscriptionHeader")</h1>
@@ -24,98 +33,34 @@ else if (CurrentPost != null)
         </div>
     }
 
-    @if (showPostNavigation && (nextPost != null || prevPost != null))
+    @if (navigation != null)
     {
-        <div class="post-navigation">
-            @if (prevPost != null)
-            {
-                <a href="@prevPost.RelativeLink" class="nav-prev">← @prevPost.Title</a>
-            }
-            @if (nextPost != null)
-            {
-                <a href="@nextPost.RelativeLink" class="nav-next">@nextPost.Title →</a>
-            }
-        </div>
+        <DynamicComponent Type="@Theme.Template("PostNavigation")" Parameters="@(new Dictionary<string, object> { ["View"] = navigation })" />
     }
 
-    <div class="post-view" id="@CurrentPost.Id.ToString().Replace("-", "")">
-        <h1 class="post-title">
-            <a href="@CurrentPost.RelativeLink">@CurrentPost.Title</a>
-        </h1>
-        <div class="post-info">
-            <span class="post-date">@CurrentPost.DateCreated.ToString("MMMM d, yyyy HH:mm")</span>
-            <span class="post-author"> by @(CurrentPost.AuthorProfile != null ? CurrentPost.AuthorProfile.FullName : CurrentPost.Author)</span>
-        </div>
-        @if (CurrentPost.Categories.Count > 0)
-        {
-            <div class="post-categories">
-                @Utils.Translate("postedIn"):
-                @foreach (var cat in CurrentPost.Categories)
-                {
-                    <a href="@cat.RelativeLink">@cat.Title</a>
-                }
-            </div>
-        }
-        @if (CurrentPost.Tags.Count > 0)
-        {
-            <div class="post-tags">
-                @Utils.Translate("tags"):
-                @foreach (var tag in CurrentPost.Tags)
-                {
-                    <a href="@(Utils.RelativeWebRoot + "?tag=/" + HttpUtility.UrlEncode(tag))">@tag</a>
-                }
-            </div>
-        }
-        <div class="post-body">
-            @((MarkupString)CurrentPost.Content)
-        </div>
-    </div>
+    <DynamicComponent Type="@Theme.Template("PostView")" Parameters="@(new Dictionary<string, object> { ["View"] = postView })" />
 
     @if (BlogSettings.Instance.EnableRelatedPosts)
     {
-        <div class="related-posts">
-            <h3>@Utils.Translate("relatedPosts")</h3>
-            @* Related posts rendered inline *@
-        </div>
+        var relatedTemplate = Theme.Template("RelatedPosts");
+        if (relatedTemplate != null)
+        {
+            <DynamicComponent Type="@relatedTemplate" Parameters="@(new Dictionary<string, object> { ["View"] = new RelatedPostsBase(MemoryCache) { PostItem = post } })" />
+        }
+        else
+        {
+            <RelatedPosts Item="@post" MaxResults="3" ShowDescription="true" DescriptionMaxLength="100" />
+        }
     }
 
     @if (BlogSettings.Instance.EnableTrackBackReceive)
     {
-        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-                 xmlns:dc="http://purl.org/dc/elements/1.1/"
-                 xmlns:trackback="http://madskills.com/public/xml/rss/module/trackback/">
-            <rdf:Description rdf:about="@CurrentPost.AbsoluteLink"
-                             dc:identifier="@CurrentPost.AbsoluteLink"
-                             dc:title="@CurrentPost.Title"
-                             trackback:ping="@CurrentPost.TrackbackLink" />
-        </rdf:RDF>
+        @((MarkupString)$"<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:trackback=\"http://madskills.com/public/xml/rss/module/trackback/\">\n      <rdf:Description rdf:about=\"{post.AbsoluteLink}\" dc:identifier=\"{post.AbsoluteLink}\" dc:title=\"{post.Title}\" trackback:ping=\"{post.TrackbackLink}\" />\n    </rdf:RDF>")
     }
 
     @if (ShowBlogengineComments)
     {
-        <div id="comment-list">
-            @if (CurrentPost.Comments != null)
-            {
-                <h3>@CurrentPost.ApprovedComments.Count @Utils.Translate("comments")</h3>
-                @foreach (var comment in CurrentPost.ApprovedComments)
-                {
-                    <div class="comment" id="comment-@comment.Id">
-                        <div class="comment-author">
-                            @if (!string.IsNullOrEmpty(comment.Website?.ToString()))
-                            {
-                                <a href="@comment.Website" rel="nofollow">@comment.Author</a>
-                            }
-                            else
-                            {
-                                @comment.Author
-                            }
-                        </div>
-                        <div class="comment-date">@comment.DateCreated.ToString("MMMM d, yyyy HH:mm")</div>
-                        <div class="comment-body">@((MarkupString)comment.Content)</div>
-                    </div>
-                }
-            }
-        </div>
+        <CommentList Post="@post" />
     }
 
     @if (ShowDisqusComments)
@@ -123,12 +68,12 @@ else if (CurrentPost != null)
         <div id="comment" class="comment-form well-global">
             <div id="disqus_thread" class="form-horizontal"></div>
         </div>
-        <script>
-            var disqus_url = '@CurrentPost.PermaLink';
+        <script type="text/javascript">
+            var disqus_url = '@post.PermaLink';
             var disqus_developer = '@(BlogSettings.Instance.DisqusDevMode ? 1 : 0)';
-            (function () {
+            (function() {
                 var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
-                dsq.src = '//@(BlogSettings.Instance.DisqusWebsiteName).disqus.com/embed.js';
+                dsq.src = '@(HttpContext.Request.Scheme)://@(BlogSettings.Instance.DisqusWebsiteName).disqus.com/embed.js';
                 (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
             })();
         </script>
@@ -138,176 +83,177 @@ else if (CurrentPost != null)
     {
         <div id="comment" class="comment-form well-global">
             <div class="form-horizontal">
-                <div class="fb-comments" data-href="@CurrentPost.PermaLink" data-version="v2.4" data-width="100%"></div>
+                <div class="fb-comments" data-href="@post.PermaLink" data-version="v2.4" data-width="100%"></div>
             </div>
         </div>
         <div id="fb-root"></div>
-        <script>
-            (function (d, s, id) {
-                var js, fjs = d.getElementsByTagName(s)[0];
-                if (d.getElementById(id)) return;
-                js = d.createElement(s); js.id = id;
-                js.src = "//connect.facebook.net/@(BlogSettings.Instance.FacebookLanguage)/sdk.js#xfbml=1&version=v2.4";
-                fjs.parentNode.insertBefore(js, fjs);
-            }(document, 'script', 'facebook-jssdk'));
-        </script>
+        <script>(function(d, s, id) {
+          var js, fjs = d.getElementsByTagName(s)[0];
+          if (d.getElementById(id)) return;
+          js = d.createElement(s); js.id = id;
+          js.src = "//connect.facebook.net/@(BlogSettings.Instance.FacebookLanguage)/sdk.js#xfbml=1&version=v2.4";
+          fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'facebook-jssdk'));</script>
     }
 }
 
 @code {
-    [SupplyParameterFromQuery(Name = "id")]
-    public string QueryId { get; set; }
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
 
-    [SupplyParameterFromQuery(Name = "unsubscribe-email")]
-    public string UnsubscribeEmail { get; set; }
+    [Parameter] public string Slug { get; set; }
+    [Parameter] public int? Year { get; set; }
+    [Parameter] public int? Month { get; set; }
+    [Parameter] public int? Day { get; set; }
 
-    [Parameter]
-    public string Slug { get; set; }
+    [SupplyParameterFromQuery(Name = "id")] public string QueryId { get; set; }
+    [SupplyParameterFromQuery(Name = "unsubscribe-email")] public string UnsubscribeEmail { get; set; }
+    [SupplyParameterFromQuery(Name = "deletepost")] public string DeletePostId { get; set; }
 
-    public Post CurrentPost { get; set; }
+    public static bool ShowBlogengineComments => BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.BlogEngine;
+    public static bool ShowDisqusComments => BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Disqus;
+    public static bool ShowFacebookComments => BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Facebook;
 
-    private string pageTitle = string.Empty;
-    private bool shouldShow404 = false;
-    private bool showCommentUnsubscription = false;
-    private bool showPostNavigation = false;
-    private Post nextPost;
-    private Post prevPost;
+    private Post post;
+    private PostViewBase postView;
+    private PostNavigationBase navigation;
+    private Post firstPost;
+    private Post lastPost;
+    private string keywords;
+    private bool showUnsubscribed;
 
-    public static bool ShowBlogengineComments =>
-        BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.BlogEngine;
-
-    public static bool ShowDisqusComments =>
-        BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Disqus;
-
-    public static bool ShowFacebookComments =>
-        BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Facebook;
-
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
         if (!Security.IsAuthorizedTo(Rights.ViewPublicPosts))
         {
-            Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+            Navigation.NavigateTo(Utils.RelativeWebRoot);
             return;
         }
 
-        var httpContext = HttpContextAccessor.HttpContext;
-        var rawUrl = httpContext?.Request.Path.Value ?? string.Empty;
-
-        Guid id;
-        bool shouldThrow404Local = false;
-
-        if (!string.IsNullOrWhiteSpace(QueryId) && Guid.TryParse(QueryId, out id))
+        if (HandleDeletePost())
         {
-            Post post = Post.ApplicablePosts.Find(p => p.Id == id);
-
-            if (post != null)
-            {
-                // If accessed via ?id= query string, do a 301 redirect to the clean URL
-                if (httpContext?.Request.QueryString.Value?.Contains("id=") == true)
-                {
-                    // Only redirect if there aren't multiple posts with the same RelativeLink
-                    if (Post.Posts.FindAll(p => p.RelativeLink.Equals(post.RelativeLink)).Count < 2)
-                    {
-                        Navigation.NavigateTo(post.RelativeLink.ToString(), false, true);
-                        return;
-                    }
-                }
-
-                if (!post.IsVisible)
-                {
-                    Navigation.NavigateTo("/", false, true);
-                    return;
-                }
-
-                LoadPost(post, rawUrl);
-            }
-            else
-            {
-                shouldThrow404Local = true;
-            }
-        }
-        else if (!string.IsNullOrEmpty(Slug))
-        {
-            // Try to find post by slug
-            Post post = Post.ApplicablePosts.Find(p =>
-                p.Slug != null && p.Slug.Equals(Slug, StringComparison.OrdinalIgnoreCase));
-            if (post != null && post.IsVisible)
-            {
-                LoadPost(post, rawUrl);
-            }
-            else
-            {
-                shouldThrow404Local = true;
-            }
-        }
-        else
-        {
-            shouldThrow404Local = true;
+            return;
         }
 
-        if (shouldThrow404Local)
+        var found = Slug != null ? FindBySlug() : FindById();
+        if (found == null)
         {
-            shouldShow404 = true;
-            pageTitle = "Post not found";
+            Navigation.NotFound();
+            return;
         }
+
+        var rawPath = HttpContext.Request.Path.Value;
+        if (Slug == null && HttpContext.Request.QueryString.Value?.Contains("id=") == true)
+        {
+            // post.aspx?id= : 301 to the permalink unless several posts share the same link
+            if (Post.Posts.FindAll(p => p.RelativeLink.Equals(found.RelativeLink)).Count < 2)
+            {
+                HttpContext.Response.Redirect(found.RelativeLink, permanent: true);
+                return;
+            }
+        }
+
+        if (!found.IsVisible)
+        {
+            Navigation.NavigateTo(Utils.RelativeWebRoot);
+            return;
+        }
+
+        if (Slug != null && !string.Equals(rawPath, found.RelativeLink, StringComparison.Ordinal))
+        {
+            // SEO redirect to the canonical post URL (e.g. different casing or old .aspx extension)
+            HttpContext.Response.Redirect(found.RelativeLink + HttpContext.Request.QueryString, permanent: true);
+            return;
+        }
+
+        LoadPost(found);
     }
 
-    private void LoadPost(Post post, string rawUrl)
+    private Post FindById()
     {
-        CurrentPost = post;
+        return Guid.TryParse(QueryId, out var id) ? Post.ApplicablePosts.Find(p => p.Id == id) : null;
+    }
 
-        // SEO redirect: ensure the URL matches the canonical RelativeLink
-        int idx = rawUrl.IndexOf("?");
-        var cleanUrl = idx > 0 ? rawUrl.Substring(0, idx) : rawUrl;
-        if (cleanUrl != post.RelativeLink.ToString() && !string.IsNullOrEmpty(post.RelativeLink.ToString()))
+    private Post FindBySlug()
+    {
+        var slug = Slug.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase) ? Slug.Substring(0, Slug.Length - 5) : Slug;
+        var haveDate = BlogSettings.Instance.TimeStampPostLinks && Year.HasValue && Month.HasValue;
+
+        return Post.ApplicablePosts.Find(p =>
+            (!haveDate || (p.DateCreated.Year == Year && p.DateCreated.Month == Month)) &&
+            (!haveDate || !Day.HasValue || p.DateCreated.Day == Day) &&
+            slug.Equals(Utils.RemoveIllegalCharacters(p.Slug), StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void LoadPost(Post found)
+    {
+        post = found;
+        postView = new PostViewBase
         {
-            // REVIEW: In the original, this was a 301 redirect. Blazor NavigateTo doesn't set status codes.
-            // For SEO parity, consider middleware-based redirects.
+            Post = post,
+            Location = ServingLocation.SinglePost,
+            RequestUrl = HttpContext.Request.Path + HttpContext.Request.QueryString
+        };
+
+        if (post.Tags.Count > 0)
+        {
+            keywords = string.Join(",", post.Tags);
         }
 
-        string encodedPostTitle = HttpUtility.HtmlEncode(post.Title);
-        pageTitle = encodedPostTitle;
+        var visiblePosts = Post.Posts.FindAll(p => p.IsVisible);
+        if (visiblePosts.Count > 0)
+        {
+            lastPost = visiblePosts[0];
+            firstPost = visiblePosts[visiblePosts.Count - 1];
+        }
 
-        // Initialize navigation links
         InitNavigationLinks();
 
-        // Handle comment notification unsubscription
-        if (!string.IsNullOrEmpty(UnsubscribeEmail))
+        if (BlogSettings.Instance.EnablePingBackReceive)
         {
-            if (post.NotificationEmails.Contains(UnsubscribeEmail))
-            {
-                post.NotificationEmails.Remove(UnsubscribeEmail);
-                post.Save();
-                showCommentUnsubscription = true;
-            }
+            HttpContext.Response.Headers["x-pingback"] = $"http://{HttpContext.Request.Host}{Utils.RelativeWebRoot}pingback.axd";
         }
-    }
 
-    private Post GetNextPost(Post post)
-    {
-        if (post.Next == null) return null;
-        if (post.Next.IsVisible) return post.Next;
-        return GetNextPost(post.Next);
-    }
-
-    private Post GetPrevPost(Post post)
-    {
-        if (post.Previous == null) return null;
-        if (post.Previous.IsVisible) return post.Previous;
-        return GetPrevPost(post.Previous);
+        if (!string.IsNullOrEmpty(UnsubscribeEmail) && post.NotificationEmails.Contains(UnsubscribeEmail))
+        {
+            post.NotificationEmails.Remove(UnsubscribeEmail);
+            post.Save();
+            showUnsubscribed = true;
+        }
     }
 
     private void InitNavigationLinks()
     {
-        if (BlogSettings.Instance.ShowPostNavigation && CurrentPost != null)
+        if (!BlogSettings.Instance.ShowPostNavigation)
         {
-            nextPost = GetNextPost(CurrentPost);
-            prevPost = GetPrevPost(CurrentPost);
-
-            if ((nextPost != null && !nextPost.Deleted) || (prevPost != null && !prevPost.Deleted))
-            {
-                showPostNavigation = true;
-            }
+            return;
         }
+
+        var view = new PostNavigationBase { CurrentPost = post };
+        if (!string.IsNullOrEmpty(view.NextPostUrl) || !string.IsNullOrEmpty(view.PreviousPostUrl))
+        {
+            navigation = view;
+        }
+    }
+
+    /// <summary>
+    /// ?deletepost={id} from the admin links of the post view (BlogBasePage.OnPreInit).
+    /// </summary>
+    private bool HandleDeletePost()
+    {
+        if (string.IsNullOrEmpty(DeletePostId) || !Guid.TryParse(DeletePostId, out var id))
+        {
+            return false;
+        }
+
+        var toDelete = Post.GetPost(id);
+        if (toDelete == null || !toDelete.CanUserDelete)
+        {
+            return false;
+        }
+
+        toDelete.Delete();
+        toDelete.Save();
+        Navigation.NavigateTo(Utils.RelativeWebRoot);
+        return true;
     }
 }

@@ -1,0 +1,35 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/MonthList/widget.cshtml (expand/collapse via BlogEngine.toggleMonth in blog.js) *@
+
+<div class="Widget widget monthlist">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul id="monthList">
+            @{
+                var cnt = 0;
+            }
+            @foreach (var y in years)
+            {
+                var yId = "year" + y.Key;
+                cnt++;
+                <li onclick="BlogEngine.toggleMonth('@yId')" class="year">@y.Key
+                    <ul id="@yId" class="@(cnt > 1 ? "close" : "open")">
+                        @foreach (var item in y.Value)
+                        {
+                            <li><a href="@(item.Url)/default">@item.Title</a> (@item.Count)</li>
+                        }
+                    </ul>
+                </li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private SortedDictionary<int, List<BlogEngine.NET.Custom.Widgets.MonthItem>> years = new();
+
+    protected override void OnParametersSet()
+    {
+        years = new BlogEngine.NET.Custom.Widgets.MonthList().GetList();
+    }
+}

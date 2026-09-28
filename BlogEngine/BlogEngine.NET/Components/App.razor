@@ -1,33 +1,54 @@
+@using System.Reflection
+@using Microsoft.AspNetCore.Components.Endpoints
+@using BlogEngine.NET.Components.Layout
+
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <base href="/" />
-    <!-- Theme CSS (Standard theme) -->
-    <link href="Custom/Themes/Standard/src/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="Custom/Themes/Standard/src/css/font-awesome.min.css" rel="stylesheet" />
-    <link href="Custom/Themes/Standard/src/css/styles.min.css" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet" />
-    <!-- Syntax highlighter -->
-    <link href="scripts/syntaxhighlighter/styles/shCore.css" rel="stylesheet" />
-    <link href="scripts/syntaxhighlighter/styles/shThemeDefault.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    @if (IsBlogPage)
+    {
+        @* Public pages use absolute URLs (like the original theme masters), so no <base> element:
+           it would break in-page anchors (href="#comment") and relative links inside post content. *@
+        <SiteHead />
+    }
+    else
+    {
+        <base href="/" />
+    }
     <HeadOutlet />
 </head>
-<body>
+<body class="@(IsBlogPage ? Utils.Translate("LangDirection", "ltr") : null)">
     <Routes />
-    <!-- Syntax highlighter scripts -->
-    <script src="scripts/syntaxhighlighter/scripts/XRegExp.js"></script>
-    <script src="scripts/syntaxhighlighter/scripts/shCore.js"></script>
-    <script src="scripts/syntaxhighlighter/scripts/shAutoloader.js"></script>
-    <script src="scripts/syntaxhighlighter/shActivator.js"></script>
-    <!-- Theme scripts -->
-    <script src="Custom/Themes/Standard/src/js/popper.min.js"></script>
-    <script src="Custom/Themes/Standard/src/js/bootstrap.min.js"></script>
-    <script src="Custom/Themes/Standard/src/js/perfect-scrollbar.min.js"></script>
-    <script src="Custom/Themes/Standard/src/js/custom.js"></script>
-    <!-- Blazor framework -->
-    <script src="_framework/blazor.web.js"></script>
+    @if (!IsBlogPage)
+    {
+        <script src="_framework/blazor.web.js"></script>
+    }
 </body>
 </html>
+
+@code {
+    [CascadingParameter]
+    public HttpContext HttpContext { get; set; }
+
+    /// <summary>
+    /// True when the endpoint renders a public blog page (MainLayout / PageLayout, i.e. the theme masters).
+    /// Admin and account pages have their own layouts and head content.
+    /// </summary>
+    private bool IsBlogPage
+    {
+        get
+        {
+            var page = HttpContext?.GetEndpoint()?.Metadata.GetMetadata<ComponentTypeMetadata>()?.Type;
+            if (page == null)
+            {
+                return true;
+            }
+
+            var layout = page.GetCustomAttribute<LayoutAttribute>()?.LayoutType;
+            return layout == null || typeof(MainLayout).IsAssignableFrom(layout) || typeof(PageLayout).IsAssignableFrom(layout);
+        }
+    }
+}

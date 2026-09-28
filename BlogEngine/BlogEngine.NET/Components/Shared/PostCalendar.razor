@@ -1,5 +1,5 @@
-@using BlogEngine.Core
-@inject IHttpContextAccessor HttpContextAccessor
+@* Port of AppCode/Controls/PostCalendar.cs. Month navigation (a WebForms callback in the original)
+   uses links with the ?date= query string. *@
 
 <div id="calendarContainer">
     <table class="calendar" summary="" style="border-collapse:collapse;">
@@ -7,7 +7,7 @@
             <td>
                 @if (visibleDate.Year != oldestPostDate.Year || visibleDate.Month != oldestPostDate.Month)
                 {
-                    <a href="javascript:void(0)" @onclick="() => Navigate(-1)" @onclick:preventDefault>&lt;</a>
+                    <a href="@NavUrl(-1)">&lt;</a>
                 }
                 else
                 {
@@ -20,7 +20,7 @@
                 &nbsp;&nbsp;
                 @if (visibleDate.Year != DateTime.Now.Year || visibleDate.Month != DateTime.Now.Month)
                 {
-                    <a href="javascript:void(0)" @onclick="() => Navigate(1)" @onclick:preventDefault>&gt;</a>
+                    <a href="@NavUrl(1)">&gt;</a>
                 }
                 else
                 {
@@ -56,6 +56,8 @@
 @code {
     [Parameter] public bool ShowPostTitles { get; set; }
 
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
+
     private DateTime visibleDate = DateTime.Now;
     private DateTime oldestPostDate = DateTime.Now;
     private List<List<string>> calendarRows = new();
@@ -66,21 +68,17 @@
         if (applicablePosts.Count > 0)
             oldestPostDate = applicablePosts[applicablePosts.Count - 1].DateCreated;
 
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
-        {
-            var dateParam = httpContext.Request.Query["date"].FirstOrDefault();
-            if (!string.IsNullOrEmpty(dateParam) && DateTime.TryParse(dateParam, out var parsedDate))
-                visibleDate = parsedDate;
-        }
+        var dateParam = HttpContext?.Request.Query["date"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(dateParam) && DateTime.TryParse(dateParam, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
+            visibleDate = parsedDate;
 
         BuildCalendarGrid();
     }
 
-    private void Navigate(int monthOffset)
+    private string NavUrl(int monthOffset)
     {
-        visibleDate = visibleDate.AddMonths(monthOffset);
-        BuildCalendarGrid();
+        var date = new DateTime(visibleDate.Year, visibleDate.Month, 1).AddMonths(monthOffset);
+        return $"{HttpContext?.Request.Path}?date={date:yyyy-MM-dd}";
     }
 
     private void BuildCalendarGrid()

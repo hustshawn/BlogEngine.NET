@@ -1,23 +1,17 @@
-@* Standard-2017 theme PostNavigation - previous/next post links with titles *@
+@inherits PostNavigationTemplate
+@* Port of Custom/Themes/Standard-2017/PostNavigation.ascx *@
 
 <div id="postnavigation" class="navigation-posts well-global clearfix">
     <div class="text-left next-post">
-        @if (!string.IsNullOrEmpty(NextPostUrl))
+        @if (!string.IsNullOrEmpty(View.NextPostUrl))
         {
-            <a href="@NextPostUrl" class="nav-next">&larr; @NextPostTitle</a>
+            <a href="@View.NextPostUrl" class="nav-next">&larr; @View.NextPostTitle </a>
         }
     </div>
-    <div class="text-right prev-post">
-        @if (!string.IsNullOrEmpty(PreviousPostUrl))
+    <div class="text-right prev-post ">
+        @if (!string.IsNullOrEmpty(View.PreviousPostUrl))
         {
-            <a href="@PreviousPostUrl" class="nav-prev">@PreviousPostTitle &rarr;</a>
+            <a href="@View.PreviousPostUrl" class="nav-prev">@View.PreviousPostTitle &rarr;</a>
         }
     </div>
 </div>
-
-@code {
-    [Parameter] public string PreviousPostUrl { get; set; } = "";
-    [Parameter] public string PreviousPostTitle { get; set; } = "";
-    [Parameter] public string NextPostUrl { get; set; } = "";
-    [Parameter] public string NextPostTitle { get; set; } = "";
-}

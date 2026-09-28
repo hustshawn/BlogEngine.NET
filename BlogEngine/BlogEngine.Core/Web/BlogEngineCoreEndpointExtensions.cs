@@ -1,6 +1,8 @@
 namespace BlogEngine.Core.Web
 {
     using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Http.Features;
     using Microsoft.AspNetCore.Routing;
 
     using BlogEngine.Core.API.MetaWeblog;
@@ -17,8 +19,30 @@ namespace BlogEngine.Core.Web
         /// </summary>
         /// <param name="endpoints">The endpoint route builder.</param>
         /// <returns>The endpoint route builder for chaining.</returns>
-        public static IEndpointRouteBuilder MapBlogEngineEndpoints(this IEndpointRouteBuilder endpoints)
+        public static IEndpointRouteBuilder MapBlogEngineEndpoints(this IEndpointRouteBuilder routes)
         {
+            // The handlers were IHttpHandlers writing synchronously (XmlWriter, StreamWriter) to the response
+            var endpoints = routes.MapGroup(string.Empty);
+            ((IEndpointConventionBuilder)endpoints).Add(builder =>
+            {
+                var handler = builder.RequestDelegate;
+                if (handler == null)
+                {
+                    return;
+                }
+
+                builder.RequestDelegate = context =>
+                {
+                    var bodyControl = context.Features.Get<IHttpBodyControlFeature>();
+                    if (bodyControl != null)
+                    {
+                        bodyControl.AllowSynchronousIO = true;
+                    }
+
+                    return handler(context);
+                };
+            });
+
             // Feed/syndication endpoints
             endpoints.MapSyndication();
 
@@ -54,7 +78,7 @@ namespace BlogEngine.Core.Web
             // MetaWeblog XML-RPC API endpoint
             endpoints.MapMetaWeblogHandler();
 
-            return endpoints;
+            return routes;
         }
     }
 }

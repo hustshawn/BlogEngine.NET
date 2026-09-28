@@ -1,0 +1,96 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/PostList/widget.cshtml (recent posts) *@
+
+<div class="Widget widget postlist">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul>
+            @if (list.Count == 0)
+            {
+                <li class="post-item-list">@Utils.Translate("none")</li>
+            }
+            else
+            {
+                foreach (var item in list)
+                {
+                    <li class="post-item-list">
+                        <a href="@item.RelativeOrAbsoluteLink">
+                            @if (showImg && item.FirstImgSrc.Length > 0)
+                            {
+                                <img src="@item.FirstImgSrc" class="post-item-img" alt="Post image" />
+                            }
+                            <h5 class="post-item-title">@item.Title</h5>
+                            @if (showDesc)
+                            {
+                                <p class="post-item-desc">@item.Description</p>
+                            }
+                            @if (showDate)
+                            {
+                                <span class="post-item-date">@item.DateCreated.ToString("MMMM d, yyyy")</span>
+                            }
+                        </a>
+                    </li>
+                }
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private List<Post> list = new();
+    private bool showImg;
+    private bool showDesc;
+    private bool showDate;
+
+    protected override void OnParametersSet()
+    {
+        var settings = Settings;
+        var visiblePosts = Post.ApplicablePosts.FindAll(p => p.IsVisibleToPublic);
+
+        var numberOfPosts = settings.ContainsKey("numberofposts") ? int.Parse(settings["numberofposts"]) : 10;
+
+        // filtering
+        var category = settings.ContainsKey("cutegory") ? settings["cutegory"] : "All";
+        if (category != "All")
+        {
+            var cat = Category.Categories.FirstOrDefault(c => c.Title == category);
+            visiblePosts = visiblePosts.Where(p => p.Categories.Contains(cat)).ToList();
+        }
+
+        var author = settings.ContainsKey("author") ? settings["author"] : "All";
+        if (author != "All")
+        {
+            visiblePosts = visiblePosts.Where(p => p.Author == author).ToList();
+        }
+
+        // sorting
+        var sortOrder = settings.ContainsKey("sortorder") ? settings["sortorder"] : "Published";
+        if (sortOrder == "Published")
+        {
+            visiblePosts = visiblePosts.OrderByDescending(p => p.DateCreated).ToList();
+        }
+        if (sortOrder == "Alphabetical")
+        {
+            visiblePosts = visiblePosts.OrderBy(p => p.Title).ToList();
+        }
+        if (sortOrder == "Comments")
+        {
+            visiblePosts = visiblePosts.OrderByDescending(p => p.Comments.Count).ToList();
+        }
+
+        list = visiblePosts.GetRange(0, Math.Min(visiblePosts.Count, numberOfPosts));
+
+        if (settings.ContainsKey("showimg"))
+        {
+            bool.TryParse(settings["showimg"], out showImg);
+        }
+        if (settings.ContainsKey("showdesc"))
+        {
+            bool.TryParse(settings["showdesc"], out showDesc);
+        }
+        if (settings.ContainsKey("showdate"))
+        {
+            bool.TryParse(settings["showdate"], out showDate);
+        }
+    }
+}

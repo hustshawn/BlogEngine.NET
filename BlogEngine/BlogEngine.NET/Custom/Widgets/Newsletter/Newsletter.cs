@@ -15,13 +15,8 @@ namespace BlogEngine.NET.Custom.Widgets
 
         private static string GetFilename()
         {
-            // Use Blog.CurrentInstance.StorageLocation with ContentRootPath
-            var storagePath = Blog.CurrentInstance.StorageLocation;
-            if (storagePath.StartsWith("~/"))
-            {
-                storagePath = storagePath.Substring(2);
-            }
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, storagePath, "newsletter.xml");
+            // Blog storage (App_Data) lives under the content root, not the bin folder
+            return Path.Combine(BlogConfig.MapPath(Blog.CurrentInstance.StorageLocation), "newsletter.xml");
         }
 
         /// <summary>
@@ -154,7 +149,7 @@ namespace BlogEngine.NET.Custom.Widgets
             var urlbase = Path.Combine(
                 Path.Combine(Utils.AbsoluteWebRoot.AbsoluteUri, "themes"), BlogSettings.Instance.Theme);
             
-            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            var basePath = BlogConfig.ContentRootPath;
             var filePath = Path.Combine(basePath, "Custom", "Themes", BlogSettings.Instance.Theme, "newsletter.html");
             
             if (File.Exists(filePath))

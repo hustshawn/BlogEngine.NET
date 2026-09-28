@@ -1,0 +1,19 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/TextBox/widget.cshtml *@
+
+<div class="Widget widget textbox">
+    @((MarkupString)text)
+</div>
+
+@code {
+    private string text = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var settings = Settings;
+        if (settings != null && settings.ContainsKey("content"))
+        {
+            text = System.Net.WebUtility.HtmlDecode(settings["content"]);
+        }
+    }
+}

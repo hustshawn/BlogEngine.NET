@@ -1,21 +1,17 @@
-@* Standard theme PostNavigation - previous/next post links *@
+@inherits PostNavigationTemplate
+@* Port of Custom/Themes/Standard/PostNavigation.ascx *@
 
 <div id="postnavigation" class="navigation-posts row">
     <div class="col-6 text-left prev-post">
-        @if (!string.IsNullOrEmpty(PreviousPostUrl))
+        @if (!string.IsNullOrEmpty(View.PreviousPostUrl))
         {
-            <a href="@PreviousPostUrl" class="nav-prev"><i class="fa fa-chevron-left"></i> Previous Post</a>
+            <a href="@View.PreviousPostUrl" class="nav-prev"><i class="fa fa-chevron-left"></i> Previous Post</a>
         }
     </div>
     <div class="col-6 text-right next-post">
-        @if (!string.IsNullOrEmpty(NextPostUrl))
+        @if (!string.IsNullOrEmpty(View.NextPostUrl))
         {
-            <a href="@NextPostUrl" class="nav-next">Next Post <i class="fa fa-chevron-right"></i></a>
+            <a href="@View.NextPostUrl" class="nav-next">Next Post <i class="fa fa-chevron-right"></i></a>
         }
     </div>
 </div>
-
-@code {
-    [Parameter] public string PreviousPostUrl { get; set; } = "";
-    [Parameter] public string NextPostUrl { get; set; } = "";
-}

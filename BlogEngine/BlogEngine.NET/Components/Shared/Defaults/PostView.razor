@@ -1,21 +1,7 @@
-@using BlogEngine.Core
-@using BlogEngine.Core.Web.Controls
+@inherits PostViewTemplate
+@* Port of Custom/Controls/Defaults/PostView.ascx (used when the theme has no PostView template) *@
 
-<article class="post" id="post@(Index)">
-    <h2><a href="@Post.RelativeOrAbsoluteLink">@System.Net.WebUtility.HtmlEncode(Post.Title)</a></h2>
-    @if (ShowExcerpt)
-    {
-        <p>@((MarkupString)(Post.Description ?? string.Empty))</p>
-    }
-    else
-    {
-        @((MarkupString)(Post.Content ?? string.Empty))
-    }
+<article class="post" id="post@(View.Index)">
+    <h2><a href="@Post.RelativeOrAbsoluteLink">@Post.Title</a></h2>
+    @((MarkupString)Body)
 </article>
-
-@code {
-    [Parameter] public Post Post { get; set; }
-    [Parameter] public bool ShowExcerpt { get; set; }
-    [Parameter] public int Index { get; set; }
-    [Parameter] public ServingLocation Location { get; set; } = ServingLocation.PostList;
-}

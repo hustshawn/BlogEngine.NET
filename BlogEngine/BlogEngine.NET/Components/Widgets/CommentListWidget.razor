@@ -1,0 +1,70 @@
+@inherits WidgetComponentBase
+@using System.Text.RegularExpressions
+@* Port of Custom/Widgets/CommentList/widget.cshtml (recent comments) *@
+
+<style>
+    .recentcomments li a:last-child {
+        display: inline !important;
+    }
+</style>
+<div class="Widget widget recentcomments">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul id="recentComments" class="recentcomments">
+            @if (list.Count > 0)
+            {
+                foreach (var item in list.Where(c => c.IsApproved))
+                {
+                    var cnt = ((Post)item.Parent).ApprovedComments.Count;
+                    <li>
+                        <a href="@(item.Parent.RelativeLink)#comment">@item.Parent.Title</a> (@cnt)
+                        <br />@((MarkupString)(item.Author + " " + Utils.Translate("wrote") + ": " + Excerpt(item)))
+                    </li>
+                }
+                <li>
+                    <a href="@(Utils.ApplicationRelativeWebRoot)syndication.axd?comments=true">
+                        Comment RSS <img alt="" src="@(Utils.ApplicationRelativeWebRoot)Content/images/blog/rssButton.png">
+                    </a>
+                </li>
+            }
+            else
+            {
+                <li>@Utils.Translate("none")</li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private List<Comment> list = new();
+
+    protected override void OnParametersSet()
+    {
+        var numberOfComments = 10;
+        var settings = Settings;
+        if (settings != null && settings.ContainsKey("numberofcomments"))
+        {
+            numberOfComments = int.Parse(settings["numberofcomments"]);
+        }
+
+        var comments = new List<Comment>();
+        foreach (var post in Post.ApplicablePosts.Where(post => post.IsVisible))
+        {
+            comments.AddRange(post.Comments.FindAll(c => c.IsApproved && c.Email.Contains("@")));
+        }
+        comments.Sort();
+        comments.Reverse();
+        list = comments.GetRange(0, Math.Min(comments.Count, numberOfComments));
+    }
+
+    private static string Excerpt(Comment item)
+    {
+        var commentBody = Regex.Replace(item.Content, @"\[(.*?)\]", string.Empty);
+        commentBody = commentBody.Substring(0, Math.Min(commentBody.Length, 50));
+        if (commentBody.Length > 0 && commentBody[commentBody.Length - 1] == '&')
+        {
+            commentBody = commentBody.Substring(0, commentBody.Length - 1);
+        }
+        return commentBody + (item.Content.Length <= 50 ? " " : "... ");
+    }
+}

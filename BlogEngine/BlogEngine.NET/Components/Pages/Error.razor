@@ -1,9 +1,12 @@
 @page "/error"
+@page "/error.aspx"
+@layout PageLayout
 @using System.Net
-@using BlogEngine.Core
-@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Diagnostics
 
-<PageTitle>@Utils.Translate("Error")</PageTitle>
+@* Port of error.aspx (the exception handler page outside Development) *@
+
+<BlogHead Title="@BlogSettings.Instance.ErrorTitle" NoIndex="true" />
 
 <div class="post page-global">
     <h2 class="page-global-title">@BlogSettings.Instance.ErrorTitle</h2>
@@ -19,26 +22,24 @@
 </div>
 
 @code {
-    [CascadingParameter]
-    private Task<AuthenticationState> AuthState { get; set; }
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
 
     private bool showErrorDetails;
     private string errorDetails = string.Empty;
     private string errorDetailsHtml = string.Empty;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        // Check if user has rights to view detailed error messages
-        // REVIEW: behavior inferred from usage — verify Security.IsAuthorizedTo is available
-        bool isAuthorized = Security.IsAuthorizedTo(Rights.ViewDetailedErrorMessages);
-
-        if (isAuthorized)
+        var error = HttpContext?.Features.Get<IExceptionHandlerFeature>();
+        if (error != null)
         {
-            // In the original code, error details came from HttpContext.Current.Items["LastErrorDetails"].
-            // In Blazor Server, this is typically not available during interactive rendering.
-            // We attempt to read it during initial SSR if available.
-            // REVIEW: error details passing mechanism may need adaptation for Blazor pipeline
-            errorDetails = string.Empty;
+            HttpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        }
+
+        // Details only for users with the right to view detailed error messages
+        if (error?.Error != null && Security.IsAuthorizedTo(Rights.ViewDetailedErrorMessages))
+        {
+            errorDetails = error.Error.ToString();
         }
 
         if (!string.IsNullOrEmpty(errorDetails))

@@ -1,0 +1,52 @@
+@* Page title and per-page head elements of a public page (BlogBasePage.Title / AddMetaTag / AddGenericLink).
+   Only one BlogHead may be rendered per page (it owns the HeadContent section). *@
+
+<PageTitle>@FormattedTitle</PageTitle>
+<HeadContent>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <meta name="description" content="@Description" />
+    }
+    @if (!string.IsNullOrEmpty(Keywords))
+    {
+        <meta name="keywords" content="@Keywords" />
+    }
+    @if (!string.IsNullOrEmpty(Author))
+    {
+        <meta name="author" content="@Author" />
+    }
+    @if (NoIndex)
+    {
+        <meta name="ROBOTS" content="NOINDEX, FOLLOW" />
+    }
+    @ChildContent
+</HeadContent>
+
+@code {
+    /// <summary>Page title (plain text); the blog name is prefixed when UseBlogNameInPageTitles is set.</summary>
+    [Parameter] public string Title { get; set; }
+
+    [Parameter] public string Description { get; set; }
+
+    [Parameter] public string Keywords { get; set; }
+
+    [Parameter] public string Author { get; set; }
+
+    [Parameter] public bool NoIndex { get; set; }
+
+    /// <summary>Additional head elements (links, meta tags).</summary>
+    [Parameter] public RenderFragment ChildContent { get; set; }
+
+    private string FormattedTitle => BlogSettings.Instance.UseBlogNameInPageTitles
+        ? $"{BlogSettings.Instance.Name} | {Title}"
+        : Title;
+
+    /// <summary>
+    /// Meta description in the format used by the original pages: "{blog name} - {blog description} - {text}".
+    /// </summary>
+    public static string MetaDescription(string text)
+    {
+        var desc = BlogSettings.Instance.Name + " - " + BlogSettings.Instance.Description;
+        return string.IsNullOrEmpty(text) ? desc : desc + " - " + text;
+    }
+}

@@ -1,18 +1,21 @@
-@page "/page"
-@page "/page/{PageId:guid}"
+@page "/page.aspx"
+@page "/page/{Slug}"
+@layout PageLayout
 @using System.Text
-@using System.Web
-@using BlogEngine.Core
 @using BlogPage = BlogEngine.Core.Page
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
 
-<PageTitle>@pageTitle</PageTitle>
+@* Port of page.aspx (+ UrlRules.RewritePage for the /page/{slug} URLs) *@
+
+@if (currentPage != null)
+{
+    <BlogHead Title="@currentPage.Title" Keywords="@currentPage.Keywords" Description="@BlogHead.MetaDescription(currentPage.Description)" />
+}
 
 <div id="page" class="page-global">
     @if (currentPage != null)
     {
-        <h2 class="page-global-title">@HttpUtility.HtmlEncode(currentPage.Title)</h2>
+        <h2 class="page-global-title">@currentPage.Title</h2>
         <div>@((MarkupString)pageContent)</div>
         @((MarkupString)AdminLinks)
 
@@ -44,11 +47,10 @@
     public string DeletePageId { get; set; }
 
     [Parameter]
-    public Guid? PageId { get; set; }
+    public string Slug { get; set; }
 
     private BlogPage currentPage;
     private bool _pageLoaded;
-    private string pageTitle = string.Empty;
     private string pageContent = string.Empty;
     private bool showDisqusComments = false;
 
@@ -70,18 +72,25 @@
         {
             LoadPage(id);
             ServePage();
-            AddMetaTags();
+        }
+        else if (Slug != null)
+        {
+            Navigation.NotFound();
         }
         else
         {
-            Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+            Navigation.NavigateTo(Utils.RelativeWebRoot);
         }
     }
 
     private Guid GetPageId()
     {
-        if (PageId.HasValue)
-            return PageId.Value;
+        if (Slug != null)
+        {
+            var slug = Slug.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase) ? Slug.Substring(0, Slug.Length - 5) : Slug;
+            var bySlug = BlogPage.Pages.Find(p => slug.Equals(Utils.RemoveIllegalCharacters(p.Slug), StringComparison.OrdinalIgnoreCase));
+            return bySlug?.Id ?? Guid.Empty;
+        }
 
         if (!string.IsNullOrEmpty(QueryId) && Guid.TryParse(QueryId, out Guid result))
             return result;
@@ -102,7 +111,8 @@
     {
         if (currentPage == null || !currentPage.IsVisible)
         {
-            Navigation.NavigateTo("/error404", false, true);
+            currentPage = null;
+            Navigation.NotFound();
             return;
         }
 
@@ -111,7 +121,8 @@
 
         if (arg.Cancel)
         {
-            Navigation.NavigateTo("/error404", false, true);
+            currentPage = null;
+            Navigation.NotFound();
             return;
         }
 
@@ -120,14 +131,6 @@
         // Check for Disqus comments on pages
         showDisqusComments = BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Disqus
             && BlogSettings.Instance.DisqusAddCommentsToPages;
-    }
-
-    private void AddMetaTags()
-    {
-        if (currentPage == null)
-            return;
-
-        pageTitle = HttpUtility.HtmlEncode(currentPage.Title);
     }
 
     private void DeletePage(Guid id)
@@ -139,7 +142,7 @@
         }
         if (!pg.CanUserDelete)
         {
-            Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+            Navigation.NavigateTo(Utils.RelativeWebRoot);
             return;
         }
         if (pg.HasChildPages)
@@ -148,7 +151,7 @@
         }
         pg.Delete();
         pg.Save();
-        Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+        Navigation.NavigateTo(Utils.RelativeWebRoot);
     }
 
     /// <summary>
@@ -202,7 +205,7 @@
         get
         {
             if (currentPage == null) return string.Empty;
-            return $"{Utils.AbsoluteWebRoot}page?id={currentPage.Id}";
+            return $"{Utils.AbsoluteWebRoot}page.aspx?id={currentPage.Id}";
         }
     }
 }

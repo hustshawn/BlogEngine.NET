@@ -67,7 +67,7 @@ namespace BlogEngine.Core.Data
                     items.Add(new SelectOption { OptionName = info.NativeName, OptionValue = resourceDir, IsSelected = false });
                 }
             }
-            else if (Utils.LabelResources != null)
+            else if (Utils.LabelsResourceManager != null)
             {
                 // translations of the labels resources are compiled into satellite assemblies ({culture}/*.resources.dll)
                 foreach (var dir in Directory.GetDirectories(System.AppContext.BaseDirectory).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
@@ -82,7 +82,7 @@ namespace BlogEngine.Core.Data
                         continue;
                     }
 
-                    if (string.IsNullOrEmpty(info.Name) || Utils.LabelResources.GetResourceSet(info, true, false) == null)
+                    if (string.IsNullOrEmpty(info.Name) || Utils.LabelsResourceManager.GetResourceSet(info, true, false) == null)
                         continue;
 
                     items.Add(new SelectOption { OptionName = info.NativeName, OptionValue = info.Name, IsSelected = false });

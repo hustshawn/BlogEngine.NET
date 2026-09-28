@@ -1,28 +1,27 @@
-@using BlogEngine.Core
-
-@* Standard theme PostView - renders a single post in list or single view *@
+@inherits PostViewTemplate
+@* Port of Custom/Themes/Standard/PostView.ascx *@
 
 @if (!SinglePost)
 {
-    <article class="post-home post-home-@postImagePosition" id="post@(Index)">
+    <article class="post-home post-home-@postImagePosition" id="post@(View.Index)">
         <div class="post-home-inner">
-            @if (!string.IsNullOrEmpty(Post.FirstImgSrc))
+            @if (Post.FirstImgSrc.Length > 1)
             {
-                <a class="post-cover" href="@Post.RelativeOrAbsoluteLink"><img src="@Post.FirstImgSrc" alt="@System.Net.WebUtility.HtmlEncode(Post.Title)" /></a>
+                <a class="post-cover" href="@Post.RelativeOrAbsoluteLink"><img src="@Post.FirstImgSrc" alt="@Post.Title"></a>
             }
             <header class="post-header">
                 <div class="post-meta">
-                    <span class="post-author"><i class="fa fa-user"></i> <a href="@authorUrl">@authorName</a></span>
+                    <span class="post-author"><i class="fa fa-user"></i> <a href="@AuthorUrl">@AuthorName</a></span>
                     <span class="post-date"><i class="fa fa-clock-o"></i> @Post.DateCreated.ToString("MMM dd, yyyy")</span>
-                    @if (!string.IsNullOrEmpty(CategoryLinks))
+                    @if (postCategory.Length > 0)
                     {
-                        <span class="post-category"><i class="fa fa-folder-open"></i> @((MarkupString)CategoryLinks)</span>
+                        <span class="post-category"><i class="fa fa-folder-open"></i> @((MarkupString)postCategory)</span>
                     }
                 </div>
-                <h2 class="post-title"><a class="post-link" href="@Post.RelativeOrAbsoluteLink">@System.Net.WebUtility.HtmlEncode(Post.Title)</a></h2>
+                <h2 class="post-title"><a class="post-link" href="@Post.RelativeOrAbsoluteLink">@Post.Title</a></h2>
             </header>
             <p class="post-description">
-                @Post.Description...
+                @((MarkupString)(Post.Description ?? string.Empty))...
             </p>
             <a href="@Post.RelativeOrAbsoluteLink" class="btn btn-outline-dark post-more">read more</a>
         </div>
@@ -30,44 +29,41 @@
 }
 else
 {
-    var postClass = string.IsNullOrEmpty(Post.FirstImgSrc) ? " no-thumbnail" : "";
-
-    <article class="post-single @postClass" id="post@(Index)">
+    <article class="post-single @(Post.FirstImgSrc.Length < 1 ? " no-thumbnail" : "")" id="post@(View.Index)">
         <header class="post-header">
-            <h1 class="post-title">@System.Net.WebUtility.HtmlEncode(Post.Title)</h1>
+            <h1 class="post-title">@Post.Title</h1>
             <div class="post-meta">
-                <span class="post-author"><i class="fa fa-user"></i> <a href="@authorUrl">@authorName</a></span>
+                <span class="post-author"><i class="fa fa-user"></i> <a href="@AuthorUrl">@AuthorName</a></span>
                 <span class="post-date"><i class="fa fa-clock-o"></i> @Post.DateCreated.ToString("MMM dd, yyyy")</span>
-                @if (!string.IsNullOrEmpty(CategoryLinks))
+                @if (postCategory.Length > 0)
                 {
-                    <span class="post-category"><i class="fa fa-folder-open"></i> @((MarkupString)CategoryLinks)</span>
+                    <span class="post-category"><i class="fa fa-folder-open"></i> @((MarkupString)postCategory)</span>
                 }
                 <div class="dropdown post-share float-md-right">
-                    <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa fa-share-alt"></i>Share</a>
+                    <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa fa-share-alt"></i>@Utils.Translate("share")</a>
                     <div class="dropdown-menu dropdown-menu-right" aria-labelledby="dropdownMenuLink">
-                        <a class="dropdown-item item-fb" href="https://www.addtoany.com/add_to/facebook?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-facebook-square"></i>Facebook</a>
-                        <a class="dropdown-item item-tw" href="https://www.addtoany.com/add_to/twitter?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-twitter-square"></i>Twitter</a>
-                        <a class="dropdown-item item-ln" href="https://www.addtoany.com/add_to/linkedin?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-linkedin-square"></i>LinkedIn</a>
-                        <a class="dropdown-item item-pi" href="https://www.addtoany.com/add_to/pinterest?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-pinterest-square"></i>Pinterest</a>
-                        <a class="dropdown-item item-em" href="https://www.addtoany.com/add_to/email?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-envelope-square"></i>Email</a>
-                        <a class="dropdown-item item-em" href="https://www.addtoany.com/share?linkurl=@Post.AbsoluteLink&amp;linkname=@System.Net.WebUtility.HtmlEncode(Post.Title)" target="_blank"><i class="fa fa-plus-square"></i>Share...</a>
+                        <a class="dropdown-item item-fb" href="https://www.addtoany.com/add_to/facebook?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-facebook-square"></i>Facebook</a>
+                        <a class="dropdown-item item-tw" href="https://www.addtoany.com/add_to/twitter?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-twitter-square"></i>Twitter</a>
+                        <a class="dropdown-item item-gp" href="https://www.addtoany.com/add_to/google_plus?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-google-plus-square"></i>Google +</a>
+                        <a class="dropdown-item item-ln" href="https://www.addtoany.com/add_to/linkedin?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-linkedin-square"></i>LinkedIn</a>
+                        <a class="dropdown-item item-pi" href="https://www.addtoany.com/add_to/pinterest?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-pinterest-square"></i>Pinterest</a>
+                        <a class="dropdown-item item-em" href="https://www.addtoany.com/add_to/email?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-envelope-square"></i>Email</a>
+                        <a class="dropdown-item item-em" href="https://www.addtoany.com/share?linkurl=@(Post.AbsoluteLink)&linkname=@Post.Title" target="_blank"><i class="fa fa-plus-square"></i>@Utils.Translate("share")...</a>
                     </div>
                 </div>
             </div>
         </header>
-        <section class="post-body content-style">
+        <section class="post-body content-stlye">
             @((MarkupString)Body)
         </section>
         <footer class="post-footer">
-            <div class="post-tags">@((MarkupString)TagLinks)</div>
-            @if (!string.IsNullOrEmpty(AdminLinks))
+            <div class="post-tags">@((MarkupString)(View.TagLinks(", ") ?? string.Empty))</div>
+            @if (AdminLinks.Length > 0)
             {
                 <div class="post-adminlinks">@((MarkupString)AdminLinks)</div>
             }
         </footer>
     </article>
-
-    @* Structured data for single post *@
     <script type="application/ld+json">
     {
       "@@context": "http://schema.org",
@@ -76,23 +72,23 @@ else
         "@@type": "WebPage",
         "@@id": "@Post.AbsoluteLink"
       },
-      "headline": "@System.Net.WebUtility.HtmlEncode(Post.Title)",
-      @if (!string.IsNullOrEmpty(Post.FirstImgSrc))
+      "headline": "@Post.Title",
+      @if (Post.FirstImgSrc.Length > 1)
       {
-          @:  "image": "@(Utils.AbsoluteWebRoot + Post.FirstImgSrc.TrimStart(' ', '/'))",
+          @((MarkupString)$"\"image\": \"{Utils.AbsoluteWebRoot + Post.FirstImgSrc.TrimStart(' ', '/')}\",")
       }
       "datePublished": "@Post.DateCreated.ToString("yyyy-MM-dd")",
       "dateModified": "@Post.DateModified.ToString("yyyy-MM-dd")",
       "author": {
         "@@type": "Person",
-        "name": "@authorName"
+        "name": "@AuthorName"
       },
-      "publisher": {
+       "publisher": {
         "@@type": "Organization",
         "name": "@BlogSettings.Instance.Name",
         "logo": {
           "@@type": "ImageObject",
-          "url": "@blogLogo"
+          "url": "@Theme.Field("Publisher Logo", "http://exampleblog.com/logo.png")"
         }
       },
       "description": "@Utils.RemoveHtmlWhitespace(Post.Description)"
@@ -101,20 +97,13 @@ else
 }
 
 @code {
-    [Parameter] public Post Post { get; set; }
-    [Parameter] public int Index { get; set; }
-    [Parameter] public bool SinglePost { get; set; }
-    [Parameter] public string Body { get; set; } = "";
-    [Parameter] public string AdminLinks { get; set; } = "";
-    [Parameter] public string CategoryLinks { get; set; } = "";
-    [Parameter] public string TagLinks { get; set; } = "";
+    private string postCategory = string.Empty;
+    private string postImagePosition = "top";
 
-    private string authorUrl => Utils.AbsoluteWebRoot + "author/" + Utils.RemoveIllegalCharacters(Post.Author + BlogConfig.FileExtension);
-    private string authorName => Post.AuthorProfile != null
-        ? Utils.RemoveIllegalCharacters(Post.AuthorProfile.DisplayName)
-        : Utils.RemoveIllegalCharacters(Post.Author);
-
-    // REVIEW: Custom field values - verify these custom field lookups work with the theme engine
-    private string blogLogo = "[CUSTOMFIELD|THEME|Standard|Publisher Logo|http://exampleblog.com/logo.png/]";
-    private string postImagePosition = "[CUSTOMFIELD|THEME|Standard|Post Thumbnail position|top/]";
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        postCategory = View.CategoryLinks(", ");
+        postImagePosition = Theme.Field("Post Thumbnail position", "top");
+    }
 }

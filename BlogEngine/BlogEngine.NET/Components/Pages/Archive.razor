@@ -1,9 +1,11 @@
 @page "/archive"
+@page "/archive.aspx"
+@layout PageLayout
 @using System.Web
-@using BlogEngine.Core
-@inject NavigationManager Navigation
 
-<PageTitle>@HttpUtility.HtmlEncode(Utils.Translate("archive"))</PageTitle>
+@* Port of archive.aspx *@
+
+<BlogHead Title="@Utils.Translate("archive")" Description="@(Utils.Translate("archive") + " | " + BlogSettings.Instance.Name)" />
 
 <div id="archive" class="archive-page page-global">
     <h2 class="archive-page-title page-global-title">@Utils.Translate("archive")</h2>

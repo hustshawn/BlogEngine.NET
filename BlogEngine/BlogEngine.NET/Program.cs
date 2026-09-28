@@ -1,7 +1,8 @@
-using BlogEngine.Core;
+﻿using BlogEngine.Core;
 using BlogEngine.Core.Data;
 using BlogEngine.Core.Data.Contracts;
-using BlogEngine.Core.Web.HttpHandlers;
+using BlogEngine.Core.Web;
+using BlogEngine.NET.AppCode;
 using BlogEngine.NET.AppCode.Api;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,9 +14,8 @@ using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Razor Components (Blazor Server) with interactive server-side rendering
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+// Razor Components rendered with static server-side rendering (BlogEngine.Core needs the per-request HttpContext)
+builder.Services.AddRazorComponents();
 
 // Add MVC controllers with Web API 2 compatible routing, filters and JSON (PascalCase, as the admin SPA expects)
 builder.Services.AddControllers(options =>
@@ -117,7 +117,6 @@ builder.Services.AddLocalization(options => options.ResourcesPath = "Resources")
 var app = builder.Build();
 
 // Localized labels (former App_GlobalResources/labels.resx) used by Utils.Translate and the admin.res.axd script
-Utils.LabelResources = new System.Resources.ResourceManager("BlogEngine.NET.Resources.labels", typeof(Program).Assembly);
 
 // Resolve provider singletons eagerly so the static BlogService/Security accessors are initialized
 app.Services.GetRequiredService<BlogEngine.Core.Providers.IBlogProvider>();
@@ -155,6 +154,16 @@ app.Use(async (context, next) =>
     await next();
 });
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/error", createScopeForErrors: true);
+}
+
+// Unknown public URLs render the error404 page (customErrors 404 -> error404.aspx in the original)
+app.UseWhen(
+    context => !context.Request.Path.StartsWithSegments("/api") && !context.Request.Path.StartsWithSegments("/admin"),
+    branch => branch.UseStatusCodePagesWithReExecute("/error404", createScopeForStatusCodePages: true));
+
 app.UseCookiePolicy();
 
 // Themes, widgets and extensions keep their legacy /Custom URLs; the folder stays under the
@@ -164,6 +173,7 @@ app.UseStaticFiles(new StaticFileOptions
     FileProvider = new PhysicalFileProvider(Path.Combine(app.Environment.ContentRootPath, "Custom")),
     RequestPath = "/Custom"
 });
+app.UseFrontEndUrlRewrite();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -183,8 +193,8 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapControllers();
 app.MapRazorPages();
-app.MapResourceHandler();
-app.MapRazorComponents<BlogEngine.NET.Components.App>()
-    .AddInteractiveServerRenderMode();
+app.MapBlogEngineEndpoints();
+app.MapGet("/robots.txt", () => Results.File(Path.Combine(app.Environment.ContentRootPath, "robots.txt"), "text/plain"));
+app.MapRazorComponents<BlogEngine.NET.Components.App>();
 
 app.Run();
