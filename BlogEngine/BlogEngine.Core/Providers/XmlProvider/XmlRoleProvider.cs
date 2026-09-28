@@ -94,7 +94,7 @@
             var currentRoles = new List<string>(this.GetAllRoles());
             if (usernames.Length != 0 && roleNames.Length != 0)
             {
-                foreach (var rolename in roleNames.Where(rolename => !currentRoles.Contains(rolename) && !rolename.Equals(BlogConfig.AnonymousRole, StringComparison.OrdinalIgnoreCase)))
+                foreach (var rolename in roleNames.Where(rolename => !currentRoles.Contains(rolename, StringComparer.OrdinalIgnoreCase) && !rolename.Equals(BlogConfig.AnonymousRole, StringComparison.OrdinalIgnoreCase)))
                 {
                     this.roles[Blog.CurrentInstance.Id].Add(new Role(rolename, new List<string>(usernames)));
                 }
@@ -105,7 +105,7 @@
                     foreach (var s in from name in roleNames
                                       where role1.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
                                       from s in usernames
-                                      where !role1.Users.Contains(s)
+                                      where !role1.Users.Contains(s, StringComparer.OrdinalIgnoreCase)
                                       select s)
                     {
                         role.Users.Add(s);
