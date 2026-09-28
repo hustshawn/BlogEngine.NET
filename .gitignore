@@ -188,3 +188,11 @@ BlogEngine/.vs/
 BlogEngine/BlogEngine.NET/App_Data/datastore/extensions/*.xml
 /.vs/slnx.sqlite
 /.vs/BlogEngine.NET/config/applicationhost.config
+checklist-*.md
+checklist-planner-*.md
+checklist-convert-*.md
+.artifacts/
+.migration-artifacts/
+progress.json
+migration-summary.md
+nextsteps.md
