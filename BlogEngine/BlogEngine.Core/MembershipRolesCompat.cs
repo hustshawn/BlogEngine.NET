@@ -51,6 +51,59 @@ namespace BlogEngine.Core
         {
             return new MembershipUserCollection(_service);
         }
+
+        public static int MinRequiredPasswordLength => 6;
+
+        public static string GetUserNameByEmail(string email)
+        {
+            return _service?.GetUserNameByEmail(email);
+        }
+
+        public static MembershipUser CreateUser(string username, string password, string email,
+            string passwordQuestion, string passwordAnswer, bool isApproved, out MembershipCreateStatus status)
+        {
+            try
+            {
+                var user = _service?.CreateUser(username, password, email);
+                if (user != null)
+                {
+                    status = MembershipCreateStatus.Success;
+                    return new MembershipUser { UserName = user.UserName, Email = user.Email };
+                }
+                status = MembershipCreateStatus.ProviderError;
+                return null;
+            }
+            catch
+            {
+                status = MembershipCreateStatus.ProviderError;
+                return null;
+            }
+        }
+
+        public static MembershipUser GetUser()
+        {
+            // Return current authenticated user
+            var username = Security.CurrentUser?.Identity?.Name;
+            if (!string.IsNullOrEmpty(username))
+            {
+                return GetUser(username);
+            }
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Replacement for System.Web.Security.MembershipCreateStatus.
+    /// </summary>
+    public enum MembershipCreateStatus
+    {
+        Success,
+        InvalidUserName,
+        InvalidPassword,
+        InvalidEmail,
+        DuplicateUserName,
+        DuplicateEmail,
+        ProviderError
     }
 
     /// <summary>
@@ -79,6 +132,11 @@ namespace BlogEngine.Core
         public System.DateTime LastLoginDate { get; set; }
         public bool IsLockedOut { get; set; }
         public bool IsApproved { get; set; }
+
+        public bool ChangePassword(string oldPassword, string newPassword)
+        {
+            return Membership.Provider?.ChangePassword(UserName, oldPassword, newPassword) ?? false;
+        }
     }
 
     /// <summary>
