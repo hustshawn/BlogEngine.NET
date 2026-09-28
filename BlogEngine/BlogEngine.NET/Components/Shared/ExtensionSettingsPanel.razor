@@ -1,6 +1,9 @@
-@using BlogEngine.Core
+﻿@using BlogEngine.Core
 @using BlogEngine.Core.Web.Extensions
 @using System.Data
+@inject IHttpContextAccessor HttpContextAccessor
+@* Static SSR port of the extension settings user control: every action is a form post
+   (one form for the scalar/add fields, one for the grid), grid paging is a query string link *@
 
 <h4>@SettingName @Utils.Translate("settings")</h4>
 <div style="color:Red; padding:5px 0 5px 0; display:block;">@ErrorMsg</div>
@@ -8,152 +11,142 @@
 
 @if (!string.IsNullOrEmpty(Settings?.Help))
 {
-    <div class="alert alert-info">@Settings.Help</div>
+    <div class="alert alert-info">@((MarkupString)Settings.Help)</div>
 }
-
-<div class="form-horizontal">
-    @if (Settings != null && Settings.ShowAdd)
-    {
-        @foreach (var par in Settings.Parameters)
-        {
-            @if (par.ParamType != ParameterType.Boolean)
-            {
-                <label style="width:250px">@par.Label</label><br />
-            }
-
-            @if (par.ParamType == ParameterType.Boolean)
-            {
-                <input type="checkbox" class="mgrCheck" checked="@GetBoolValue(par.Name)" @onchange="e => OnCheckboxChanged(par.Name, e)" />
-                <label class="mgrCheckLbl">@par.Label</label>
-            }
-            else if (par.ParamType == ParameterType.DropDown)
-            {
-                <select class="form-control" style="width:250px" value="@GetDropDownValue(par.Name)"
-                        @onchange="e => OnDropDownChanged(par.Name, e)">
-                    @foreach (var item in par.Values)
-                    {
-                        var parts = item.Split('|');
-                        var text = parts.Length == 1 ? parts[0] : parts[1];
-                        var val = parts[0];
-                        <option value="@val">@text</option>
-                    }
-                </select>
-            }
-            else if (par.ParamType == ParameterType.ListBox)
-            {
-                <select size="@par.Values.Count" style="width:250px" value="@GetDropDownValue(par.Name)"
-                        @onchange="e => OnDropDownChanged(par.Name, e)">
-                    @foreach (var item in par.Values)
-                    {
-                        <option value="@item">@item</option>
-                    }
-                </select>
-            }
-            else if (par.ParamType == ParameterType.RadioGroup)
-            {
-                <div class="mgrRadioList" style="display:inline">
-                    @foreach (var item in par.Values)
-                    {
-                        <label style="display:inline; padding-left:5px">
-                            <input type="radio" name="@par.Name" value="@item"
-                                   checked="@(GetDropDownValue(par.Name) == item)"
-                                   @onchange="e => OnDropDownChanged(par.Name, e)" />
-                            @item
-                        </label>
-                    }
-                </div>
-            }
-            else
-            {
-                <input type="text" class="form-control" style="width:250px"
-                       maxlength="@par.MaxLength"
-                       value="@GetTextValue(par.Name)"
-                       @onchange="e => OnTextChanged(par.Name, e)" />
-            }
-            <br />
-        }
-    }
-</div>
 
 @if (Settings != null && (Settings.ShowAdd || Settings.IsScalar))
 {
-    <div style="margin: 10px 0; padding-bottom: 10px; border-bottom: 1px solid #ccc; display:block">
-        <button class="btn btn-success btn-header" @onclick="BtnAddClick">
-            @ButtonText
-        </button>
-    </div>
+    <form method="post" @formname="@AddFormName" @onsubmit="BtnAddClick">
+        <AntiforgeryToken />
+        <div class="form-horizontal">
+            @foreach (var par in Settings.Parameters)
+            {
+                var field = FieldName(par.Name);
+                @if (par.ParamType != ParameterType.Boolean)
+                {
+                    <label style="width:250px">@par.Label</label><br />
+                }
+
+                @if (par.ParamType == ParameterType.Boolean)
+                {
+                    <input type="checkbox" class="mgrCheck" name="@field" value="True" checked="@GetBoolValue(par.Name)" />
+                    <label class="mgrCheckLbl">@par.Label</label>
+                }
+                else if (par.ParamType == ParameterType.DropDown)
+                {
+                    <select class="form-control" style="width:250px" name="@field">
+                        @foreach (var item in par.Values)
+                        {
+                            var parts = item.Split('|');
+                            var text = parts.Length == 1 ? parts[0] : parts[1];
+                            var val = parts[0];
+                            <option value="@val" selected="@(GetDropDownValue(par.Name) == val)">@text</option>
+                        }
+                    </select>
+                }
+                else if (par.ParamType == ParameterType.ListBox)
+                {
+                    <select size="@par.Values.Count" style="width:250px" name="@field">
+                        @foreach (var item in par.Values)
+                        {
+                            <option value="@item" selected="@(GetDropDownValue(par.Name) == item)">@item</option>
+                        }
+                    </select>
+                }
+                else if (par.ParamType == ParameterType.RadioGroup)
+                {
+                    <div class="mgrRadioList" style="display:inline">
+                        @foreach (var item in par.Values)
+                        {
+                            <label style="display:inline; padding-left:5px">
+                                <input type="radio" name="@field" value="@item" checked="@(GetDropDownValue(par.Name) == item)" />
+                                @item
+                            </label>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <input type="text" class="form-control" style="width:250px" name="@field"
+                           maxlength="@par.MaxLength" value="@GetTextValue(par.Name)" />
+                }
+                <br />
+            }
+        </div>
+        <div style="margin: 10px 0; padding-bottom: 10px; border-bottom: 1px solid #ccc; display:block">
+            <button type="submit" class="btn btn-success btn-header">@ButtonText</button>
+        </div>
+    </form>
 }
 
 @if (Settings != null && !Settings.IsScalar)
 {
-    <table class="beTable" style="width:100%; border-collapse:collapse; border:1px ridge; cell-padding:3px">
-        <thead style="background-color:#f9f9f9; text-align:left">
-            <tr>
-                @if (GenerateEditButton)
-                {
-                    <th></th>
-                }
-                @if (GenerateDeleteButton)
-                {
-                    <th></th>
-                }
-                @foreach (var par in Settings.Parameters)
-                {
-                    <th>@par.Name</th>
-                }
-            </tr>
-        </thead>
-        <tbody>
-            @if (gridData != null)
-            {
-                var rowIndex = 0;
-                @foreach (DataRow row in gridData.Rows)
-                {
-                    var idx = rowIndex + (currentPage * pageSize);
-                    var altBg = rowIndex % 2 == 1 ? "background-color:#f7f7f7" : "";
-                    @if (editIndex == idx)
+    <form method="post" @formname="@GridFormName" @onsubmit="GridCommand">
+        <AntiforgeryToken />
+        <table class="beTable" style="width:100%; border-collapse:collapse; border:1px ridge; cell-padding:3px">
+            <thead style="background-color:#f9f9f9; text-align:left">
+                <tr>
+                    @if (GenerateEditButton)
                     {
-                        <tr style="@altBg">
-                            <td>
-                                <button class="btn btn-sm btn-primary" @onclick="() => SaveRow(idx)">@Utils.Translate("save")</button>
-                                <button class="btn btn-sm" @onclick="CancelEdit">@Utils.Translate("cancel")</button>
-                            </td>
-                            @if (GenerateDeleteButton)
-                            {
-                                <td></td>
-                            }
-                            @for (int c = 0; c < Settings.Parameters.Count; c++)
-                            {
-                                var colIdx = c;
+                        <th></th>
+                    }
+                    @if (GenerateDeleteButton)
+                    {
+                        <th></th>
+                    }
+                    @foreach (var par in Settings.Parameters)
+                    {
+                        <th>@par.Name</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (gridData != null)
+                {
+                    @for (var rowIndex = currentPage * pageSize; rowIndex < Math.Min(gridData.Rows.Count, (currentPage + 1) * pageSize); rowIndex++)
+                    {
+                        var idx = rowIndex;
+                        var row = gridData.Rows[idx];
+                        var altBg = idx % 2 == 1 ? "background-color:#f7f7f7" : "";
+                        @if (editIndex == idx)
+                        {
+                            <tr style="@altBg">
                                 <td>
-                                    <input type="text" class="form-control" value="@editValues[colIdx]"
-                                           @onchange="e => editValues[colIdx] = e.Value?.ToString() ?? string.Empty" />
+                                    <button type="submit" name="command" value="save:@idx" class="btn btn-sm btn-primary">@Utils.Translate("save")</button>
+                                    <button type="submit" name="command" value="cancel" class="btn btn-sm">@Utils.Translate("cancel")</button>
                                 </td>
-                            }
-                        </tr>
+                                @if (GenerateDeleteButton)
+                                {
+                                    <td></td>
+                                }
+                                @for (int c = 0; c < Settings.Parameters.Count; c++)
+                                {
+                                    <td><input type="text" class="form-control" name="@($"edit{c}")" value="@editValues[c]" /></td>
+                                }
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr style="@altBg">
+                                @if (GenerateEditButton)
+                                {
+                                    <td><button type="submit" name="command" value="edit:@idx" class="btn btn-link btn-sm">@Utils.Translate("edit")</button></td>
+                                }
+                                @if (GenerateDeleteButton)
+                                {
+                                    <td><button type="submit" name="command" value="delete:@idx" class="btn btn-link btn-sm">@Utils.Translate("delete")</button></td>
+                                }
+                                @for (int c = 0; c < Settings.Parameters.Count; c++)
+                                {
+                                    <td>@row[Settings.Parameters[c].Name]</td>
+                                }
+                            </tr>
+                        }
                     }
-                    else
-                    {
-                        <tr style="@altBg">
-                            @if (GenerateEditButton)
-                            {
-                                <td><a href="#" @onclick="() => EditRow(idx)" @onclick:preventDefault>@Utils.Translate("edit")</a></td>
-                            }
-                            @if (GenerateDeleteButton)
-                            {
-                                <td><a href="#" @onclick="() => DeleteRow(idx)" @onclick:preventDefault>@Utils.Translate("delete")</a></td>
-                            }
-                            @for (int c = 0; c < Settings.Parameters.Count; c++)
-                            {
-                                <td>@row[Settings.Parameters[c].Name]</td>
-                            }
-                        </tr>
-                    }
-                    rowIndex++;
                 }
-            }
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+    </form>
 
     @if (gridData != null && gridData.Rows.Count > pageSize)
     {
@@ -162,9 +155,8 @@
             <ul class="pagination">
                 @for (int p = 0; p < totalPages; p++)
                 {
-                    var pageNum = p;
-                    <li class="page-item @(currentPage == pageNum ? "active" : "")">
-                        <a class="page-link" href="#" @onclick="() => GoToPage(pageNum)" @onclick:preventDefault>@(pageNum + 1)</a>
+                    <li class="page-item @(currentPage == p ? "active" : "")">
+                        <a class="page-link" href="@PageLink(p)">@(p + 1)</a>
                     </li>
                 }
             </ul>
@@ -177,6 +169,11 @@
     [Parameter] public string SettingName { get; set; } = string.Empty;
 
     private ExtensionSettings Settings;
+    private string AddFormName => $"ext-settings-{SettingName}";
+    private string GridFormName => $"ext-grid-{SettingName}";
+    private string PageKey => $"{SettingName}-page";
+    private IFormCollection Form => HttpContextAccessor.HttpContext?.Request.HasFormContentType == true ? HttpContextAccessor.HttpContext.Request.Form : null;
+    private static string FieldName(string parameterName) => "setting-" + parameterName;
     private string ErrorMsg = string.Empty;
     private string InfoMsg = string.Empty;
     private string ButtonText = string.Empty;
@@ -208,6 +205,10 @@
 
         ButtonText = Settings.IsScalar ? Utils.Translate("save") : (Settings.ShowAdd ? Utils.Translate("add") : string.Empty);
 
+        var query = HttpContextAccessor.HttpContext?.Request.Query;
+        if (query != null && int.TryParse(query[PageKey], out var page) && page >= 0)
+            currentPage = page;
+
         if (Settings.IsScalar)
         {
             BindScalar();
@@ -233,19 +234,48 @@
         return dropDownValues.TryGetValue(name, out var val) ? val : string.Empty;
     }
 
-    private void OnTextChanged(string name, ChangeEventArgs e)
+    private string PageLink(int page)
     {
-        textValues[name] = e.Value?.ToString() ?? string.Empty;
+        var request = HttpContextAccessor.HttpContext.Request;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(request.QueryString.Value);
+        query[PageKey] = page.ToString();
+        return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(Utils.GetRequestPath(HttpContextAccessor.HttpContext), query);
     }
 
-    private void OnCheckboxChanged(string name, ChangeEventArgs e)
+    /// <summary>Reads the posted scalar/add form fields (unchecked checkboxes are not posted).</summary>
+    private void ReadPostedFields()
     {
-        checkValues[name] = bool.TryParse(e.Value?.ToString(), out var v) && v;
+        var form = Form;
+        if (form == null) return;
+
+        foreach (var par in Settings.Parameters)
+        {
+            var posted = form[FieldName(par.Name)].ToString();
+            if (par.ParamType == ParameterType.Boolean)
+                checkValues[par.Name] = bool.TryParse(posted, out var v) && v;
+            else if (par.ParamType == ParameterType.DropDown || par.ParamType == ParameterType.ListBox || par.ParamType == ParameterType.RadioGroup)
+                dropDownValues[par.Name] = posted;
+            else
+                textValues[par.Name] = posted;
+        }
     }
 
-    private void OnDropDownChanged(string name, ChangeEventArgs e)
+    private void GridCommand()
     {
-        dropDownValues[name] = e.Value?.ToString() ?? string.Empty;
+        var command = Form?["command"].ToString() ?? string.Empty;
+        var parts = command.Split(':');
+        var hasIndex = parts.Length == 2 && int.TryParse(parts[1], out _);
+        var idx = hasIndex ? int.Parse(parts[1]) : -1;
+        if (hasIndex && (gridData == null || idx < 0 || idx >= gridData.Rows.Count))
+            return;
+
+        switch (parts[0])
+        {
+            case "edit" when hasIndex: EditRow(idx); break;
+            case "save" when hasIndex: SaveRow(idx); break;
+            case "delete" when hasIndex: DeleteRow(idx); break;
+            default: CancelEdit(); break;
+        }
     }
 
     private void BindScalar()
@@ -278,6 +308,7 @@
     {
         ErrorMsg = string.Empty;
         InfoMsg = string.Empty;
+        ReadPostedFields();
 
         if (!IsValidForm()) return;
 
@@ -400,12 +431,17 @@
     private void SaveRow(int idx)
     {
         ErrorMsg = string.Empty;
+        editValues = new string[Settings.Parameters.Count];
+        for (int i = 0; i < Settings.Parameters.Count; i++)
+            editValues[i] = Form?[$"edit{i}"].ToString() ?? string.Empty;
+
         for (int i = 0; i < Settings.Parameters.Count; i++)
         {
             var parName = Settings.Parameters[i].Name;
             if (Settings.IsRequiredParameter(parName) && string.IsNullOrEmpty(editValues[i]))
             {
                 ErrorMsg = $"\"{Settings.GetLabel(parName)}\" {Utils.Translate("isRequiredField")}";
+                editIndex = idx;
                 return;
             }
 
@@ -414,6 +450,7 @@
                 if (!Settings.IsOldValue(parName, editValues[i], idx))
                 {
                     ErrorMsg = $"\"{editValues[i]}\" {Utils.Translate("isAlreadyExists")}";
+                    editIndex = idx;
                     return;
                 }
             }
@@ -436,10 +473,5 @@
         }
         ExtensionManager.SaveSettings(ExtensionName, Settings);
         BindGrid();
-    }
-
-    private void GoToPage(int page)
-    {
-        currentPage = page;
     }
 }
