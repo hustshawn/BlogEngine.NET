@@ -203,7 +203,6 @@ app.MapStaticAssets();
 app.MapControllers();
 app.MapRazorPages();
 app.MapBlogEngineEndpoints();
-app.MapGet("/robots.txt", () => Results.File(Path.Combine(app.Environment.ContentRootPath, "robots.txt"), "text/plain"));
 app.MapRazorComponents<BlogEngine.NET.Components.App>();
 
 app.Run();

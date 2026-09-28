@@ -61,6 +61,13 @@ namespace BlogEngine.Tests.Integration
         }
 
         [TestMethod]
+        public async Task RobotsTxtIsServed()
+        {
+            var response = await _anonymous.GetAsync("/robots.txt");
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        [TestMethod]
         public async Task ApiRequiresAuthentication()
         {
             var response = await _anonymous.GetAsync("/api/settings");
@@ -196,7 +203,7 @@ namespace BlogEngine.Tests.Integration
                 var source = FindWebProject();
                 foreach (var dir in new[] { "App_Data", "Custom", "setup", "wwwroot" })
                     CopyDirectory(Path.Combine(source, dir), Path.Combine(_contentRoot, dir));
-                foreach (var file in new[] { "appsettings.json", "robots.txt" })
+                foreach (var file in new[] { "appsettings.json" })
                     File.Copy(Path.Combine(source, file), Path.Combine(_contentRoot, file));
 
                 builder.UseContentRoot(_contentRoot);
