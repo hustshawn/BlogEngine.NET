@@ -1,185 +1,164 @@
 @page "/Account/register"
 @layout AccountLayout
-@using BlogEngine.Core
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using System.Security.Claims
-// Membership and Roles are provided by BlogEngine.Core namespace
+@using System.Text.RegularExpressions
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+
+@* Port of Account/register.aspx (CreateUserWizard) as a static SSR form. The client-side checks of
+   account.js ValidateNewUser run on the server; the new user is signed in and redirected afterwards. *@
 
 <PageTitle>Register</PageTitle>
 
-<h1 id="CreateHdr" class="account-title">@Utils.Translate("createAccount")</h1>
-<div class="account-body">
-    <div class="form-group first-child">
-        <label class="label-up">@Utils.Translate("userName"):</label>
-        <div class="boxRound">
-            <input type="text" @bind="userName" class="textEntry form-control" />
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="label-up">@Utils.Translate("email"):</label>
-        <div class="boxRound">
-            <input type="text" @bind="email" class="textEntry form-control" />
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="label-up">@string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength)</label>
-        <div class="boxRound">
-            <input type="password" @bind="password" class="passwordEntry form-control" />
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="label-up">@Utils.Translate("confirmPassword"):</label>
-        <div class="boxRound">
-            <input type="password" @bind="confirmPassword" class="passwordEntry form-control" />
-        </div>
-    </div>
+<AccountStatus Message="@statusMessage" />
 
-    <div class="btn-wrapper text-center">
-        <button class="btn btn-success btn-block" @onclick="HandleRegister">@Utils.Translate("createUser")</button>
+<EditForm Model="Input" FormName="register" method="post" OnSubmit="HandleRegisterAsync">
+    <h1 id="CreateHdr" class="account-title">@Utils.Translate("createAccount")</h1>
+    <div class="account-body">
+        <div class="form-group first-child">
+            <label for="UserName" class="label-up">@Utils.Translate("userName"):</label>
+            <div class="boxRound">
+                <InputText id="UserName" @bind-Value="Input.UserName" class="textEntry form-control" autocomplete="username" autofocus />
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="Email" class="label-up">@Utils.Translate("email"):</label>
+            <div class="boxRound">
+                <InputText id="Email" @bind-Value="Input.Email" class="textEntry form-control" autocomplete="email" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="Password" class="label-up">@string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength)</label>
+            <div class="boxRound">
+                <InputText id="Password" type="password" @bind-Value="Input.Password" class="passwordEntry form-control" autocomplete="new-password" />
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="ConfirmPassword" class="label-up">@Utils.Translate("confirmPassword"):</label>
+            <div class="boxRound">
+                <InputText id="ConfirmPassword" type="password" @bind-Value="Input.ConfirmPassword" class="passwordEntry form-control" autocomplete="new-password" />
+            </div>
+        </div>
+
+        <div class="btn-wrapper text-center">
+            <button type="submit" id="CreateUserButton" class="btn btn-success btn-block">@Utils.Translate("createUser")</button>
+        </div>
     </div>
-</div>
+</EditForm>
 
 <hr />
 <div class="account-body text-center text-uppercase">
     @Utils.Translate("alreadyHaveAccount")
-    <a href="@(Utils.RelativeWebRoot)Account/login">@Utils.Translate("loginNow")</a>
+    <a id="HeadLoginStatus" href="@(Utils.RelativeWebRoot)Account/login">@Utils.Translate("loginNow")</a>
 </div>
 
-@if (!string.IsNullOrEmpty(errorMessage))
-{
-    <div class="alert alert-warning">@errorMessage</div>
-}
-
 @code {
-    [SupplyParameterFromQuery(Name = "ReturnUrl")]
-    public string ReturnUrl { get; set; }
+    // account.js ValidateEmail
+    private static readonly Regex EmailRegex = new(@"^([A-Za-z0-9_\-\.])+\@([A-Za-z0-9_\-\.])+\.([A-Za-z]{2,4})$", RegexOptions.Compiled);
 
-    private string userName = string.Empty;
-    private string email = string.Empty;
-    private string password = string.Empty;
-    private string confirmPassword = string.Empty;
-    private string errorMessage = string.Empty;
+    [SupplyParameterFromQuery(Name = "ReturnUrl")]
+    private string ReturnUrl { get; set; }
+
+    [SupplyParameterFromForm(FormName = "register")]
+    private RegisterModel Input { get; set; }
+
+    private string statusMessage;
 
     protected override void OnInitialized()
     {
-        // If blog creation is enabled on self-registration and this is primary blog, redirect
+        Input ??= new RegisterModel();
+
         if (BlogSettings.Instance.CreateBlogOnSelfRegistration && Blog.CurrentInstance.IsPrimary)
         {
-            Navigation.NavigateTo("/Account/create-blog", forceLoad: true);
+            Navigation.NavigateTo(Utils.RelativeWebRoot + "Account/create-blog");
             return;
         }
 
-        // If self registration not allowed, redirect to login
+        // if self registration not allowed and user is trying to directly
+        // navigate to register page, redirect to login
         if (!BlogSettings.Instance.EnableSelfRegistration)
         {
-            Navigation.NavigateTo(Utils.RelativeWebRoot + "Account/login", forceLoad: true);
-            return;
+            Navigation.NavigateTo(Utils.RelativeWebRoot + "Account/login");
         }
     }
 
-    private async Task HandleRegister()
+    private async Task HandleRegisterAsync()
     {
-        // Validate
-        if (string.IsNullOrWhiteSpace(userName))
+        var userName = (Input.UserName ?? string.Empty).Trim();
+        var email = (Input.Email ?? string.Empty).Trim();
+
+        statusMessage = Validate(userName, email);
+        if (statusMessage != null)
         {
-            errorMessage = Utils.Translate("userNameIsRequired");
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(password) || password.Length < Membership.MinRequiredPasswordLength)
-        {
-            errorMessage = string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength);
-            return;
-        }
-
-        if (password != confirmPassword)
-        {
-            errorMessage = Utils.Translate("newAndConfirmPasswordMismatch");
-            return;
-        }
-
-        // Check if user already exists
+        // RegisterUser_CreatingUser
         if (Membership.GetUser(userName) != null)
         {
-            errorMessage = Utils.Translate("anotherUserName");
+            statusMessage = Utils.Translate("anotherUserName");
             return;
         }
 
-        // Check if email already used
         if (Membership.GetUserNameByEmail(email) != null)
         {
-            errorMessage = Utils.Translate("anotherEmail");
+            statusMessage = Utils.Translate("anotherEmail");
             return;
         }
 
-        try
+        Membership.CreateUser(userName, Input.Password, email, null, null, true, out var status);
+        if (status != MembershipCreateStatus.Success)
         {
-            // Create the user
-            MembershipCreateStatus status;
-            Membership.CreateUser(userName, password, email, null, null, true, out status);
-
-            if (status != MembershipCreateStatus.Success)
-            {
-                errorMessage = status.ToString();
-                return;
-            }
-
-            // Add to initial role if configured
-            if (!string.IsNullOrEmpty(BlogSettings.Instance.SelfRegistrationInitialRole))
-            {
-                string role = BlogEngine.Core.Roles.GetAllRoles()
-                    .FirstOrDefault(r => r.Equals(BlogSettings.Instance.SelfRegistrationInitialRole, StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrEmpty(role))
-                {
-                    BlogEngine.Core.Roles.AddUsersToRoles(new[] { userName }, new[] { role });
-                }
-            }
-
-            // Authenticate the new user
-            Security.AuthenticateUser(userName, password, false);
-
-            // Sign in with cookie auth
-            var httpContext = HttpContextAccessor.HttpContext;
-            if (httpContext != null)
-            {
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, userName)
-                };
-
-                try
-                {
-                    var roles = BlogEngine.Core.Roles.GetRolesForUser(userName);
-                    foreach (var role in roles)
-                    {
-                        claims.Add(new Claim(ClaimTypes.Role, role));
-                    }
-                }
-                catch { }
-
-                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-                var principal = new ClaimsPrincipal(identity);
-
-                await httpContext.SignInAsync(
-                    CookieAuthenticationDefaults.AuthenticationScheme,
-                    principal,
-                    new AuthenticationProperties { IsPersistent = false });
-            }
-
-            var continueUrl = ReturnUrl;
-            if (string.IsNullOrEmpty(continueUrl))
-            {
-                continueUrl = Utils.RelativeWebRoot;
-            }
-
-            Navigation.NavigateTo(continueUrl, forceLoad: true);
+            statusMessage = status == MembershipCreateStatus.DuplicateUserName
+                ? Utils.Translate("anotherUserName")
+                : "Failed to create the new user.";
+            return;
         }
-        catch (Exception ex)
+
+        // RegisterUser_CreatedUser
+        if (!string.IsNullOrEmpty(BlogSettings.Instance.SelfRegistrationInitialRole))
         {
-            errorMessage = ex.Message;
+            string role = Roles.GetAllRoles().FirstOrDefault(r => r.Equals(BlogSettings.Instance.SelfRegistrationInitialRole, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(role))
+            {
+                Roles.AddUsersToRoles(new[] { userName }, new[] { role });
+            }
         }
+
+        await Security.AuthenticateUserAsync(userName, Input.Password, false);
+
+        Navigation.NavigateTo(Security.GetSafeReturnUrl(ReturnUrl));
+    }
+
+    /// <summary>
+    /// Server-side port of account.js ValidateNewUser; returns the first error or null.
+    /// </summary>
+    private string Validate(string userName, string email)
+    {
+        var password = Input.Password ?? string.Empty;
+        var confirmPassword = Input.ConfirmPassword ?? string.Empty;
+
+        if (userName.Length == 0)
+            return Utils.Translate("userNameIsRequired");
+        if (email.Length == 0)
+            return Utils.Translate("emailIsRequired");
+        if (!EmailRegex.IsMatch(email))
+            return Utils.Translate("emailIsInvalid");
+        if (password.Length == 0)
+            return Utils.Translate("passwordIsRequried");
+        if (password.Length < Membership.MinRequiredPasswordLength)
+            return string.Format(Utils.Translate("minPassLengthInChars"), Membership.MinRequiredPasswordLength);
+        if (confirmPassword.Length == 0)
+            return Utils.Translate("confirmPasswordIsRequired");
+        if (password != confirmPassword)
+            return Utils.Translate("passwordAndConfirmPasswordIsMatch");
+
+        return null;
+    }
+
+    private sealed class RegisterModel
+    {
+        public string UserName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
     }
 }
