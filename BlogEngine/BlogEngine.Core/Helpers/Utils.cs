@@ -362,25 +362,12 @@
         /// </summary>
         public static IEnumerable<Assembly> CodeAssemblies()
         {
+            // Extensions under Custom/Extensions are compiled into the web application itself
+            // (the replacement for the runtime-compiled App_Code assembly)
             var codeAssemblies = new List<Assembly>();
-
-            try
-            {
-                // In modern .NET, look for extensions in the bin directory
-                var assemblyName = "App_Code";
-                try
-                {
-                    codeAssemblies.Add(Assembly.Load(assemblyName));
-                }
-                catch (FileNotFoundException)
-                {
-                    /*ignore - code directory has no files*/
-                }
-            }
-            catch (FileNotFoundException)
-            {
-                /*ignore*/
-            }
+            var entryAssembly = Assembly.GetEntryAssembly();
+            if (entryAssembly != null)
+                codeAssemblies.Add(entryAssembly);
 
             try
             {
@@ -1304,29 +1291,26 @@
         /// </summary>
         private static IEnumerable<Assembly> GetCompiledExtensions()
         {
+            // Drop-in extension assemblies deployed next to the application (formerly ~/bin)
             var assemblies = new List<Assembly>();
-            var s = Path.Combine(BlogConfig.MapPath("~/"), "bin");
-            var fileEntries = Directory.GetFiles(s);
-            foreach (var asm in from fileName in fileEntries
-                                where fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
-                                select Assembly.LoadFrom(fileName)
-                                into asm
-                                let attr = asm.GetCustomAttributes(typeof(AssemblyConfigurationAttribute), false)
-                                where attr.Length > 0
-                                let aca = (AssemblyConfigurationAttribute)attr[0]
-                                select asm)
+            var entryAssembly = Assembly.GetEntryAssembly();
+            var coreName = typeof(Utils).Assembly.GetName().Name;
+
+            foreach (var fileName in Directory.GetFiles(AppContext.BaseDirectory, "*.dll"))
             {
                 try
                 {
-                    // check if assembly can be loaded
-                    // before adding to collection
+                    var asm = Assembly.LoadFrom(fileName);
+                    if (asm == entryAssembly || !asm.GetReferencedAssemblies().Any(r => r.Name == coreName))
+                        continue;
+
+                    // check if assembly can be loaded before adding to collection
                     asm.GetTypes();
                     assemblies.Add(asm);
                 }
                 catch (Exception)
                 {
-                    // only use to debug - any third party DLL can through this, not a crytical error
-                    // Log(string.Format("Error loading compiled extensions from assembly {0}: {1}", asm.FullName, ex.Message));
+                    // any third party DLL can throw here, not a critical error
                 }
             }
             return assemblies;
