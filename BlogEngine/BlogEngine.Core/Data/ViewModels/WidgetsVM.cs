@@ -1,19 +1,25 @@
 ﻿using BlogEngine.Core.DataStore;
 using System;
 using System.Collections.Generic;
-using System.Net;
+using System.Net.Http;
 using System.Xml;
 
 namespace BlogEngine.Core.Data.ViewModels
 {
     /// <summary>
     /// List of zones and widgets
-    /// for a current theme
+    /// for a current theme.
+    /// Converted from WebClient to static HttpClient.
     /// </summary>
     public class WidgetsVM
     {
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        });
+
         /// <summary>
-        /// Theme widtegs
+        /// Theme widgets
         /// </summary>
         public WidgetsVM()
         {
@@ -23,34 +29,34 @@ namespace BlogEngine.Core.Data.ViewModels
                 AvailableWidgets = new List<WidgetItem>();
                 foreach (var pk in packages)
                 {
-                    var showUninstall = !string.IsNullOrEmpty(pk.OnlineVersion);                   
+                    var showUninstall = !string.IsNullOrEmpty(pk.OnlineVersion);
                     AvailableWidgets.Add(new WidgetItem { Id = pk.Id, Name = pk.Title, Title = pk.Title, ShowTitle = false, ShowUnistall = showUninstall });
                 }
 
                 WidgetZones = new List<WidgetZone>();
-                WebClient client = new WebClient();
 
                 // add zones registered in site.master
-                var html = client.DownloadString(Utils.AbsoluteWebRoot);
+                var html = _httpClient.GetStringAsync(Utils.AbsoluteWebRoot).GetAwaiter().GetResult();
                 AddZones(html);
 
                 // add zones registered in post.master
-                if(Post.Posts != null && Post.Posts.Count > 0)
+                if (Post.Posts != null && Post.Posts.Count > 0)
                 {
                     var postUrl = Post.Posts[0].AbsoluteLink;
-                    html = client.DownloadString(postUrl);
+                    html = _httpClient.GetStringAsync(postUrl).GetAwaiter().GetResult();
                     AddZones(html);
                 }
 
                 // add zones registered in page.master
-                if(Page.Pages != null && Page.Pages.Count > 0)
+                if (Page.Pages != null && Page.Pages.Count > 0)
                 {
                     var pageUrl = Page.Pages[0].AbsoluteLink;
-                    html = client.DownloadString(pageUrl);
+                    html = _httpClient.GetStringAsync(pageUrl).GetAwaiter().GetResult();
                     AddZones(html);
                 }
             }
-            catch (Exception ex) {
+            catch (Exception ex)
+            {
                 Utils.Log(ex.Message);
             }
         }
@@ -112,7 +118,7 @@ namespace BlogEngine.Core.Data.ViewModels
                         {
                             foreach (var z in WidgetZones)
                             {
-                                if(z.Id == zone.Id)
+                                if (z.Id == zone.Id)
                                 {
                                     found = true;
                                     break;

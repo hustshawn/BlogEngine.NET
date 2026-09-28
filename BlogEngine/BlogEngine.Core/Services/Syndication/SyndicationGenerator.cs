@@ -17,7 +17,6 @@ namespace BlogEngine.Core
     using System.Linq;
     using System.Text;
     using System.Text.RegularExpressions;
-    using System.Web;
     using System.Xml;
 
     /// <summary>
@@ -415,7 +414,7 @@ namespace BlogEngine.Core
 
             try
             {
-                var physicalPath = HttpContext.Current.Server.MapPath(fileName);
+                var physicalPath = BlogConfig.MapPath(fileName);
                 var info = new FileInfo(physicalPath);
                 fileSize = info.Length;
                 fileExists = true;
@@ -1055,9 +1054,9 @@ namespace BlogEngine.Core
             // ------------------------------------------------------------
             
             // var url = Utils.FeedUrl;
-            // if (HttpContext.Current != null)
+            // if (Blog._httpContextAccessor?.HttpContext != null)
             // {
-            //     url = HttpContext.Current.Request.Url.ToString();
+            //     url = Blog._httpContextAccessor?.HttpContext.Request.Url.ToString();
             // }
             writer.WriteElementString("docs", "http://www.rssboard.org/rss-specification");
             writer.WriteElementString("generator", $"BlogEngine.NET {BlogSettings.Instance.Version()}");

@@ -1,11 +1,10 @@
-﻿using System.Web.UI;
-
-namespace BlogEngine.Core.Web.Controls
+﻿namespace BlogEngine.Core.Web.Controls
 {
     /// <summary>
-    /// Base class for comment form control
+    /// POCO/service class for comment form logic.
+    /// Converted from UserControl inheritance to a plain class.
     /// </summary>
-    public class CommentFormBase : UserControl
+    public class CommentFormBase
     {
         /// <summary>
         /// Current post

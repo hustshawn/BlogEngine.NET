@@ -1,87 +1,46 @@
 ﻿using System;
 using System.Collections;
-using System.Web.Caching;
+using System.Collections.Generic;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace BlogEngine.Core.Providers.CacheProvider
 {
     /// <summary>
-    /// Cache Base
+    /// Cache Base - abstract wrapper around IMemoryCache for BlogEngine.
     /// </summary>
     public abstract class CacheBase : IEnumerable
     {
-        /// <summary>
-        /// Count
-        /// </summary>
+        /// <summary>Count of items tracked (approximate).</summary>
         public abstract int Count { get; }
-        /// <summary>
-        /// Physical Memory Limit
-        /// </summary>
-        public abstract long EffectivePercentagePhysicalMemoryLimit { get; }
-        ///<summary>
-        ///</summary>
-        public abstract long EffectivePrivateBytesLimit { get; }
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
+
+        /// <summary>Not applicable for IMemoryCache. Returns 0.</summary>
+        public virtual long EffectivePercentagePhysicalMemoryLimit => 0;
+
+        /// <summary>Not applicable for IMemoryCache. Returns 0.</summary>
+        public virtual long EffectivePrivateBytesLimit => 0;
+
+        /// <summary>Gets or sets a cache item by key.</summary>
         public abstract object this[string key] { get; set; }
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<param name="value"></param>
-        ///<param name="dependencies"></param>
-        ///<param name="absoluteExpiration"></param>
-        ///<param name="slidingExpiration"></param>
-        ///<param name="priority"></param>
-        ///<param name="onRemoveCallback"></param>
-        ///<returns></returns>
-        public abstract object Add(string key, object value, CacheDependency dependencies, DateTime absoluteExpiration, TimeSpan slidingExpiration, CacheItemPriority priority, CacheItemRemovedCallback onRemoveCallback);
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<returns></returns>
+
+        /// <summary>Adds an item to the cache with expiration options.</summary>
+        public abstract object Add(string key, object value, DateTime absoluteExpiration, TimeSpan slidingExpiration);
+
+        /// <summary>Gets an item from the cache.</summary>
         public abstract object Get(string key);
-        ///<summary>
-        ///</summary>
-        ///<returns></returns>
+
+        /// <summary>Gets an enumerator over cache keys (not fully supported with IMemoryCache).</summary>
         public abstract IDictionaryEnumerator GetEnumerator();
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<param name="value"></param>
+
+        /// <summary>Inserts an item into the cache.</summary>
         public abstract void Insert(string key, object value);
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<param name="value"></param>
-        ///<param name="dependencies"></param>
-        public abstract void Insert(string key, object value, CacheDependency dependencies);
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<param name="value"></param>
-        ///<param name="dependencies"></param>
-        ///<param name="absoluteExpiration"></param>
-        ///<param name="slidingExpiration"></param>
-        public abstract void Insert(string key, object value, CacheDependency dependencies, DateTime absoluteExpiration, TimeSpan slidingExpiration);
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<param name="value"></param>
-        ///<param name="dependencies"></param>
-        ///<param name="absoluteExpiration"></param>
-        ///<param name="slidingExpiration"></param>
-        ///<param name="priority"></param>
-        ///<param name="onRemoveCallback"></param>
-        public abstract void Insert(string key, object value, CacheDependency dependencies, DateTime absoluteExpiration, TimeSpan slidingExpiration, CacheItemPriority priority, CacheItemRemovedCallback onRemoveCallback);
-        ///<summary>
-        ///</summary>
-        ///<param name="key"></param>
-        ///<returns></returns>
+
+        /// <summary>Inserts an item with absolute and sliding expiration.</summary>
+        public abstract void Insert(string key, object value, DateTime absoluteExpiration, TimeSpan slidingExpiration);
+
+        /// <summary>Removes an item from the cache.</summary>
         public abstract object Remove(string key);
 
-        /// <summary>
-        /// Reset cache provider
-        /// </summary>
+        /// <summary>Resets (clears) the cache.</summary>
         public abstract void Reset();
 
         IEnumerator IEnumerable.GetEnumerator()

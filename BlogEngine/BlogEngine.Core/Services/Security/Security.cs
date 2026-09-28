@@ -1,121 +1,71 @@
+using Microsoft.AspNetCore.Authentication;
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
-using System.Web.Security;
 using System.Security;
+using System.Security.Claims;
+using BlogEngine.Core.Services.Security;
+using Microsoft.AspNetCore.Http;
 
 namespace BlogEngine.Core
 {
     /// <summary>
     /// Class to provide a unified area of authentication/authorization checking.
+    /// Converted from IHttpModule to a service class with static helpers.
     /// </summary>
-    public partial class Security : IHttpModule
+    public partial class Security
     {
+        /// <summary>
+        /// Static reference to the role service.
+        /// </summary>
+        private static IRoleService _roleService;
+
+        /// <summary>
+        /// Static reference to the membership service.
+        /// </summary>
+        private static IMembershipService _membershipService;
+
+        /// <summary>
+        /// Static reference to the HTTP context accessor.
+        /// </summary>
+        private static IHttpContextAccessor _httpContextAccessor;
+
         static Security()
         {
-
         }
 
         /// <summary>
-        /// Disposes of the resources (other than memory) used by the module that implements <see cref="T:System.Web.IHttpModule"/>.
+        /// Initializes the Security class with required services.
+        /// Must be called during application startup.
         /// </summary>
-        public void Dispose()
+        public static void Initialize(
+            IRoleService roleService,
+            IMembershipService membershipService,
+            IHttpContextAccessor httpContextAccessor)
         {
-            // Nothing to dispose
+            _roleService = roleService;
+            _membershipService = membershipService;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         /// <summary>
-        /// Initializes a module and prepares it to handle requests.
+        /// Gets the current HttpContext, or null if unavailable.
         /// </summary>
-        /// <param name="context">An <see cref="T:System.Web.HttpApplication"/> that provides access to the methods, properties, and events common to all application objects within an ASP.NET application</param>
-        public void Init(HttpApplication context)
-        {
-            context.AuthenticateRequest += ContextAuthenticateRequest;
-        }
+        private static HttpContext CurrentHttpContext => _httpContextAccessor?.HttpContext;
 
         /// <summary>
-        /// Handles the AuthenticateRequest event of the context control.
+        /// Name of the authentication cookie for the current blog instance.
         /// </summary>
-        /// <param name="sender">
-        /// The source of the event.
-        /// </param>
-        /// <param name="e">
-        /// The <see cref="System.EventArgs"/> instance containing the event data.
-        /// </param>
-        private static void ContextAuthenticateRequest(object sender, EventArgs e)
-        {
-            // default to an empty/unauthenticated user to assign to context.User.
-            CustomIdentity identity = new CustomIdentity(string.Empty, false);
-            CustomPrincipal principal = new CustomPrincipal(identity); 
-            
-            var context = ((HttpApplication)sender).Context;
-
-            // FormsAuthCookieName is a custom cookie name based on the current instance.
-            HttpCookie authCookie = context.Request.Cookies[FormsAuthCookieName];
-            if (authCookie != null)
-            {
-                Blog blog = Blog.CurrentInstance;
-
-                FormsAuthenticationTicket authTicket = null;
-                try
-                {
-                    authTicket = FormsAuthentication.Decrypt(authCookie.Value);
-                }
-                catch (Exception ex)
-                {
-                    context.Request.Cookies.Remove(FormsAuthCookieName);
-                    authTicket = null;
-
-                    Utils.Log("Failed to decrypt the FormsAuthentication cookie.", ex);
-                }
-
-                if (authTicket != null)
-                {
-                    identity = new CustomIdentity(authTicket.Name, true); 
-                    
-                    if (!string.IsNullOrWhiteSpace(authTicket.UserData))
-                    {
-                        int delimiter = authTicket.UserData.IndexOf(AUTH_TKT_USERDATA_DELIMITER);
-                        if (delimiter != -1)
-                        {
-                            // for extra security, make sure the data in UserData contains the SecurityValidationKey
-                            // and current blog instance.  the current blog instance check would prevent a cookie name
-                            // change for a forms auth cookie encrypted in the same application (different blog) as
-                            // being valid for this blog instance.
-
-                            string securityValidationKey = authTicket.UserData.Substring(0, delimiter).Trim();
-                            string blogId = authTicket.UserData.Substring(delimiter + AUTH_TKT_USERDATA_DELIMITER.Length).Trim();
-
-                            if (securityValidationKey.Equals(SecurityValidationKey, StringComparison.OrdinalIgnoreCase) &&
-                                blogId.Equals(Blog.CurrentInstance.Id.ToString(), StringComparison.OrdinalIgnoreCase))
-                            {
-                                principal = new CustomPrincipal(identity);
-                            }
-                        }
-                    }
-                    else if (BlogConfig.SingleSignOn)
-                    {
-                        principal = new CustomPrincipal(identity);
-                    }
-                }
-            }
-            context.User = principal;
-        }
-
-        /// <summary>
-        /// Name of the Forms authentication cookie for the current blog instance.
-        /// </summary>
-        public static string FormsAuthCookieName
+        public static string AuthCookieName
         {
             get
             {
-                string formsCookieName = FormsAuthentication.FormsCookieName;
+                const string baseCookieName = ".BlogEngine.Auth";
                 if (BlogConfig.SingleSignOn)
                 {
-                    return formsCookieName;
+                    return baseCookieName;
                 }
-                return formsCookieName + "-" + Blog.CurrentInstance.Id.ToString();
+                return baseCookieName + "-" + Blog.CurrentInstance.Id.ToString();
             }
         }
 
@@ -124,13 +74,15 @@ namespace BlogEngine.Core
         /// </summary>
         public static void SignOut()
         {
-            // using a custom cookie name based on the current blog instance.
-            HttpCookie cookie = new HttpCookie(FormsAuthCookieName, string.Empty);
-            cookie.Expires = DateTime.Now.AddYears(-3);
-            HttpContext.Current.Response.Cookies.Add(cookie);
+            var context = CurrentHttpContext;
+            if (context != null)
+            {
+                // Sign out using ASP.NET Core cookie authentication
+                context.SignOutAsync(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme).GetAwaiter().GetResult();
+            }
 
             // admin UI injects user info in JavaScript resource file
-            // so it can be used in Angular scripts. Crear cache on log off.
+            // so it can be used in Angular scripts. Clear cache on log off.
             string cacheKey = "admin.resource.axd - " + BlogSettings.Instance.Culture;
             Blog.CurrentInstance.Cache.Remove(cacheKey);
         }
@@ -149,52 +101,70 @@ namespace BlogEngine.Core
 
             if (!string.IsNullOrWhiteSpace(un) && !string.IsNullOrWhiteSpace(pw))
             {
-                bool isValidated = Membership.ValidateUser(un, pw);
+                bool isValidated = false;
+                if (_membershipService != null)
+                {
+                    isValidated = _membershipService.ValidateUser(un, pw);
+                }
 
                 if (isValidated)
                 {
-                    if (BlogConfig.SingleSignOn)
+                    var context = CurrentHttpContext;
+                    if (context != null)
                     {
-                        FormsAuthentication.SetAuthCookie(un, rememberMe);
+                        // Build claims-based identity
+                        var claims = new List<Claim>
+                        {
+                            new Claim(ClaimTypes.Name, un)
+                        };
+
+                        // Add role claims
+                        if (_roleService != null)
+                        {
+                            var roles = _roleService.GetRolesForUser(un);
+                            foreach (var role in roles)
+                            {
+                                claims.Add(new Claim(ClaimTypes.Role, role));
+                            }
+                        }
+
+                        // Add blog instance claim for security validation
+                        if (!BlogConfig.SingleSignOn)
+                        {
+                            claims.Add(new Claim("BlogInstanceId", Blog.CurrentInstance.Id.ToString()));
+                            claims.Add(new Claim("SecurityValidationKey", SecurityValidationKey));
+                        }
+
+                        var identity = new ClaimsIdentity(claims, Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme);
+                        var principal = new ClaimsPrincipal(identity);
+                        context.User = principal;
+
+                        // Use ASP.NET Core's cookie authentication for persistence
+                        var authProperties = new Microsoft.AspNetCore.Authentication.AuthenticationProperties
+                        {
+                            IsPersistent = rememberMe,
+                            ExpiresUtc = rememberMe ? DateTimeOffset.UtcNow.AddDays(30) : (DateTimeOffset?)null
+                        };
+
+                        context.SignInAsync(
+                            Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme,
+                            principal,
+                            authProperties).GetAwaiter().GetResult();
+
+                        string returnUrl = context.Request.Query["returnUrl"];
+
+                        // ignore Return URLs not beginning with a forward slash, such as remote sites.
+                        if (IsLocalUrl(returnUrl))
+                        {
+                            context.Response.Redirect(returnUrl);
+                        }
+                        else
+                        {
+                            context.Response.Redirect(Utils.RelativeWebRoot);
+                        }
+
                         return true;
                     }
-
-                    HttpContext context = HttpContext.Current;
-                    DateTime expirationDate = DateTime.Now.Add(FormsAuthentication.Timeout);
-
-                    FormsAuthenticationTicket ticket = new FormsAuthenticationTicket(
-                        1,
-                        un,
-                        DateTime.Now,
-                        expirationDate,
-                        rememberMe,
-                        $"{SecurityValidationKey}{AUTH_TKT_USERDATA_DELIMITER}{Blog.CurrentInstance.Id}",
-                        FormsAuthentication.FormsCookiePath
-                    );
-
-                    string encryptedTicket = FormsAuthentication.Encrypt(ticket);
-
-                    // setting a custom cookie name based on the current blog instance.
-                    // if !rememberMe, set expires to DateTime.MinValue which makes the
-                    // cookie a browser-session cookie expiring when the browser is closed.
-                    HttpCookie cookie = new HttpCookie(FormsAuthCookieName, encryptedTicket);
-                    cookie.Expires = rememberMe ? expirationDate : DateTime.MinValue;
-                    cookie.HttpOnly = true;
-                    context.Response.Cookies.Set(cookie);
-
-                    string returnUrl = context.Request.QueryString["returnUrl"];
-
-                    // ignore Return URLs not beginning with a forward slash, such as remote sites.
-                    if (Security.IsLocalUrl(returnUrl))
-                    {
-                        context.Response.Redirect(returnUrl);
-                    }
-                    else
-                    {
-                        context.Response.Redirect(Utils.RelativeWebRoot);
-                    }
-
-                    return true;
                 }
             }
 
@@ -209,8 +179,8 @@ namespace BlogEngine.Core
             }
             else
             {
-                return ((url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'))) || // "/" or "/foo" but not "//" or "/\" 
-						(url.Length > 1 && url[0] == '~' && url[1] == '/')); // "~/" or "~/foo"
+                return ((url[0] == '/' && (url.Length == 1 || (url[1] != '/' && url[1] != '\\'))) || // "/" or "/foo" but not "//" or "/\"
+                        (url.Length > 1 && url[0] == '~' && url[1] == '/')); // "~/" or "~/foo"
             }
         }
 
@@ -236,29 +206,35 @@ namespace BlogEngine.Core
         #region "Properties"
 
         /// <summary>
-        /// If the current user is authenticated, returns the current MembershipUser. If not, returns null. This is just a shortcut to Membership.GetUser().
+        /// If the current user is authenticated, returns the current BlogMembershipUser. If not, returns null.
         /// </summary>
-        public static MembershipUser CurrentMembershipUser
+        public static BlogMembershipUser CurrentMembershipUser
         {
             get
             {
-                return Membership.GetUser();
+                if (!IsAuthenticated)
+                    return null;
+
+                return _membershipService?.GetUser(CurrentUser.Identity.Name);
             }
         }
 
         /// <summary>
         /// Gets the current user for the current HttpContext.
         /// </summary>
-        /// <remarks>
-        /// This should always return HttpContext.Current.User. That value and Thread.CurrentPrincipal can't be
-        /// guaranteed to always be the same value, as they can be set independently from one another. Looking
-        /// through the .Net source, the System.Web.Security.Roles class also returns the HttpContext's User.
-        /// </remarks>
         public static System.Security.Principal.IPrincipal CurrentUser
         {
             get
             {
-                return HttpContext.Current.User;
+                var context = CurrentHttpContext;
+                if (context?.User != null)
+                {
+                    return context.User;
+                }
+
+                // Return an unauthenticated principal if no context
+                var identity = new CustomIdentity(string.Empty, false);
+                return new CustomPrincipal(identity);
             }
         }
 
@@ -285,9 +261,8 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
-        /// Returns an IEnumerable of Rights that belong to the ecurrent user.
+        /// Returns an IEnumerable of Rights that belong to the current user.
         /// </summary>
-        /// <returns></returns>
         public static IEnumerable<Right> CurrentUserRights()
         {
             return Right.GetRights(Security.GetCurrentUserRoles());
@@ -301,11 +276,6 @@ namespace BlogEngine.Core
         /// If the current user does not have the requested right, either redirects to the login page,
         /// or throws a SecurityException.
         /// </summary>
-        /// <param name="right"></param>
-        /// <param name="redirectToLoginPage">
-        /// If true and user does not have rights, redirects to the login page.
-        /// If false and user does not have rights, throws a security exception.
-        /// </param>
         public static void DemandUserHasRight(Rights right, bool redirectToLoginPage)
         {
             DemandUserHasRight(AuthorizationCheck.HasAny, redirectToLoginPage, new[] { right });
@@ -315,12 +285,6 @@ namespace BlogEngine.Core
         /// If the current user does not have the requested rights, either redirects to the login page,
         /// or throws a SecurityException.
         /// </summary>
-        /// <param name="authCheck"></param>
-        /// <param name="redirectIfUnauthorized">
-        /// If true and user does not have rights, redirects to the login page or homepage.
-        /// If false and user does not have rights, throws a security exception.
-        /// </param>
-        /// <param name="rights"></param>
         public static void DemandUserHasRight(AuthorizationCheck authCheck, bool redirectIfUnauthorized, params Rights[] rights)
         {
             if (!IsAuthorizedTo(authCheck, rights))
@@ -341,28 +305,30 @@ namespace BlogEngine.Core
         /// </summary>
         public static void RedirectForUnauthorizedRequest()
         {
-            HttpContext context = HttpContext.Current;
-            Uri referrer = context.Request.UrlReferrer;
-            bool isFromLoginPage = referrer != null && referrer.LocalPath.IndexOf("/Account/login.aspx", StringComparison.OrdinalIgnoreCase) != -1;
+            var context = CurrentHttpContext;
+            if (context == null) return;
+
+            var referrer = context.Request.Headers["Referer"].ToString();
+            bool isFromLoginPage = !string.IsNullOrEmpty(referrer) &&
+                referrer.IndexOf("/Account/login", StringComparison.OrdinalIgnoreCase) != -1;
 
             // If the user was just redirected from the login page to the current page,
-            // we will then redirect them to the homepage, rather than back to the
-            // login page to prevent confusion.
+            // redirect them to the homepage to prevent confusion.
             if (isFromLoginPage)
             {
                 context.Response.Redirect(Utils.RelativeWebRoot);
             }
             else
             {
-                context.Response.Redirect(string.Format("{0}Account/login.aspx?ReturnURL={1}", Utils.RelativeWebRoot, HttpUtility.UrlPathEncode(context.Request.RawUrl)));
+                context.Response.Redirect(string.Format("{0}Account/login?ReturnURL={1}",
+                    Utils.RelativeWebRoot,
+                    Uri.EscapeDataString(context.Request.Path + context.Request.QueryString)));
             }
         }
 
         /// <summary>
         /// Returns whether or not the current user has the passed in Right.
         /// </summary>
-        /// <param name="right"></param>
-        /// <returns></returns>
         public static bool IsAuthorizedTo(Rights right)
         {
             return Right.HasRight(right, Security.GetCurrentUserRoles());
@@ -371,16 +337,10 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns whether the current user passes authorization on the rights based on the given AuthorizationCheck.
         /// </summary>
-        /// <param name="authCheck"></param>
-        /// <param name="rights"></param>
-        /// <returns></returns>
         public static bool IsAuthorizedTo(AuthorizationCheck authCheck, IEnumerable<Rights> rights)
         {
             if (!rights.Any())
             {
-                // Always return false for this. If there's a mistake where authorization
-                // is being checked for on an empty collection, we don't want to return 
-                // true.
                 return false;
             }
             else
@@ -417,15 +377,12 @@ namespace BlogEngine.Core
                 {
                     throw new NotSupportedException();
                 }
-
             }
         }
 
         /// <summary>
         /// Returns whether a role is a System role.
         /// </summary>
-        /// <param name="roleName">The name of the role.</param>
-        /// <returns>true if the roleName is a system role, otherwiser false</returns>
         public static bool IsSystemRole(string roleName)
         {
             if (roleName.Equals(BlogConfig.AdministratorRole, StringComparison.OrdinalIgnoreCase) ||
@@ -441,9 +398,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns whether the current user passes authorization on the rights based on the given AuthorizationCheck.
         /// </summary>
-        /// <param name="authCheck"></param>
-        /// <param name="rights"></param>
-        /// <returns></returns>
         public static bool IsAuthorizedTo(AuthorizationCheck authCheck, params Rights[] rights)
         {
             return IsAuthorizedTo(authCheck, rights.ToList());
@@ -456,28 +410,36 @@ namespace BlogEngine.Core
         /// <summary>
         /// Helper method that returns the correct roles based on authentication.
         /// </summary>
-        /// <returns></returns>
         public static string[] GetCurrentUserRoles()
         {
             if (!IsAuthenticated)
             {
-                // This needs to be recreated each time, because it's possible 
-                // that the array can fall into the wrong hands and then someone
-                // could alter it. 
                 return new[] { BlogConfig.AnonymousRole };
             }
             else
             {
-                return Roles.GetRolesForUser();
+                if (_roleService != null)
+                {
+                    return _roleService.GetRolesForUser(CurrentUser.Identity.Name);
+                }
+
+                // Fall back to claims-based roles
+                var claimsPrincipal = CurrentUser as ClaimsPrincipal;
+                if (claimsPrincipal != null)
+                {
+                    return claimsPrincipal.Claims
+                        .Where(c => c.Type == ClaimTypes.Role)
+                        .Select(c => c.Value)
+                        .ToArray();
+                }
+
+                return new[] { BlogConfig.AnonymousRole };
             }
         }
 
         /// <summary>
         /// Impersonates a user for the duration of the HTTP request.
         /// </summary>
-        /// <param name="username">The username</param>
-        /// <param name="password">The password</param>
-        /// <returns>True if the credentials are correct and impersonation succeeds</returns>
         public static bool ImpersonateUser(string username, string password)
         {
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
@@ -489,7 +451,11 @@ namespace BlogEngine.Core
             CustomPrincipal principal = new CustomPrincipal(identity);
 
             // Make the custom principal be the user for the rest of this request.
-            HttpContext.Current.User = principal;
+            var context = CurrentHttpContext;
+            if (context != null)
+            {
+                context.User = principal;
+            }
 
             return true;
         }
@@ -513,5 +479,4 @@ namespace BlogEngine.Core
         /// </summary>
         HasAll
     }
-
 }

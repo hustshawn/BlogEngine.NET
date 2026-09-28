@@ -1,3 +1,4 @@
+using System.Linq.Dynamic.Core;
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -82,7 +83,7 @@ namespace BlogEngine.Core.Data
                     TrashItem t2 = new TrashItem
                     {
                         Id = p.Id,
-                        Title = System.Web.HttpContext.Current.Server.HtmlEncode(p.Title),
+                        Title = System.Net.WebUtility.HtmlEncode(p.Title),
                         RelativeUrl = p.RelativeLink,
                         ObjectType = "Post",
                         DateCreated = p.DateCreated.ToString("MM/dd/yyyy HH:mm")
@@ -105,7 +106,7 @@ namespace BlogEngine.Core.Data
                     TrashItem t3 = new TrashItem
                     {
                         Id = p.Id,
-                        Title = System.Web.HttpContext.Current.Server.HtmlEncode(p.Title),
+                        Title = System.Net.WebUtility.HtmlEncode(p.Title),
                         RelativeUrl = p.RelativeLink,
                         ObjectType = "Page",
                         DateCreated = p.DateCreated.ToString("MM/dd/yyyy HH:mm")
@@ -251,7 +252,7 @@ namespace BlogEngine.Core.Data
             if (!Security.IsAuthorizedTo(Rights.ViewDashboard))
                 throw new UnauthorizedAccessException();
 
-            string fileLocation = System.Web.Hosting.HostingEnvironment.MapPath(System.IO.Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
+            string fileLocation = BlogConfig.MapPath(System.IO.Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
             if (System.IO.File.Exists(fileLocation))
             {
                 System.IO.StreamWriter sw = System.IO.File.CreateText(fileLocation);

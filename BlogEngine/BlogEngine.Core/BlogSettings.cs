@@ -1,15 +1,13 @@
+using Microsoft.AspNetCore.Http;
 ﻿namespace BlogEngine.Core
 {
     using System;
     using System.Collections.Generic;
     using System.Collections.Specialized;
     using System.Globalization;
-    using System.Web;
 
     using BlogEngine.Core.Providers;
-    using System.Web.Hosting;
     using System.IO;
-    using System.Web.Caching;
 
     /// <summary>
     /// Represents the configured settings for the blog engine.
@@ -96,6 +94,10 @@
         /// <value>A singleton instance of the <see cref = "BlogSettings" /> class.</value>
         /// <remarks>
         /// </remarks>
+        /// <summary>Gets the storage location for the current blog instance.</summary>
+        public string StorageLocation => Blog.CurrentInstance?.StorageLocation ?? BlogConfig.StorageLocation;
+
+
         public static BlogSettings Instance
         {
             get
@@ -148,7 +150,7 @@
         /// </summary>
         public static bool IsThemeRazor(string themeName)
         {
-            string path = HostingEnvironment.MapPath($"~/Custom/Themes/{themeName}/site.cshtml");
+            string path = BlogConfig.MapPath($"~/Custom/Themes/{themeName}/site.cshtml");
             return File.Exists(path);
         }
 
@@ -414,19 +416,19 @@
         {
             get
             {
-                var context = HttpContext.Current;
+                var context = Blog._httpContextAccessor?.HttpContext;
                 if (context != null)
                 {
                     var request = context.Request;
-                    if (request.QueryString["theme"] != null)
+                    if (request.Query["theme"].ToString() != null)
                     {
-                        return request.QueryString["theme"].SanitizePath();
+                        return request.Query["theme"].ToString().SanitizePath();
                     }
 
-                    var cookie = request.Cookies[this.ThemeCookieName];
-                    if (cookie != null)
+                    request.Cookies.TryGetValue(this.ThemeCookieName, out var cookieVal);
+                    if (cookieVal != null)
                     {
-                        return cookie.Value.SanitizePath();
+                        return cookieVal.SanitizePath();
                     }
 
                     if (Utils.ShouldForceMainTheme(request))
@@ -1226,14 +1228,11 @@
 
                 if (Blog.CurrentInstance.Cache[cacheKey] == null)
                 {
-                    Blog.CurrentInstance.Cache.Add(
+                    Blog.CurrentInstance.Cache.Insert(
                         cacheKey,
                         GetCustomFrontPage(),
-                        null,
-                        Cache.NoAbsoluteExpiration,
-                        new TimeSpan(0, 15, 0),
-                        CacheItemPriority.Low,
-                        null);
+                        DateTime.MaxValue,
+                        new TimeSpan(0, 15, 0));
                 }
                 return Blog.CurrentInstance.Cache[cacheKey].ToString();
             }
@@ -1242,8 +1241,8 @@
         {
             if (Blog.CurrentInstance.IsPrimary)
             {
-                string razorPath = HostingEnvironment.MapPath("~/FrontPage.cshtml");
-                string aspxPath = HostingEnvironment.MapPath("~/FrontPage.aspx");
+                string razorPath = BlogConfig.MapPath("~/FrontPage.cshtml");
+                string aspxPath = BlogConfig.MapPath("~/FrontPage.aspx");
 
                 if (File.Exists(razorPath)) return "FrontPage.cshtml";
                 if (File.Exists(aspxPath)) return "FrontPage.aspx";

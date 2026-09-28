@@ -1,12 +1,15 @@
 ﻿using System;
 using System.Net;
+using System.Net.Http;
 using System.Security;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace BlogEngine.Core
 {
     /// <summary>
     /// Class used to download files from a website address.
+    /// Converted from HttpWebRequest to static HttpClient with SocketsHttpHandler.
     /// </summary>
     /// <remarks>
     /// 
@@ -14,21 +17,27 @@ namespace BlogEngine.Core
     /// outside users. There's various areas in BlogEngine where an attacker could supply an external url to the server
     /// and tie up resources.
     /// 
-    /// For example, the JavascriptHandler accepts off-server addresses as a path. An attacker could, for instance, pass the url
-    /// to a file that's a few gigs in size, causing the server to get out-of-memory exceptions or some other errors. An attacker
-    /// could also use this same method to use one BlogEngine instance to hammer another site by, again, passing an off-server
-    /// address of the victims site to the JavascriptHandler. 
-    /// 
     /// RemoteFile makes use of two BlogSettings properties: AllowServerToDownloadRemoteFiles and RemoteFileDownloadTimeout.
     /// 
     /// This class will not throw an exception if the Uri supplied points to a resource local to the running BlogEngine instance.
     /// 
-    /// There shouldn't be any security issues there, as the internal WebRequest instance is still calling it remotely. 
-    /// Any local files that shouldn't be accessed by this won't be allowed by the remote call.
-    /// 
     /// </remarks>
     internal sealed class RemoteFile
     {
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+        })
+        {
+            DefaultRequestHeaders =
+            {
+                { "Accept-Encoding", "gzip" },
+                { "Accept-Language", "en-us" },
+                { "User-Agent", "Mozilla / 5.0(Windows NT 6.2; WOW64; rv: 40.0) Gecko / 20100101 Firefox / 40.0" }
+            }
+        };
+
         /// <summary>
         /// Creates a new RemoteFile instance that can be used to download files from another server.
         /// </summary>
@@ -50,72 +59,51 @@ namespace BlogEngine.Core
         #region "Public Methods"
 
         /// <summary>
-        /// Returns the WebResponse used to download this file.
+        /// Returns the HttpResponseMessage used to download this file.
         /// </summary>
-        /// <returns></returns>
+        /// <returns>An HttpResponseMessage, or null on failure.</returns>
         /// <remarks>
-        /// 
-        /// This method is meant for outside users who need specific access to the WebResponse this class
-        /// generates. They're responsible for disposing of it.
-        /// 
+        /// This method is meant for outside users who need specific access to the response.
+        /// They're responsible for disposing of it.
         /// </remarks>
-        public WebResponse GetWebResponse()
+        public HttpResponseMessage GetWebResponse()
         {
-            WebResponse response;
+            HttpResponseMessage response;
             try
             {
-                response = GetWebRequest().GetResponse();
+                CheckCanDownload();
+
+                using var cts = CreateTimeoutCts();
+                var request = new HttpRequestMessage(HttpMethod.Get, this.Uri);
+                response = _httpClient.SendAsync(request, cts?.Token ?? default).GetAwaiter().GetResult();
             }
             catch (Exception)
             {
                 return null;
             }
 
-            long contentLength = response.ContentLength;
-            
-            // WebResponse.ContentLength doesn't always know the value, it returns -1 in this case.
-            if (contentLength == -1) {
-
-
-                // Response headers may still have the Content-Length inside of it.
-                string headerContentLength = response.Headers["Content-Length"];
-
-                if (!String.IsNullOrEmpty(headerContentLength))
-                {
-                    contentLength = long.Parse(headerContentLength);
-                }
-
-            }
+            long contentLength = response.Content.Headers.ContentLength ?? -1;
 
             // -1 means an unknown ContentLength was found
-            // Numbers any lower than that will always indicate that someone tampered with
-            // the Content-Length header.
             if (contentLength <= -1)
             {
-                response.Close();
-                //Utils.Log("An attempt to download a remote file has been halted due to unknown content length: {0}", Uri);
+                response.Dispose();
                 return null;
             }
             else if ((BlogSettings.Instance.RemoteMaxFileSize > 0) && (contentLength > BlogSettings.Instance.RemoteMaxFileSize))
             {
-                response.Close();
+                response.Dispose();
                 Utils.Log("An attempt to download a remote file has been halted because the file is larger than allowed.");
                 return null;
             }
-           
-          
+
             return response;
         }
-
-        private WebRequest _webRequest;
 
         /// <summary>
         /// Returns the remote file as a string.
         /// </summary>
-        /// <returns></returns>
-        /// <remarks>
-        /// This returns the resulting stream as a string as passed through a StreamReader.
-        /// </remarks>
+        /// <returns>The file content as a string.</returns>
         public string GetFileAsString()
         {
             using (var response = this.GetWebResponse())
@@ -123,11 +111,21 @@ namespace BlogEngine.Core
                 if (response == null)
                     return string.Empty;
 
-                using (var reader = new StreamReader(response.GetResponseStream()))
-                {
-                    return reader.ReadToEnd();
-                }
+                return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
             }
+        }
+
+        /// <summary>
+        /// Returns the remote file as a string asynchronously.
+        /// </summary>
+        /// <returns>The file content as a string.</returns>
+        public async Task<string> GetFileAsStringAsync()
+        {
+            using var response = GetWebResponse();
+            if (response == null)
+                return string.Empty;
+
+            return await response.Content.ReadAsStringAsync();
         }
 
         #endregion
@@ -145,41 +143,17 @@ namespace BlogEngine.Core
             }
         }
 
-        /// <summary>
-        /// Creates the WebRequest object used internally for this RemoteFile instance.
-        /// </summary>
-        /// <returns>
-        /// 
-        /// The WebRequest should not be passed outside of this instance, as it will allow tampering. Anyone
-        /// that needs more fine control over the downloading process should probably be using the WebRequest
-        /// class on its own.
-        /// 
-        /// </returns>
-        private WebRequest GetWebRequest()
+        private System.Threading.CancellationTokenSource CreateTimeoutCts()
         {
-            this.CheckCanDownload();
-
-            if (this._webRequest == null)
+            if (this.TimeoutLength > 0)
             {
-                var request = (HttpWebRequest)WebRequest.Create(this.Uri);
-                request.Headers["Accept-Encoding"] = "gzip";
-                request.Headers["Accept-Language"] = "en-us";
-                request.UserAgent = "Mozilla / 5.0(Windows NT 6.2; WOW64; rv: 40.0) Gecko / 20100101 Firefox / 40.0";
-                request.Credentials = CredentialCache.DefaultNetworkCredentials;
-                request.AutomaticDecompression = DecompressionMethods.GZip;
-
-                if (this.TimeoutLength > 0)
-                {
-                    request.Timeout = this.TimeoutLength;
-                }
-                this._webRequest = request;
+                var cts = new System.Threading.CancellationTokenSource();
+                cts.CancelAfter(this.TimeoutLength);
+                return cts;
             }
-
-            return this._webRequest;
-
+            return null;
         }
 
-      
          #endregion
 
 
@@ -192,11 +166,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets whether this RemoteFile instance is ignoring remote download rules set in the current BlogSettings instance.
         /// </summary>
-        /// <remarks>
-        /// 
-        /// This should only be set to true if the supplied url is a verified resource. Use at your own risk.
-        /// 
-        /// </remarks>
         public bool IgnoreRemoteDownloadSettings
         {
             get
@@ -211,11 +180,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets whether the Uri property is pointed at a resource local to the running BlogEngine instance.
         /// </summary>
-        /// <remarks>
-        /// This property is to determine whether the remote path supplied is pointing to a local file instance.
-        /// This check is required because when a user has CompressWebResource set to true, it sends js.axd
-        /// the full site path as its query parameter.
-        /// </remarks>
         public bool UriPointsToLocalResource
         {
             get
@@ -247,13 +211,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets or sets the length of time, in milliseconds, that a remote file download attempt can last before timing out.
         /// </summary>
-        /// <remarks>
-        /// This value can only be set if the instance is supposed to ignore the remote download settings set
-        /// in the current BlogSettings instance. 
-        /// 
-        /// Set this value to 0 if there should be no timeout.
-        /// 
-        /// </remarks>
         public int TimeoutLength
         {
             get

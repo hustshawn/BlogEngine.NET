@@ -1,7 +1,6 @@
 ﻿namespace BlogEngine.Core.DataStore
 {
     using System;
-    using System.Configuration;
     using System.IO;
     using System.Xml;
     using System.Xml.Serialization;
@@ -14,16 +13,6 @@
     /// </summary>
     public class XmlDocumentBehavior : ISettingsBehavior
     {
-        #region Constants and Fields
-
-        /// <summary>
-        ///     The _section.
-        /// </summary>
-        private static readonly BlogProviderSection Section =
-            (BlogProviderSection)ConfigurationManager.GetSection("BlogEngine/blogProvider");
-
-        #endregion
-
         #region Implemented Interfaces
 
         #region ISettingsBehavior
@@ -31,21 +20,14 @@
         /// <summary>
         /// Gets settings from data store
         /// </summary>
-        /// <param name="extensionType">
-        /// Extension Type
-        /// </param>
-        /// <param name="extensionId">
-        /// Extension ID
-        /// </param>
-        /// <returns>
-        /// Settings as Stream
-        /// </returns>
         public object GetSettings(ExtensionType extensionType, string extensionId)
         {
             WidgetData widgetData;
             var xml = new XmlDocument();
 
-            if (Section.DefaultProvider == "XmlBlogProvider")
+            var isXmlProvider = BlogService.Provider is XmlBlogProvider;
+
+            if (isXmlProvider)
             {
                 var stm = (Stream)BlogService.LoadFromDataStore(extensionType, extensionId);
                 if (stm != null)
@@ -79,23 +61,13 @@
         /// <summary>
         /// Saves XML document to data storage
         /// </summary>
-        /// <param name="extensionType">
-        /// Extension Type
-        /// </param>
-        /// <param name="extensionId">
-        /// Extension ID
-        /// </param>
-        /// <param name="settings">
-        /// Settings as XML document
-        /// </param>
-        /// <returns>
-        /// True if saved
-        /// </returns>
         public bool SaveSettings(ExtensionType extensionType, string extensionId, object settings)
         {
             var xml = (XmlDocument)settings;
 
-            if (Section.DefaultProvider == "XmlBlogProvider")
+            var isXmlProvider = BlogService.Provider is XmlBlogProvider;
+
+            if (isXmlProvider)
             {
                 BlogService.SaveToDataStore(extensionType, extensionId, xml);
             }

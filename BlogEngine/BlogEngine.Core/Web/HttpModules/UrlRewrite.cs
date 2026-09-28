@@ -1,55 +1,37 @@
 ﻿namespace BlogEngine.Core.Web.HttpModules
 {
     using System;
-    using System.Text.RegularExpressions;
-    using System.Web;
     using System.IO;
+    using System.Text.RegularExpressions;
+    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Http;
     using BlogEngine.Core.Web;
 
     /// <summary>
     /// Handles pretty URL's and redirects them to the permalinks.
+    /// Converted from IHttpModule to ASP.NET Core middleware.
     /// </summary>
-    public class UrlRewrite : IHttpModule
+    public class UrlRewriteMiddleware
     {
-        #region Implemented Interfaces
-
-        #region IHttpModule
+        private readonly RequestDelegate _next;
 
         /// <summary>
-        /// Disposes of the resources (other than memory) used by the module that implements <see cref="T:System.Web.IHttpModule"/>.
+        /// Initializes a new instance of the <see cref="UrlRewriteMiddleware"/> class.
         /// </summary>
-        public void Dispose()
+        /// <param name="next">The next middleware in the pipeline.</param>
+        public UrlRewriteMiddleware(RequestDelegate next)
         {
-            // Nothing to dispose
+            _next = next;
         }
 
         /// <summary>
-        /// Initializes a module and prepares it to handle requests.
+        /// Processes the request and applies URL rewriting rules.
         /// </summary>
-        /// <param name="context">An <see cref="T:System.Web.HttpApplication"/> that provides access to the methods, properties, and events common to all application objects within an ASP.NET application</param>
-        public void Init(HttpApplication context)
+        /// <param name="context">The HTTP context.</param>
+        public async Task InvokeAsync(HttpContext context)
         {
-            context.BeginRequest += ContextBeginRequest;
-        }
-
-        #endregion
-
-        #endregion
-
-        /// <summary>
-        /// Handles the BeginRequest event of the context control.
-        /// </summary>
-        /// <param name="sender">
-        /// The source of the event.
-        /// </param>
-        /// <param name="e">
-        /// The <see cref="System.EventArgs"/> instance containing the event data.
-        /// </param>
-        private static void ContextBeginRequest(object sender, EventArgs e)
-        {
-            var context = ((HttpApplication)sender).Context;
-            var path = context.Request.Path.ToUpperInvariant();
-            var url = UrlRules.GetUrlWithQueryString(context).ToUpperInvariant();
+            var path = context.Request.Path.Value?.ToUpperInvariant() ?? string.Empty;
+            var url = GetUrlWithQueryString(context).ToUpperInvariant();
 
             path = path.Replace(".ASPX.CS", string.Empty);
             url = url.Replace(".ASPX.CS", string.Empty);
@@ -57,12 +39,13 @@
             // skip url rewrite for web api calls
             if (url.ToLower().StartsWith($"{Utils.ApplicationRelativeWebRoot}api/"))
             {
-                context.RewritePath(UrlRules.GetUrlWithQueryString(context));
+                context.Request.Path = new PathString(GetUrlWithQueryString(context));
+                await _next(context);
                 return;
             }
 
             // to prevent XSS
-            url = HttpUtility.HtmlEncode(url);
+            url = System.Net.WebUtility.HtmlEncode(url);
 
             Blog blogInstance = Blog.CurrentInstance;
 
@@ -73,7 +56,8 @@
                 if (url.Contains("/SCRIPTS/") || url.Contains("/STYLES/"))
                 {
                     var npath = url.Replace(Blog.CurrentInstance.RelativeWebRoot.ToUpper(), Utils.ApplicationRelativeWebRoot);
-                    context.RewritePath(npath);
+                    context.Request.Path = new PathString(npath);
+                    await _next(context);
                     return;
                 }
             }
@@ -84,7 +68,7 @@
                 if (!string.IsNullOrEmpty(BlogSettings.CustomFrontPage))
                 {
                     url = Utils.RelativeOrAbsoluteWebRoot + BlogSettings.CustomFrontPage;
-                    context.RewritePath(url, false);
+                    context.Request.Path = new PathString(url);
                 }
                 else
                 {
@@ -99,6 +83,18 @@
             RedirectToRemoveFileExtension(context, blogInstance, url, path);
 
             Rewrite(context, blogInstance, url, path);
+
+            await _next(context);
+        }
+
+        /// <summary>
+        /// Gets the URL with query string from the current request.
+        /// </summary>
+        private static string GetUrlWithQueryString(HttpContext context)
+        {
+            var path = context.Request.Path.Value ?? string.Empty;
+            var qs = context.Request.QueryString.Value ?? string.Empty;
+            return path + qs;
         }
 
         /// <summary>
@@ -114,7 +110,7 @@
             if (!BlogSettings.Instance.RemoveExtensionsFromUrls)
                 return;
 
-            string rawUrl = context.Request.RawUrl;
+            string rawUrl = context.Request.Path.Value + context.Request.QueryString.Value;
             int queryPos = rawUrl.IndexOf("?");
             if (queryPos != -1)  // remove any querystring for the purpose of determining if the .ASPX extension is present.
                 rawUrl = rawUrl.Substring(0, queryPos);
@@ -130,24 +126,23 @@
                 url.StartsWith(blogInstance.RelativeWebRoot + "contact.aspx", StringComparison.OrdinalIgnoreCase) ||
                 url.StartsWith(blogInstance.RelativeWebRoot + "search.aspx", StringComparison.OrdinalIgnoreCase) ||
                 url.StartsWith(blogInstance.RelativeWebRoot + "archive.aspx", StringComparison.OrdinalIgnoreCase))
-            { 
-                string redirectUrl = context.Request.RawUrl;
+            {
+                string redirectUrl = context.Request.Path.Value + context.Request.QueryString.Value;
                 int firstInstance = redirectUrl.IndexOf(".aspx", StringComparison.OrdinalIgnoreCase);
                 if (firstInstance != -1)
                 {
                     redirectUrl = string.Format("{0}{1}", redirectUrl.Substring(0, firstInstance), redirectUrl.Substring(firstInstance + ".aspx".Length)).Trim();
-                    context.Response.RedirectPermanent(redirectUrl);
-                    context.Response.End();
+                    context.Response.StatusCode = 301;
+                    context.Response.Headers["Location"] = redirectUrl;
+                    // Note: In middleware, we don't call Response.End(); instead, we return without calling _next
                 }
             }
         }
 
         private static void Rewrite(HttpContext context, Blog blogInstance, string url, string path)
         {
-            var urlContainsFileExtension = BlogSettings.Instance.RemoveExtensionsFromUrls ? true : 
+            var urlContainsFileExtension = BlogSettings.Instance.RemoveExtensionsFromUrls ? true :
                 url.IndexOf(BlogConfig.FileExtension, StringComparison.OrdinalIgnoreCase) != -1;
-
-            // Utils.Log(string.Format("Rewriting :: {0} :: {1}", url, path));
 
             if (url.Contains("/FILES/") && url.Contains(".AXDX"))
             {
@@ -173,8 +168,7 @@
             {
                 if (url.Contains(".PNG") || url.Contains(".JPG") || url.Contains(".GIF"))
                 {
-                    // do not rewrite path to images, for example
-                    // leave alone /widgets/calendar/screenshot.png
+                    // do not rewrite path to images
                     return;
                 }
                 UrlRules.RewriteCalendar(context, url);
@@ -205,18 +199,14 @@
             }
             else
             {
-                // Utils.Log(string.Format("Rewriting ELSE :: {0} :: {1}", url, path));
-
                 // If this is blog instance that is in a virtual sub-folder, we will
-                // need to rewrite the path for URL to a physical file.  This includes
-                // requests such as the homepage (default.aspx), contact.aspx, archive.aspx,
-                // any of the admin pages, etc, etc.
+                // need to rewrite the path for URL to a physical file.
                 if (blogInstance.IsSubfolderOfApplicationWebRoot &&
-                    VirtualPathUtility.AppendTrailingSlash(path).IndexOf(blogInstance.RelativeWebRoot, StringComparison.OrdinalIgnoreCase) != -1)
+                    (path + "/").IndexOf(blogInstance.RelativeWebRoot, StringComparison.OrdinalIgnoreCase) != -1)
                 {
                     bool skipRewrite = false;
                     string rewriteQs = string.Empty;
-                    string rewriteUrl = UrlRules.GetUrlWithQueryString(context);
+                    string rewriteUrl = GetUrlWithQueryString(context);
 
                     int qsStart = rewriteUrl.IndexOf("?");
                     if (qsStart != -1)  // remove querystring.
@@ -225,9 +215,6 @@
                         rewriteUrl = rewriteUrl.Substring(0, qsStart);
                     }
 
-                    // Want to see if a specific page/file is being requested (something with a . (dot) in it).
-                    // Because Utils.ApplicationRelativeWebRoot may contain a . (dot) in it, pathAfterAppWebRoot
-                    // tells us if the actual path (after the AppWebRoot) contains a dot.
                     string pathAfterAppWebRoot = rewriteUrl.Substring(Utils.ApplicationRelativeWebRoot.Length);
 
                     if (!pathAfterAppWebRoot.Contains("."))
@@ -251,7 +238,11 @@
                         // remove the subfolder portion.  so /subfolder/ becomes /.
                         rewriteUrl = new Regex(Regex.Escape(blogInstance.RelativeWebRoot), RegexOptions.IgnoreCase).Replace(rewriteUrl, Utils.ApplicationRelativeWebRoot);
 
-                        context.RewritePath(rewriteUrl + rewriteQs, false);
+                        context.Request.Path = new PathString(rewriteUrl);
+                        if (!string.IsNullOrEmpty(rewriteQs))
+                        {
+                            context.Request.QueryString = new QueryString(rewriteQs);
+                        }
                     }
 
                     return;

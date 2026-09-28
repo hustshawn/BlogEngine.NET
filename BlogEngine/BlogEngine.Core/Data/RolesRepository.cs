@@ -3,7 +3,6 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web.Security;
 using System.Reflection;
 
 namespace BlogEngine.Core.Data
@@ -31,7 +30,7 @@ namespace BlogEngine.Core.Data
             if (string.IsNullOrEmpty(filter)) filter = "1 == 1";
             if (string.IsNullOrEmpty(order)) order = "RoleName";
 
-            roles.AddRange(System.Web.Security.Roles.GetAllRoles().Select(r => new RoleItem 
+            roles.AddRange(Roles.GetAllRoles().Select(r => new RoleItem 
                 { RoleName = r, IsSystemRole = Security.IsSystemRole(r) }));
 
             roles.Sort((r1, r2) => string.Compare(r1.RoleName, r2.RoleName));
@@ -50,7 +49,7 @@ namespace BlogEngine.Core.Data
                 throw new System.UnauthorizedAccessException();
 
             var roles = new List<Data.Models.RoleItem>();
-            roles.AddRange(System.Web.Security.Roles.GetAllRoles().Select(r => new Data.Models.RoleItem { RoleName = r, IsSystemRole = Security.IsSystemRole(r) }));
+            roles.AddRange(Roles.GetAllRoles().Select(r => new Data.Models.RoleItem { RoleName = r, IsSystemRole = Security.IsSystemRole(r) }));
 
             return roles.FirstOrDefault(r => r.RoleName.ToLower() == id.ToLower());
         }
@@ -208,7 +207,7 @@ namespace BlogEngine.Core.Data
 
             var roles = new List<Data.Models.RoleItem>();
 
-            roles.AddRange(System.Web.Security.Roles.GetAllRoles()
+            roles.AddRange(Roles.GetAllRoles()
                 .Where(r => r != "Anonymous")
                 .Select(r => new Data.Models.RoleItem { 
                     RoleName = r, 

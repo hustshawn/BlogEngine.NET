@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web.Hosting;
 using System.IO;
 
 namespace BlogEngine.Core.Providers
@@ -12,50 +11,34 @@ namespace BlogEngine.Core.Providers
     public partial class UNCFileSystemProvider : BlogFileSystemProvider
     {
         /// <summary>
-        /// unc path to store files. This will be the base path for all blogs.
-        /// Each blog will then seperate into seperate paths built upon the UNC path by the blog name.
-        /// ie. [unc]/primary, [unc]/template
+        /// unc path to store files.
         /// </summary>
         private string uncPath;
 
         /// <summary>
-        /// init
+        /// Default constructor using default storage location.
         /// </summary>
-        /// <param name="name"></param>
-        /// <param name="config"></param>
-        public override void Initialize(string name, System.Collections.Specialized.NameValueCollection config)
+        public UNCFileSystemProvider()
         {
-            if (config == null)
-            {
-                throw new ArgumentNullException(nameof(config));
-            }
+            this.uncPath = BlogConfig.MapPath(Blog.CurrentInstance.StorageLocation);
+        }
 
-            if (String.IsNullOrEmpty(name))
-            {
-                name = "UNCBlogProvider";
-            }
-            base.Initialize(name, config);
-            if (String.IsNullOrEmpty(config["description"]))
-            {
-                config.Remove("description");
-                config.Add("description", "Generic UNC File Path Blog Provider");
-            }
+        /// <summary>
+        /// Constructor accepting a specific UNC path.
+        /// </summary>
+        /// <param name="uncPath">The UNC path for file storage.</param>
+        public UNCFileSystemProvider(string uncPath)
+        {
+            if (string.IsNullOrEmpty(uncPath))
+                throw new ArgumentNullException(nameof(uncPath));
 
-            if (config["storageVariable"] == null)
-            {
-                // default to BlogEngine XML provider paths
-                config["storageVariable"] = HostingEnvironment.MapPath(Blog.CurrentInstance.StorageLocation);
-            }
-            else
-            {
-                if(config["storageVariable"].EndsWith(@"\"))
-                    config["storageVariable"] =  config["storageVariable"].Substring(0,  config["storageVariable"].Length - 1);
-                if(!System.IO.Directory.Exists(config["storageVariable"]))
-                    throw new ArgumentException("storageVariable (as unc path) does not exist. or does not have read\\write permissions");
-            }
+            if (uncPath.EndsWith(@"\"))
+                uncPath = uncPath.Substring(0, uncPath.Length - 1);
 
-            this.uncPath = config["storageVariable"];
-            config.Remove("storageVariable");
+            if (!System.IO.Directory.Exists(uncPath))
+                throw new ArgumentException("storageVariable (as unc path) does not exist. or does not have read\\write permissions");
+
+            this.uncPath = uncPath;
         }
 
 
@@ -315,7 +298,7 @@ namespace BlogEngine.Core.Providers
         /// </summary>
         /// <param name="BaseFile">the baseFile object to fill</param>
         /// <returns>the original file object</returns>
-        internal override FileSystem.File GetFileContents(FileSystem.File BaseFile)
+        public override FileSystem.File GetFileContents(FileSystem.File BaseFile)
         {
             var aPath = VirtualPathToUNCPath(BaseFile.FullPath);
             BaseFile.FileContents = FileToByteArray(aPath);

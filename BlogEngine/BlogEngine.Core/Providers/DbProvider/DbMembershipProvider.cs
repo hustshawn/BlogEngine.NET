@@ -1,22 +1,16 @@
 ﻿namespace BlogEngine.Core.Providers
 {
     using System;
-    using System.Collections.Specialized;
-    using System.Configuration;
-    using System.Configuration.Provider;
-    using System.Web.Security;
+    using BlogEngine.Core.Services.Security;
+    using Microsoft.Extensions.Configuration;
 
     /// <summary>
-    /// Generic Db Membership Provider
+    /// Generic Db Membership Service.
+    /// Replaces the legacy DbMembershipProvider (MembershipProvider).
     /// </summary>
-    public class DbMembershipProvider : MembershipProvider
+    public class DbMembershipService : IMembershipService
     {
         #region Constants and Fields
-
-        /// <summary>
-        /// The application name.
-        /// </summary>
-        private string applicationName;
 
         /// <summary>
         /// The conn string name.
@@ -31,142 +25,62 @@
         /// <summary>
         /// The password format.
         /// </summary>
-        private MembershipPasswordFormat passwordFormat;
+        private PasswordFormat passwordFormat;
 
         /// <summary>
         /// The table prefix.
         /// </summary>
         private string tablePrefix;
 
+        /// <summary>
+        /// The provider name for the database connection.
+        /// </summary>
+        private string providerName;
+
+        /// <summary>
+        /// The connection string.
+        /// </summary>
+        private string connectionString;
+
+        #endregion
+
+        #region Constructor
+
+        /// <summary>
+        /// Creates a new DbMembershipService with the specified configuration.
+        /// </summary>
+        /// <param name="configuration">The application configuration.</param>
+        /// <param name="connectionStringName">Name of the connection string. Defaults to "BlogEngine".</param>
+        /// <param name="tablePrefix">Table prefix. Defaults to "be_".</param>
+        /// <param name="parmPrefix">Parameter prefix. Defaults to "@".</param>
+        /// <param name="passwordFormat">Password storage format. Defaults to Hashed.</param>
+        public DbMembershipService(
+            IConfiguration configuration,
+            string connectionStringName = "BlogEngine",
+            string tablePrefix = "be_",
+            string parmPrefix = "@",
+            PasswordFormat passwordFormat = PasswordFormat.Hashed)
+        {
+            this.connStringName = connectionStringName;
+            this.tablePrefix = tablePrefix;
+            this.parmPrefix = parmPrefix;
+            this.passwordFormat = passwordFormat;
+
+            this.connectionString = configuration.GetConnectionString(connectionStringName);
+            this.providerName = configuration[$"ConnectionStrings:{connectionStringName}_ProviderName"]
+                ?? "Microsoft.Data.SqlClient";
+        }
+
         #endregion
 
         #region Properties
 
         /// <summary>
-        ///     Returns the application name as set in the web.config
-        ///     otherwise returns BlogEngine.  Set will throw an error.
+        /// Password format (Clear or Hashed).
         /// </summary>
-        public override string ApplicationName
+        public PasswordFormat PasswordFormatSetting
         {
-            get
-            {
-                return this.applicationName;
-            }
-
-            set
-            {
-                throw new NotSupportedException();
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to false
-        /// </summary>
-        public override bool EnablePasswordReset
-        {
-            get
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        ///     Can password be retrieved via email?
-        /// </summary>
-        public override bool EnablePasswordRetrieval
-        {
-            get
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to 5
-        /// </summary>
-        public override int MaxInvalidPasswordAttempts
-        {
-            get
-            {
-                return 5;
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to 0
-        /// </summary>
-        public override int MinRequiredNonAlphanumericCharacters
-        {
-            get
-            {
-                return 0;
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to 4
-        /// </summary>
-        public override int MinRequiredPasswordLength
-        {
-            get
-            {
-                return 4;
-            }
-        }
-
-        /// <summary>
-        ///     Not implemented
-        /// </summary>
-        public override int PasswordAttemptWindow
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        /// <summary>
-        ///     Password format (Clear or Hashed)
-        /// </summary>
-        public override MembershipPasswordFormat PasswordFormat
-        {
-            get
-            {
-                return this.passwordFormat;
-            }
-        }
-
-        /// <summary>
-        ///     Not Implemented
-        /// </summary>
-        public override string PasswordStrengthRegularExpression
-        {
-            get
-            {
-                throw new NotImplementedException();
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to false
-        /// </summary>
-        public override bool RequiresQuestionAndAnswer
-        {
-            get
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        ///     Hardcoded to false
-        /// </summary>
-        public override bool RequiresUniqueEmail
-        {
-            get
-            {
-                return false;
-            }
+            get { return this.passwordFormat; }
         }
 
         #endregion
@@ -174,13 +88,9 @@
         #region Public Methods
 
         /// <summary>
-        /// Change the password if the old password matches what is stored
+        /// Change the password if the old password matches what is stored.
         /// </summary>
-        /// <param name="username">The user to update the password for.</param>
-        /// <param name="oldPassword">The current password for the specified user.</param>
-        /// <param name="newPassword">The new password for the specified user.</param>
-        /// <returns>The change password.</returns>
-        public override bool ChangePassword(string username, string oldPassword, string newPassword)
+        public bool ChangePassword(string username, string oldPassword, string newPassword)
         {
             var oldPasswordCorrect = false;
             var success = false;
@@ -191,8 +101,6 @@
                 {
                     using (var cmd = conn.CreateTextCommand(string.Format("SELECT password FROM {0}Users WHERE BlogID = {1}blogid AND userName = {1}name", this.tablePrefix, this.parmPrefix)))
                     {
-                        // Check Old Password
-
                         cmd.Parameters.Add(conn.CreateParameter(FormatParamName("blogid"), Blog.CurrentInstance.Id.ToString()));
                         cmd.Parameters.Add(conn.CreateParameter(FormatParamName("name"), username));
 
@@ -211,7 +119,7 @@
                                 }
                                 else
                                 {
-                                    if (this.passwordFormat == MembershipPasswordFormat.Hashed)
+                                    if (this.passwordFormat == PasswordFormat.Hashed)
                                     {
                                         if (actualPassword == Utils.HashPassword(oldPassword))
                                         {
@@ -231,7 +139,7 @@
                         {
                             cmd.CommandText = string.Format("UPDATE {0}Users SET password = {1}pwd WHERE BlogID = {1}blogid AND userName = {1}name", this.tablePrefix, this.parmPrefix);
 
-                            cmd.Parameters.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == MembershipPasswordFormat.Hashed ? Utils.HashPassword(newPassword) : newPassword)));
+                            cmd.Parameters.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == PasswordFormat.Hashed ? Utils.HashPassword(newPassword) : newPassword)));
 
                             cmd.ExecuteNonQuery();
                             success = true;
@@ -244,44 +152,10 @@
         }
 
         /// <summary>
-        /// Not implemented
+        /// Add new user to database.
         /// </summary>
-        /// <param name="username">The user to change the password question and answer for.</param>
-        /// <param name="password">The password for the specified user.</param>
-        /// <param name="newPasswordQuestion">The new password question for the specified user.</param>
-        /// <param name="newPasswordAnswer">The new password answer for the specified user.</param>
-        /// <returns>The change password question and answer.</returns>
-        public override bool ChangePasswordQuestionAndAnswer(
-            string username, string password, string newPasswordQuestion, string newPasswordAnswer)
+        public BlogMembershipUser CreateUser(string username, string password, string email)
         {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// Add new user to database
-        /// </summary>
-        /// <param name="username">The user name for the new user.</param>
-        /// <param name="password">The password for the new user.</param>
-        /// <param name="email">The e-mail address for the new user.</param>
-        /// <param name="passwordQuestion">The password question for the new user.</param>
-        /// <param name="passwordAnswer">The password answer for the new user</param>
-        /// <param name="approved">Whether or not the new user is approved to be validated.</param>
-        /// <param name="providerUserKey">The unique identifier from the membership data source for the user.</param>
-        /// <param name="status">A <see cref="T:System.Web.Security.MembershipCreateStatus"/> enumeration value indicating whether the user was created successfully.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUser"/> object populated with the information for the newly created user.
-        /// </returns>
-        public override MembershipUser CreateUser(
-            string username,
-            string password,
-            string email,
-            string passwordQuestion,
-            string passwordAnswer,
-            bool approved,
-            object providerUserKey,
-            out MembershipCreateStatus status)
-        {
-
             using (var conn = this.CreateConnection())
             {
                 if (conn.HasConnection)
@@ -289,11 +163,10 @@
                     var sqlQuery = string.Format("INSERT INTO {0}Users (blogId, userName, password, emailAddress, lastLoginTime) VALUES ({1}blogid, {1}name, {1}pwd, {1}email, {1}login)", this.tablePrefix, this.parmPrefix);
                     using (var cmd = conn.CreateTextCommand(sqlQuery))
                     {
-
                         var parms = cmd.Parameters;
                         parms.Add(conn.CreateParameter(FormatParamName("blogid"), Blog.CurrentInstance.Id.ToString()));
                         parms.Add(conn.CreateParameter(FormatParamName("name"), username));
-                        parms.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == MembershipPasswordFormat.Hashed ? Utils.HashPassword(password) : password)));
+                        parms.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == PasswordFormat.Hashed ? Utils.HashPassword(password) : password)));
                         parms.Add(conn.CreateParameter(FormatParamName("email"), email));
                         parms.Add(conn.CreateParameter(FormatParamName("login"), DateTime.Now));
 
@@ -302,19 +175,14 @@
                 }
             }
 
-            MembershipUser user = this.GetMembershipUser(username, email, DateTime.Now);
-            status = MembershipCreateStatus.Success;
-
+            BlogMembershipUser user = this.GetMembershipUser(username, email, DateTime.Now);
             return user;
         }
 
         /// <summary>
-        /// Delete user from database
+        /// Delete user from database.
         /// </summary>
-        /// <param name="username">The name of the user to delete.</param>
-        /// <param name="deleteAllRelatedData">true to delete data related to the user from the database; false to leave data related to the user in the database.</param>
-        /// <returns>The delete user.</returns>
-        public override bool DeleteUser(string username, bool deleteAllRelatedData)
+        public bool DeleteUser(string username, bool deleteAllRelatedData)
         {
             bool success = false;
 
@@ -345,49 +213,11 @@
         }
 
         /// <summary>
-        /// Not implemented
+        /// Return all users.
         /// </summary>
-        /// <param name="emailToMatch">The e-mail address to search for.</param>
-        /// <param name="pageIndex">The index of the page of results to return. <paramref name="pageIndex"/> is zero-based.</param>
-        /// <param name="pageSize">The size of the page of results to return.</param>
-        /// <param name="totalRecords">The total number of matched users.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUserCollection"/> collection that contains a page of <paramref name="pageSize"/><see cref="T:System.Web.Security.MembershipUser"/> objects beginning at the page specified by <paramref name="pageIndex"/>.
-        /// </returns>
-        public override MembershipUserCollection FindUsersByEmail(
-            string emailToMatch, int pageIndex, int pageSize, out int totalRecords)
+        public System.Collections.Generic.ICollection<BlogMembershipUser> GetAllUsers(out int totalRecords)
         {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// Not implemented
-        /// </summary>
-        /// <param name="usernameToMatch">The user name to search for.</param>
-        /// <param name="pageIndex">The index of the page of results to return. <paramref name="pageIndex"/> is zero-based.</param>
-        /// <param name="pageSize">The size of the page of results to return.</param>
-        /// <param name="totalRecords">The total number of matched users.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUserCollection"/> collection that contains a page of <paramref name="pageSize"/><see cref="T:System.Web.Security.MembershipUser"/> objects beginning at the page specified by <paramref name="pageIndex"/>.
-        /// </returns>
-        public override MembershipUserCollection FindUsersByName(
-            string usernameToMatch, int pageIndex, int pageSize, out int totalRecords)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// Return all users in MembershipUserCollection
-        /// </summary>
-        /// <param name="pageIndex">The index of the page of results to return. <paramref name="pageIndex"/> is zero-based.</param>
-        /// <param name="pageSize">The size of the page of results to return.</param>
-        /// <param name="totalRecords">The total number of matched users.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUserCollection"/> collection that contains a page of <paramref name="pageSize"/><see cref="T:System.Web.Security.MembershipUser"/> objects beginning at the page specified by <paramref name="pageIndex"/>.
-        /// </returns>
-        public override MembershipUserCollection GetAllUsers(int pageIndex, int pageSize, out int totalRecords)
-        {
-            var users = new MembershipUserCollection();
+            var users = new System.Collections.Generic.List<BlogMembershipUser>();
 
             using (var conn = this.CreateConnection())
             {
@@ -429,51 +259,27 @@
         }
 
         /// <summary>
-        /// Not implemented
+        /// Not supported for DB provider — returns 0.
         /// </summary>
-        /// <returns>
-        /// The get number of users online.
-        /// </returns>
-        public override int GetNumberOfUsersOnline()
+        public int GetNumberOfUsersOnline()
         {
-            throw new NotImplementedException();
+            return 0;
         }
 
         /// <summary>
-        /// Not implemented
+        /// Gets user information by provider user key.
         /// </summary>
-        /// <param name="username">The user to retrieve the password for.</param>
-        /// <param name="answer">The password answer for the user.</param>
-        /// <returns>The get password.</returns>
-        public override string GetPassword(string username, string answer)
+        public BlogMembershipUser GetUser(object providerUserKey)
         {
-            throw new NotImplementedException();
+            return this.GetUser(providerUserKey.ToString());
         }
 
         /// <summary>
-        /// Gets user information from the data source based on the unique identifier for the membership user. Provides an option to update the last-activity date/time stamp for the user.
+        /// Gets information for a user by username.
         /// </summary>
-        /// <param name="providerUserKey">The unique identifier for the membership user to get information for.</param>
-        /// <param name="userIsOnline">true to update the last-activity date/time stamp for the user; false to return user information without updating the last-activity date/time stamp for the user.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUser"/> object populated with the specified user's information from the data source.
-        /// </returns>
-        public override MembershipUser GetUser(object providerUserKey, bool userIsOnline)
+        public BlogMembershipUser GetUser(string username)
         {
-            return this.GetUser(providerUserKey.ToString(), userIsOnline);
-        }
-
-        /// <summary>
-        /// Gets information from the data source for a user. Provides an option to update the last-activity date/time stamp for the user.
-        /// </summary>
-        /// <param name="username">The name of the user to get information for.</param>
-        /// <param name="userIsOnline">true to update the last-activity date/time stamp for the user; false to return user information without updating the last-activity date/time stamp for the user.</param>
-        /// <returns>
-        /// A <see cref="T:System.Web.Security.MembershipUser"/> object populated with the specified user's information from the data source.
-        /// </returns>
-        public override MembershipUser GetUser(string username, bool userIsOnline)
-        {
-            MembershipUser user = null;
+            BlogMembershipUser user = null;
 
             using (var conn = this.CreateConnection())
             {
@@ -501,11 +307,7 @@
         /// <summary>
         /// Gets the user name associated with the specified e-mail address.
         /// </summary>
-        /// <param name="email">The e-mail address to search for.</param>
-        /// <returns>
-        /// The user name associated with the specified e-mail address. If no match is found, return null.
-        /// </returns>
-        public override string GetUserNameByEmail(string email)
+        public string GetUserNameByEmail(string email)
         {
             if (email == null)
             {
@@ -538,116 +340,9 @@
         }
 
         /// <summary>
-        /// Initializes the provider
-        /// </summary>
-        /// <param name="name">
-        /// Configuration name
-        /// </param>
-        /// <param name="config">
-        /// Configuration settings
-        /// </param>
-        public override void Initialize(string name, NameValueCollection config)
-        {
-            if (config == null)
-            {
-                throw new ArgumentNullException(nameof(config));
-            }
-
-            if (string.IsNullOrEmpty(name))
-            {
-                name = "DbMembershipProvider";
-            }
-
-            if (Utils.IsMono)
-            {
-                // Mono dies with a "Unrecognized attribute: description" if a description is part of the config.
-                if (!string.IsNullOrEmpty(config["description"]))
-                {
-                    config.Remove("description");
-                }
-            }
-            else
-            {
-                if (string.IsNullOrEmpty(config["description"]))
-                {
-                    config.Remove("description");
-                    config.Add("description", "Generic Database Membership Provider");
-                }
-            }
-
-            base.Initialize(name, config);
-
-            // Connection String
-            if (config["connectionStringName"] == null)
-            {
-                config["connectionStringName"] = "BlogEngine";
-            }
-
-            this.connStringName = config["connectionStringName"];
-            config.Remove("connectionStringName");
-
-            // Table Prefix
-            if (config["tablePrefix"] == null)
-            {
-                config["tablePrefix"] = "be_";
-            }
-
-            this.tablePrefix = config["tablePrefix"];
-            config.Remove("tablePrefix");
-
-            // Parameter character
-            if (config["parmPrefix"] == null)
-            {
-                config["parmPrefix"] = "@";
-            }
-
-            this.parmPrefix = config["parmPrefix"];
-            config.Remove("parmPrefix");
-
-            // Application Name
-            if (config["applicationName"] == null)
-            {
-                config["applicationName"] = "BlogEngine";
-            }
-
-            this.applicationName = config["applicationName"];
-            config.Remove("applicationName");
-
-            // Password Format
-            if (config["passwordFormat"] == null)
-            {
-                config["passwordFormat"] = "Hashed";
-                this.passwordFormat = MembershipPasswordFormat.Hashed;
-            }
-            else if (string.Compare(config["passwordFormat"], "clear", true) == 0)
-            {
-                this.passwordFormat = MembershipPasswordFormat.Clear;
-            }
-            else
-            {
-                this.passwordFormat = MembershipPasswordFormat.Hashed;
-            }
-
-            config.Remove("passwordFormat");
-
-            // Throw an exception if unrecognized attributes remain
-            if (config.Count > 0)
-            {
-                var attr = config.GetKey(0);
-                if (!string.IsNullOrEmpty(attr))
-                {
-                    throw new ProviderException($"Unrecognized attribute: {attr}");
-                }
-            }
-        }
-
-        /// <summary>
         /// Resets a user's password to a new, automatically generated password.
         /// </summary>
-        /// <param name="username">The user to reset the password for.</param>
-        /// <param name="answer">The password answer for the specified user.</param>
-        /// <returns>The new password for the specified user.</returns>
-        public override string ResetPassword(string username, string answer)
+        public string ResetPassword(string username)
         {
             if (string.IsNullOrEmpty(username))
             {
@@ -661,11 +356,8 @@
             {
                 if (conn.HasConnection)
                 {
-
                     using (var cmd = conn.CreateTextCommand(string.Format("SELECT password FROM {0}Users WHERE BlogID = {1}blogid AND userName = {1}name", this.tablePrefix, this.parmPrefix)))
                     {
-                        // Check Old Password
-
                         cmd.Parameters.Add(conn.CreateParameter(FormatParamName("blogid"), Blog.CurrentInstance.Id.ToString()));
                         cmd.Parameters.Add(conn.CreateParameter(FormatParamName("name"), username));
 
@@ -682,7 +374,7 @@
                         {
                             cmd.CommandText = string.Format("UPDATE {0}Users SET password = {1}pwd WHERE BlogID = {1}blogid AND userName = {1}name", this.tablePrefix, this.parmPrefix);
 
-                            cmd.Parameters.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == MembershipPasswordFormat.Hashed ? Utils.HashPassword(randomPassword) : randomPassword)));
+                            cmd.Parameters.Add(conn.CreateParameter(FormatParamName("pwd"), (this.passwordFormat == PasswordFormat.Hashed ? Utils.HashPassword(randomPassword) : randomPassword)));
 
                             cmd.ExecuteNonQuery();
                             return randomPassword;
@@ -695,20 +387,17 @@
         }
 
         /// <summary>
-        /// Not implemented
+        /// Not supported — returns false.
         /// </summary>
-        /// <param name="userName">The membership user whose lock status you want to clear.</param>
-        /// <returns>The unlock user.</returns>
-        public override bool UnlockUser(string userName)
+        public bool UnlockUser(string userName)
         {
-            throw new NotImplementedException();
+            return false;
         }
 
         /// <summary>
-        /// Update User Data (not password)
+        /// Update User Data (not password).
         /// </summary>
-        /// <param name="user">A <see cref="T:System.Web.Security.MembershipUser"/> object that represents the user to update and the updated information for the user.</param>
-        public override void UpdateUser(MembershipUser user)
+        public void UpdateUser(BlogMembershipUser user)
         {
             using (var conn = this.CreateConnection())
             {
@@ -728,12 +417,9 @@
         }
 
         /// <summary>
-        /// Check username and password
+        /// Check username and password.
         /// </summary>
-        /// <param name="username">The name of the user to validate.</param>
-        /// <param name="password">The password for the specified user.</param>
-        /// <returns>The validate user.</returns>
-        public override bool ValidateUser(string username, string password)
+        public bool ValidateUser(string username, string password)
         {
             var validated = false;
 
@@ -762,7 +448,7 @@
                                 }
                                 else
                                 {
-                                    if (this.passwordFormat == MembershipPasswordFormat.Hashed)
+                                    if (this.passwordFormat == PasswordFormat.Hashed)
                                     {
                                         if (storedPwd == Utils.HashPassword(password))
                                         {
@@ -789,16 +475,12 @@
 
         private DbConnectionHelper CreateConnection()
         {
-            var settings = ConfigurationManager.ConnectionStrings[this.connStringName];
-            return new DbConnectionHelper(settings);
+            return new DbConnectionHelper(this.providerName, this.connectionString);
         }
 
-
         /// <summary>
-        /// Returns a formatted parameter name to include this DbBlogProvider instance's paramPrefix.
+        /// Returns a formatted parameter name to include this instance's paramPrefix.
         /// </summary>
-        /// <param name="parameterName"></param>
-        /// <returns></returns>
         private string FormatParamName(string parameterName)
         {
             return $"{parmPrefix}{parameterName}";
@@ -807,22 +489,10 @@
         /// <summary>
         /// Gets membership user.
         /// </summary>
-        /// <param name="userName">
-        /// The user name.
-        /// </param>
-        /// <param name="email">
-        /// The email.
-        /// </param>
-        /// <param name="lastLogin">
-        /// The last login.
-        /// </param>
-        /// <returns>
-        /// A MembershipUser.
-        /// </returns>
-        private MembershipUser GetMembershipUser(string userName, string email, DateTime lastLogin)
+        private BlogMembershipUser GetMembershipUser(string userName, string email, DateTime lastLogin)
         {
-            var user = new MembershipUser(
-                this.Name, // Provider name
+            var user = new BlogMembershipUser(
+                "DbMembershipService", // Provider name
                 userName, // Username
                 userName, // providerUserKey
                 email, // Email

@@ -2,35 +2,23 @@
 {
     using System;
     using System.Collections;
-    using System.Net;
+    using System.Net.Http;
     using System.Threading;
-    using System.Web;
+    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Http;
 
     /// <summary>
-    /// Referrer Module
+    /// Referrer Module — logs referring URLs.
+    /// Converted from IHttpModule to ASP.NET Core middleware.
+    /// Uses HttpClient instead of WebClient for spam checking.
     /// </summary>
-    public class ReferrerModule : IHttpModule
+    public class ReferrerMiddleware
     {
-        #region Constants and Fields
-
-        // private static string _Folder = HttpContext.Current.Server.MapPath("~/App_Data/log/");
-
-/*
-        /// <summary>
-        ///     The relative path of the XML file.
-        /// </summary>
-        private static string folder =
-            HttpContext.Current.Server.MapPath(string.Format("{0}log/", BlogSettings.Instance.StorageLocation));
-*/
-
-/*
-        /// <summary>
-        ///     Used to thread safe the file operations
-        /// </summary>
-        private static object syncRoot = new object();
-*/
-
-        #endregion
+        private readonly RequestDelegate _next;
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        });
 
         #region Events
 
@@ -41,44 +29,61 @@
 
         #endregion
 
-        #region Implemented Interfaces
-
-        #region IHttpModule
-
         /// <summary>
-        /// Disposes of the resources (other than memory) used by the 
-        ///     module that implements <see cref="T:System.Web.IHttpModule"></see>.
+        /// Initializes a new instance of the <see cref="ReferrerMiddleware"/> class.
         /// </summary>
-        public void Dispose()
+        /// <param name="next">The next middleware in the pipeline.</param>
+        public ReferrerMiddleware(RequestDelegate next)
         {
-            // Nothing to dispose.
+            _next = next;
         }
 
         /// <summary>
-        /// Initializes a module and prepares it to handle requests.
+        /// Processes the request and logs referrer information.
+        /// Runs after the next middleware completes (EndRequest equivalent).
         /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpApplication"></see> that 
-        ///     provides access to the methods, properties, and events common to all application 
-        ///     objects within an ASP.NET application
-        /// </param>
-        public void Init(HttpApplication context)
+        /// <param name="context">The HTTP context.</param>
+        public async Task InvokeAsync(HttpContext context)
         {
-            context.EndRequest += ContextBeginRequest;
+            await _next(context);
+
+            // EndRequest logic
+            if (!BlogSettings.Instance.EnableReferrerTracking)
+                return;
+
+            var path = context.Request.Path.Value?.ToUpperInvariant() ?? string.Empty;
+            if (path.Contains(".") && !path.EndsWith("/"))
+                return;
+
+            var referrerHeader = context.Request.Headers["Referer"].ToString();
+            if (string.IsNullOrEmpty(referrerHeader) || !Uri.TryCreate(referrerHeader, UriKind.Absolute, out var referrer))
+                return;
+
+            var requestUrl = new Uri($"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}");
+
+            if (!referrer.Host.Equals(Utils.AbsoluteWebRoot.Host, StringComparison.OrdinalIgnoreCase) &&
+                !IsSearchEngine(referrer.ToString()))
+            {
+                Guid blogId = Blog.CurrentInstance.Id;
+
+                ThreadPool.QueueUserWorkItem(state =>
+                {
+                    // because HttpContext is not available within this BG thread
+                    // needed to determine the current blog instance,
+                    // set override value here.
+                    Blog.InstanceIdOverride = blogId;
+
+                    BeginRegisterClick(new DictionaryEntry(referrer, requestUrl));
+                });
+            }
         }
-
-        #endregion
-
-        #endregion
 
         #region Methods
 
         /// <summary>
         /// The begin register click.
         /// </summary>
-        /// <param name="entry">
-        /// Contains data to register.
-        /// </param>
+        /// <param name="entry">Contains data to register.</param>
         private static void BeginRegisterClick(DictionaryEntry entry)
         {
             try
@@ -109,14 +114,10 @@
         }
 
         /// <summary>
-        /// Determines whether the specified referrer is spam.
+        /// Determines whether the specified referrer is spam using HttpClient.
         /// </summary>
-        /// <param name="referrer">
-        /// The referrer Uri.
-        /// </param>
-        /// <param name="url">
-        /// The URL Uri.
-        /// </param>
+        /// <param name="referrer">The referrer Uri.</param>
+        /// <param name="url">The URL Uri.</param>
         /// <returns>
         /// <c>true</c> if the specified referrer is spam; otherwise, <c>false</c>.
         /// </returns>
@@ -124,19 +125,17 @@
         {
             try
             {
-                using (var client = new WebClient())
+                var html = _httpClient.GetStringAsync(referrer).GetAwaiter().GetResult();
+                html = html.ToUpperInvariant();
+                var subdomain = Utils.GetSubDomain(url);
+                var host = url.Host.ToUpperInvariant();
+
+                if (subdomain != null)
                 {
-                    var html = client.DownloadString(referrer).ToUpperInvariant();
-                    var subdomain = Utils.GetSubDomain(url);
-                    var host = url.Host.ToUpperInvariant();
-
-                    if (subdomain != null)
-                    {
-                        host = host.Replace($"{subdomain.ToUpperInvariant()}.", string.Empty);
-                    }
-
-                    return !html.Contains(host);
+                    host = host.Replace($"{subdomain.ToUpperInvariant()}.", string.Empty);
                 }
+
+                return !html.Contains(host);
             }
             catch
             {
@@ -147,26 +146,17 @@
         /// <summary>
         /// Raises the event in a safe way
         /// </summary>
-        /// <param name="referrer">
-        /// The referrer.
-        /// </param>
+        /// <param name="referrer">The referrer.</param>
         private static void OnReferrerRegistered(Uri referrer)
         {
-            if (ReferrerRegistered != null)
-            {
-                ReferrerRegistered(referrer, EventArgs.Empty);
-            }
+            ReferrerRegistered?.Invoke(referrer, EventArgs.Empty);
         }
 
         /// <summary>
         /// Registers click.
         /// </summary>
-        /// <param name="url">
-        /// The url Uri.
-        /// </param>
-        /// <param name="referrer">
-        /// The referrer Uri.
-        /// </param>
+        /// <param name="url">The url Uri.</param>
+        /// <param name="referrer">The referrer Uri.</param>
         private static void RegisterClick(Uri url, Uri referrer)
         {
             Referrer refer = null;
@@ -191,48 +181,6 @@
             refer.Count += 1;
 
             refer.Save();
-        }
-
-        /// <summary>
-        /// Handles the BeginRequest event of the context control.
-        /// </summary>
-        /// <param name="sender">
-        /// The source of the event.
-        /// </param>
-        /// <param name="e">
-        /// The <see cref="System.EventArgs"/> instance containing the event data.
-        /// </param>
-        private static void ContextBeginRequest(object sender, EventArgs e)
-        {
-            var context = ((HttpApplication)sender).Context;
-            if (!BlogSettings.Instance.EnableReferrerTracking) { return; }
-
-            if (!context.Request.Path.ToUpperInvariant().Contains(".ASPX"))
-            {
-                return;
-            }
-
-            if (context.Request.UrlReferrer == null)
-            {
-                return;
-            }
-
-            var referrer = context.Request.UrlReferrer;
-            if (!referrer.Host.Equals(Utils.AbsoluteWebRoot.Host, StringComparison.OrdinalIgnoreCase) &&
-                !IsSearchEngine(referrer.ToString()))
-            {
-                Guid blogId = Blog.CurrentInstance.Id;
-
-                ThreadPool.QueueUserWorkItem(state =>
-                    {
-                        // because HttpContext is not available within this BG thread
-                        // needed to determine the current blog instance,
-                        // set override value here.
-                        Blog.InstanceIdOverride = blogId;
-
-                        BeginRegisterClick(new DictionaryEntry(referrer, context.Request.Url));
-                    });
-            }
         }
 
         #endregion

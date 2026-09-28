@@ -1,10 +1,10 @@
+using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic;
-using System.Web.Hosting;
 
 namespace BlogEngine.Core.Data
 {
@@ -136,7 +136,7 @@ namespace BlogEngine.Core.Data
             coreBlog.IsActive = jsonBlog.IsActive;
             coreBlog.IsSiteAggregation = jsonBlog.IsSiteAggregation;
             coreBlog.IsPrimary = jsonBlog.IsPrimary;
-            //coreBlog.StorageLocation = PhysicalStorageLocation = HostingEnvironment.MapPath(blog.StorageLocation);
+            //coreBlog.StorageLocation = PhysicalStorageLocation = BlogConfig.MapPath(blog.StorageLocation);
             coreBlog.Save();
             return true;
         }
@@ -156,7 +156,7 @@ namespace BlogEngine.Core.Data
                 IsPrimary = blog.IsPrimary,
                 RelativeWebRoot = blog.RelativeWebRoot,
                 AbsoluteWebRoot = blog.AbsoluteWebRoot,
-                PhysicalStorageLocation = HostingEnvironment.MapPath(blog.StorageLocation),
+                PhysicalStorageLocation = BlogConfig.MapPath(blog.StorageLocation),
                 CanUserEdit = blog.CanUserEdit,
                 CanUserDelete = blog.CanUserDelete
             };

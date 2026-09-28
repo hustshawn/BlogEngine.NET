@@ -3,48 +3,33 @@
     using System;
     using System.Globalization;
     using System.Linq;
-    using System.Web;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// A blog sitemap suitable for Google Sitemap as well as
-    ///     other big search engines such as MSN/Live, Yahoo and Ask.
+    /// other big search engines such as MSN/Live, Yahoo and Ask.
     /// </summary>
-    public class SiteMap : IHttpHandler
+    public static class SiteMapEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the sitemap handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapSiteMapHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/sitemap.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> 
-        ///     object that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
-            using (var writer = XmlWriter.Create(context.Response.OutputStream))
+            context.Response.ContentType = "text/xml";
+
+            using (var writer = XmlWriter.Create(context.Response.Body))
             {
                 writer.WriteStartElement("urlset", BlogConfig.SiteMapUrlSet);
 
@@ -70,14 +55,6 @@
                     writer.WriteEndElement();
                 }
 
-                // Removed for SEO reasons
-                //// Archive
-                // writer.WriteStartElement("url");
-                // writer.WriteElementString("loc", Utils.AbsoluteWebRoot.ToString() + "archive.aspx");
-                // writer.WriteElementString("lastmod", DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
-                // writer.WriteElementString("changefreq", "daily");
-                // writer.WriteEndElement();
-
                 // Contact
                 writer.WriteStartElement("url");
                 writer.WriteElementString("loc", $"{Utils.AbsoluteWebRoot}contact.aspx");
@@ -99,11 +76,7 @@
                 writer.WriteEndElement();
             }
 
-            context.Response.ContentType = "text/xml";
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
     }
 }

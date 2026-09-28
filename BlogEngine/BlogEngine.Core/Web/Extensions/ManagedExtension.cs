@@ -286,7 +286,7 @@
         //public string GetPathAndFilename(bool checkExistence)
         //{
         //    string filename = string.Empty;
-        //    var appRoot = HostingEnvironment.MapPath("~/");
+        //    var appRoot = BlogConfig.MapPath("~/");
         //    var codeAssemblies = Utils.CodeAssemblies();
         //    foreach (Assembly a in codeAssemblies)
         //    {
@@ -325,13 +325,8 @@
         /// <returns>New object, as oppose to object reference</returns>
         public static T Copy(object objectToCopy)
         {
-            using (MemoryStream memoryStream = new MemoryStream())
-            {
-                BinaryFormatter binaryFormatter = new BinaryFormatter();
-                binaryFormatter.Serialize(memoryStream, objectToCopy);
-                memoryStream.Seek(0, SeekOrigin.Begin);
-                return (T)binaryFormatter.Deserialize(memoryStream);
-            }
+            var json = System.Text.Json.JsonSerializer.Serialize(objectToCopy);
+            return System.Text.Json.JsonSerializer.Deserialize<T>(json);
         }
     }
 }

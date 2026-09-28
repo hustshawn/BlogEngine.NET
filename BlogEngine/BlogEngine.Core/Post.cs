@@ -1,3 +1,4 @@
+using System.Net;
 ﻿namespace BlogEngine.Core
 {
     using System;
@@ -9,7 +10,6 @@
     using System.Net.Mail;
     using System.Text;
     using System.Text.RegularExpressions;
-    using System.Web;
 
     using BlogEngine.Core.Data.Models;
     using BlogEngine.Core.Providers;
@@ -1929,7 +1929,7 @@
                 unsubscribeLink += string.Format(
                     "{0}unsubscribe-email={1}",
                     unsubscribeLink.Contains("?") ? "&" : "?",
-                    HttpUtility.UrlEncode(email));
+                    WebUtility.UrlEncode(email));
 
                 var defaultCulture = Utils.GetDefaultCulture();
 

@@ -47,7 +47,7 @@ namespace BlogEngine.Core.Data
                 throw new System.UnauthorizedAccessException();
 
             var filename = System.IO.Path.Combine(Blog.CurrentInstance.StorageLocation, "newsletter.xml");
-            filename = System.Web.Hosting.HostingEnvironment.MapPath(filename);
+            filename = BlogConfig.MapPath(filename);
 
             if (System.IO.File.Exists(filename))
             {

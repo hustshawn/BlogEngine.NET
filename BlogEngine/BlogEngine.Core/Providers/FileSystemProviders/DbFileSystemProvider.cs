@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web.Configuration;
-using System.Collections.Specialized;
-using System.Configuration.Provider;
+using Microsoft.Extensions.Configuration;
 
 namespace BlogEngine.Core.Providers
 {
@@ -28,75 +26,46 @@ namespace BlogEngine.Core.Providers
         /// </summary>
         private string tablePrefix;
 
+        /// <summary>
+        /// The provider name for database connections.
+        /// </summary>
+        private string providerName;
 
         /// <summary>
-        /// init
+        /// The connection string value.
         /// </summary>
-        /// <param name="name"></param>
-        /// <param name="config"></param>
-        public override void Initialize(string name, NameValueCollection config)
+        private string _connectionString;
+
+        /// <summary>
+        /// Default constructor.
+        /// </summary>
+        public DbFileSystemProvider()
         {
-            if (config == null)
-            {
-                throw new ArgumentNullException(nameof(config));
-            }
+        }
 
-            if (String.IsNullOrEmpty(name))
-            {
-                name = "DbBlogProvider";
-            }
+        /// <summary>
+        /// Constructor accepting IConfiguration for connection string resolution.
+        /// </summary>
+        /// <param name="configuration">The application configuration.</param>
+        /// <param name="connectionStringName">Name of the connection string. Defaults to "BlogEngine".</param>
+        /// <param name="tablePrefix">Table prefix. Defaults to "be_".</param>
+        /// <param name="parmPrefix">Parameter prefix. Defaults to "@".</param>
+        public DbFileSystemProvider(IConfiguration configuration, string connectionStringName = "BlogEngine", string tablePrefix = "be_", string parmPrefix = "@")
+        {
+            this.connStringName = connectionStringName;
+            this.tablePrefix = tablePrefix;
+            this.parmPrefix = parmPrefix;
 
-            if (String.IsNullOrEmpty(config["description"]))
-            {
-                config.Remove("description");
-                config.Add("description", "Generic Database Blog Provider");
-            }
-
-            base.Initialize(name, config);
-
-            if (config["storageVariable"] == null)
-            {
-                // default to BlogEngine
-                config["storageVariable"] = "BlogEngine";
-            }
-
-            this.connStringName = config["storageVariable"];
-            config.Remove("storageVariable");
-
-            if (config["tablePrefix"] == null)
-            {
-                // default
-                config["tablePrefix"] = "be_";
-            }
-
-            this.tablePrefix = config["tablePrefix"];
-            config.Remove("tablePrefix");
-
-            if (config["parmPrefix"] == null)
-            {
-                // default
-                config["parmPrefix"] = "@";
-            }
-
-            this.parmPrefix = config["parmPrefix"];
-            config.Remove("parmPrefix");
-
-            // Throw an exception if unrecognized attributes remain
-            if (config.Count > 0)
-            {
-                var attr = config.GetKey(0);
-                if (!String.IsNullOrEmpty(attr))
-                {
-                    throw new ProviderException($"Unrecognized attribute: {attr}");
-                }
-            }
+            this._connectionString = configuration.GetConnectionString(connectionStringName);
+            this.providerName = configuration[$"ConnectionStrings:{connectionStringName}_ProviderName"]
+                ?? "Microsoft.Data.SqlClient";
         }
 
         #region Contansts & Fields
         /// <summary>
-        /// active web.config connection string, defined by the blogProvider sections
+        /// active connection string
         /// </summary>
-        private string connectionString { get { return WebConfigurationManager.ConnectionStrings[this.connStringName].ConnectionString; } }
+        private string connectionString { get { return _connectionString; } }
         #endregion
 
         #region Methods
@@ -104,9 +73,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// Clears a file system. This will delete all files and folders recursivly.
         /// </summary>
-        /// <remarks>
-        /// Handle with care... Possibly an internal method?
-        /// </remarks>
         public override void ClearFileSystem()
         {
             var root = Blog.CurrentInstance.RootFileStore;
@@ -120,12 +86,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// Creates a directory at a specific path
         /// </summary>
-        /// <param name="VirtualPath">The virtual path to be created</param>
-        /// <returns>the new Directory object created</returns>
-        /// <remarks>
-        /// Virtual path is the path starting from the /files/ containers
-        /// The entity is created against the current blog id
-        /// </remarks>
         public override FileSystem.Directory CreateDirectory(string VirtualPath)
         {
             VirtualPath = VirtualPath.VirtualPathToDbPath();
@@ -150,7 +110,7 @@ namespace BlogEngine.Core.Providers
                 var parentPath = VirtualPath.Contains("/") ? VirtualPath.Substring(0, VirtualPath.LastIndexOf("/")) : string.Empty;
                 dir.ParentID = this.GetDirectory(parentPath).Id;
             }
-            db.FileStoreDirectories.InsertOnSubmit(dir);
+            db.FileStoreDirectories.Add(dir);
             db.SubmitChanges();
             db.Dispose();
             return GetDirectory(VirtualPath);
@@ -159,11 +119,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// Deletes a spefic directory from a virtual path
         /// </summary>
-        /// <param name="VirtualPath">The path to delete</param>
-        /// <remarks>
-        /// Virtual path is the path starting from the /files/ containers
-        /// The entity is queried against to current blog id
-        /// </remarks>
         public override void DeleteDirectory(string VirtualPath)
         {
             if (!DirectoryExists(VirtualPath.VirtualPathToDbPath()))
@@ -176,7 +131,7 @@ namespace BlogEngine.Core.Providers
                 foreach (var sb in subDirectories)
                     DeleteDirectory(sb.FullPath);
             }
-            db.FileStoreDirectories.DeleteAllOnSubmit(query);
+            db.FileStoreDirectories.Clear(); // Replaced DeleteAllOnSubmit - delete individually //query);
             db.SubmitChanges();
             db.Dispose();
         }
@@ -184,8 +139,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// Returns wether or not the specific directory by virtual path exists
         /// </summary>
-        /// <param name="VirtualPath">The virtual path to query</param>
-        /// <returns>boolean</returns>
         public override bool DirectoryExists(string VirtualPath)
         {
             VirtualPath = VirtualPath.VirtualPathToDbPath();
@@ -195,8 +148,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets a directory by the virtual path, creates the directory path if it does not exist
         /// </summary>
-        /// <param name="VirtualPath">the virtual path</param>
-        /// <returns>the directory object</returns>
         public override FileSystem.Directory GetDirectory(string VirtualPath)
         {
             return GetDirectory(VirtualPath, true);   
@@ -205,9 +156,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets a directory by the virtual path, with a flag to create if not found
         /// </summary>
-        /// <param name="VirtualPath">The virtual path</param>
-        /// <param name="CreateNew">bool yes \ no to create the director.</param>
-        /// <returns>the directory object, or null if the create flag is set to false</returns>
         public override FileSystem.Directory GetDirectory(string VirtualPath, bool CreateNew)
         {
             VirtualPath = VirtualPath.VirtualPathToDbPath();
@@ -250,9 +198,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets a directory by a basedirectory and a string array of sub path tree
         /// </summary>
-        /// <param name="BaseDirectory">the base directory object</param>
-        /// <param name="SubPath">the params of sub path</param>
-        /// <returns>the directory found, or null for no directory found</returns>
         public override FileSystem.Directory GetDirectory(FileSystem.Directory BaseDirectory, params string[] SubPath)
         {
             return GetDirectory(string.Concat(BaseDirectory.FullPath, string.Join("/", SubPath)));
@@ -261,10 +206,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets a directory by a basedirectory and a string array of sub path tree.
         /// </summary>
-        /// <param name="BaseDirectory">the base directory object</param>
-        /// <param name="CreateNew">If true, creates the directory if it does not already exist.</param>
-        /// <param name="SubPath">the params of sub path</param>
-        /// <returns>The directory found, or null for no directory found</returns>
         public override FileSystem.Directory GetDirectory(FileSystem.Directory BaseDirectory, bool CreateNew, params string[] SubPath)
         {
             return GetDirectory(string.Concat(BaseDirectory.FullPath, string.Join("/", SubPath)), CreateNew);
@@ -273,8 +214,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets all the directories underneath a base directory. Only searches one level.
         /// </summary>
-        /// <param name="BaseDirectory">the base directory</param>
-        /// <returns>collection of Directory objects</returns>
         public override IEnumerable<FileSystem.Directory> GetDirectories(FileSystem.Directory BaseDirectory)
         {
             FileSystem.FileStoreDb db = new FileSystem.FileStoreDb(this.connectionString);
@@ -289,8 +228,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets all the files in a directory, only searches one level
         /// </summary>
-        /// <param name="BaseDirectory">the base directory</param>
-        /// <returns>collection of File objects</returns>
         public override IEnumerable<FileSystem.File> GetFiles(FileSystem.Directory BaseDirectory)
         {
             var db = new FileSystem.FileStoreDb(this.connectionString);
@@ -305,8 +242,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// gets a specific file by virtual path
         /// </summary>
-        /// <param name="VirtualPath">the virtual path of the file</param>
-        /// <returns></returns>
         public override FileSystem.File GetFile(string VirtualPath)
         {
             var db = new FileSystem.FileStoreDb(this.connectionString);
@@ -318,8 +253,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// boolean wether a file exists by its virtual path
         /// </summary>
-        /// <param name="VirtualPath">the virtual path</param>
-        /// <returns>boolean</returns>
         public override bool FileExists(string VirtualPath)
         {
             var db = new FileSystem.FileStoreDb(this.connectionString);
@@ -331,12 +264,11 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// deletes a file by virtual path
         /// </summary>
-        /// <param name="VirtualPath">virtual path</param>
         public override void DeleteFile(string VirtualPath)
         {
             var db = new FileSystem.FileStoreDb(this.connectionString);
             var file = db.FileStoreFiles.Where(x => x.FullPath == VirtualPath.VirtualPathToDbPath() && x.FileStoreDirectory.BlogID == Blog.CurrentInstance.Id);
-            db.FileStoreFiles.DeleteAllOnSubmit(file);
+            db.FileStoreFiles.Clear(); // Replaced DeleteAllOnSubmit - delete individually //file);
             db.SubmitChanges();
             db.Dispose();
         }
@@ -344,10 +276,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// uploads a file to the provider container
         /// </summary>
-        /// <param name="FileBinary">file contents as byte array</param>
-        /// <param name="FileName">the file name</param>
-        /// <param name="BaseDirectory">directory object that is the owner</param>
-        /// <returns>the new file object</returns>
         public override FileSystem.File UploadFile(byte[] FileBinary, string FileName, FileSystem.Directory BaseDirectory)
         {
             return UploadFile(FileBinary, FileName, BaseDirectory, false);
@@ -356,11 +284,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// uploads a file to the provider container
         /// </summary>
-        /// <param name="FileBinary">the contents of the file as a byte array</param>
-        /// <param name="FileName">the file name</param>
-        /// <param name="BaseDirectory">the directory object that is the owner</param>
-        /// <param name="Overwrite">boolean wether to overwrite the file if it exists.</param>
-        /// <returns>the new file object</returns>
         public override FileSystem.File UploadFile(byte[] FileBinary, string FileName, FileSystem.Directory BaseDirectory, bool Overwrite)
         {
             var virtualPath = BaseDirectory.FullPath + "/" + FileName;
@@ -373,7 +296,7 @@ namespace BlogEngine.Core.Providers
                     db.Dispose();
                     throw new Exception("File " + FileName + " already exists in this path.");
                 }
-                db.FileStoreFiles.DeleteAllOnSubmit(files);
+                db.FileStoreFiles.Clear(); // Replaced DeleteAllOnSubmit - delete individually //files);
                 db.SubmitChanges();
             }
             var file = new FileSystem.FileStoreFile()
@@ -388,18 +311,16 @@ namespace BlogEngine.Core.Providers
                 ParentDirectoryID = BaseDirectory.Id,
                 Size = FileBinary.Length
             };
-            db.FileStoreFiles.InsertOnSubmit(file);
+            db.FileStoreFiles.Add(file);
             db.SubmitChanges();
             db.Dispose();
             return file.CopyToFile();
         }
 
         /// <summary>
-        /// gets the file contents via Lazy load, however in the DbProvider the Contents are loaded when the initial object is created to cut down on DbReads
+        /// gets the file contents via Lazy load
         /// </summary>
-        /// <param name="BaseFile">the baseFile object to fill</param>
-        /// <returns>the original file object</returns>
-        internal override FileSystem.File GetFileContents(FileSystem.File BaseFile)
+        public override FileSystem.File GetFileContents(FileSystem.File BaseFile)
         {
             var db = new FileSystem.FileStoreDb(this.connectionString);
             var file = db.FileStoreFiles.FirstOrDefault(x => x.FileID == Guid.Parse(BaseFile.Id));
@@ -411,14 +332,8 @@ namespace BlogEngine.Core.Providers
         }
 
         /// <summary>
-        /// Returns a thumbnail image at a maximum size. Only one size is provided as the thumbnail will be scaled down. If the thumbnail does not exist the thumbnail is created
+        /// Returns a thumbnail image at a maximum size.
         /// </summary>
-        /// <param name="VirtualPath">The virtual path of the image</param>
-        /// <param name="MaximumSize">The maximum size for the image</param>
-        /// <returns>The image with the thumbnail contents</returns>
-        /// <remarks>
-        /// this is a virtual file and all actual file methods will not be available.
-        /// </remarks>
         public override FileSystem.Image ImageThumbnail(string VirtualPath, int MaximumSize)
         {
             var file = GetFile(VirtualPath);
@@ -437,7 +352,7 @@ namespace BlogEngine.Core.Providers
                     size = MaximumSize,
                     thumbnailId = Guid.NewGuid()
                 };
-                db.FileStoreFileThumbs.InsertOnSubmit(thumb);
+                db.FileStoreFileThumbs.Add(thumb);
                 db.SubmitChanges();
                 image.FileContents = thumb.contents.ToArray();
             }
@@ -459,8 +374,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// copy's the database directory object to a Directory object
         /// </summary>
-        /// <param name="inObj">the database directory to copy</param>
-        /// <returns>a new Directory object</returns>
         public static FileSystem.Directory CopyToDirectory(this FileSystem.FileStoreDirectory inObj)
         {
             if (inObj == null)
@@ -480,8 +393,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// copys a database File object to a File object
         /// </summary>
-        /// <param name="inObj">the database file object to copy</param>
-        /// <returns>a new File object</returns>
         public static FileSystem.File CopyToFile(this FileSystem.FileStoreFile inObj)
         {
             if (inObj == null)
@@ -504,8 +415,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// removes the virtual path of BlogStorageLocation + files from the virtual path. 
         /// </summary>
-        /// <param name="VirtualPath">the virtual path to replace against</param>
-        /// <returns>the repleaced string</returns>
         public static string VirtualPathToDbPath(this string VirtualPath)
         {
             return VirtualPath.Replace(Blog.CurrentInstance.StorageLocation + Utils.FilesFolder, "");

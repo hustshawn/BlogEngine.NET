@@ -5,61 +5,45 @@
     using System.IO;
     using System.Linq;
     using System.Text;
-    using System.Web;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// Based on John Dyer's (http://johndyer.name/) extension.
+    /// Serves APML XML.
     /// </summary>
-    public class Apml : IHttpHandler
+    public static class ApmlEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the APML handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapApmlHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/apml.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides references to the intrinsic server objects (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
-            if (context.Request.FilePath.ToLower() != Utils.RelativeWebRoot + "apml.axd")
-                throw new HttpException(404, "File not found");
+            var filePath = context.Request.Path.Value?.ToLower() ?? string.Empty;
+            if (filePath != Utils.RelativeWebRoot + "apml.axd")
+            {
+                context.Response.StatusCode = 404;
+                return;
+            }
 
             context.Response.ContentType = "text/xml";
-            WriteApmlDocument(context.Response.OutputStream);
+            WriteApmlDocument(context.Response.Body);
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// Finds the max.
         /// </summary>
-        /// <param name="dic">The dictionary.</param>
-        /// <returns>A list of Concept.</returns>
         private static IEnumerable<Concept> FindMax(Dictionary<string, Concept> dic)
         {
             float max = 0;
@@ -80,7 +64,6 @@
         /// <summary>
         /// Closes the writer.
         /// </summary>
-        /// <param name="xmlWriter">The XML writer.</param>
         private static void CloseWriter(XmlWriter xmlWriter)
         {
             xmlWriter.WriteEndElement(); // APML
@@ -88,40 +71,9 @@
             xmlWriter.Close();
         }
 
-        //// modified version of what's happening in the tag cloud
-        // private Dictionary<string, Concept> CreateCategoryList()
-        // {
-        // // get all the tags and count the number of usages
-        // Dictionary<string, Concept> dic = new Dictionary<string, Concept>();
-        // foreach (Post post in Post.Posts)
-        // {
-        // if (post.Visible)
-        // {
-        // foreach (Category cat in post.Categories)
-        // {
-        // if (dic.ContainsKey(cat.Title))
-        // {
-        // Concept concept = dic[cat.Title];
-        // concept.Score++;
-        // if (post.DateModified > concept.LastUpdated)
-        // concept.LastUpdated = post.DateModified;
-        // dic[cat.Title] = concept;
-        // }
-        // else
-        // {
-        // dic[cat.Title] = new Concept(post.DateModified, 1);
-        // }
-        // }
-        // }
-        // }
-
-        // return FindMax(dic);
-        // }
-
         /// <summary>
         /// Creates the link list.
         /// </summary>
-        /// <returns>A dictionary of string, string.</returns>
         private static Dictionary<string, string> CreateLinkList()
         {
             var dic = new Dictionary<string, string>();
@@ -140,10 +92,8 @@
         /// <summary>
         /// Creates the tag list.
         /// </summary>
-        /// <returns>A list of concepts.</returns>
         private static IEnumerable<Concept> CreateTagList()
         {
-            // get all the tags and count the number of usages
             var dic = new Dictionary<string, Concept>();
             foreach (var post in Post.Posts)
             {
@@ -178,8 +128,6 @@
         /// <summary>
         /// Gets the writer.
         /// </summary>
-        /// <param name="stream">The stream.</param>
-        /// <returns>An xml writer.</returns>
         private static XmlWriter GetWriter(Stream stream)
         {
             var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
@@ -192,11 +140,8 @@
         }
 
         /// <summary>
-        /// The write apml document.
+        /// The write APML document.
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
         private static void WriteApmlDocument(Stream stream)
         {
             var writer = GetWriter(stream);
@@ -234,27 +179,6 @@
             writer.WriteEndElement(); // Concepts
             writer.WriteEndElement(); // ImplicitData
             writer.WriteEndElement(); // Profile
-
-            // categories
-            // writer.WriteStartElement("Profile");
-            // writer.WriteAttributeString("name", "categories");
-            // writer.WriteStartElement("ImplicitData");
-            // writer.WriteStartElement("Concepts");
-
-            // Dictionary<string, Concept> catList = CreateCategoryList();
-            // foreach (string key in catList.Keys)
-            // {
-            // writer.WriteStartElement("Concept");
-            // writer.WriteAttributeString("key", key);
-            // writer.WriteAttributeString("value", catList[key].Score.ToString());
-            // writer.WriteAttributeString("from", Utils.AbsoluteWebRoot.ToString());
-            // writer.WriteAttributeString("updated", catList[key].LastUpdated.ToString());
-            // writer.WriteEndElement();  // Concept
-            // }
-
-            // writer.WriteEndElement();  // Concepts
-            // writer.WriteEndElement();  // ImplicitData
-            // writer.WriteEndElement();  // Profile
 
             // links
             writer.WriteStartElement("Profile");
@@ -295,27 +219,11 @@
             CloseWriter(writer);
         }
 
-        #endregion
-
         /// <summary>
         /// The concept.
         /// </summary>
         private class Concept
         {
-            #region Constructors and Destructors
-
-            /// <summary>
-            /// Initializes a new instance of the <see cref="Concept"/> class.
-            /// </summary>
-            /// <param name="lastUpdated">
-            /// The last updated.
-            /// </param>
-            /// <param name="score">
-            /// The score.
-            /// </param>
-            /// <param name="title">
-            /// The title.
-            /// </param>
             public Concept(DateTime lastUpdated, float score, string title)
             {
                 this.LastUpdated = lastUpdated;
@@ -323,29 +231,9 @@
                 this.Title = title;
             }
 
-            #endregion
-
-            #region Properties
-
-            /// <summary>
-            ///     Gets or sets the last updated.
-            /// </summary>
-            /// <value>The last updated.</value>
             public DateTime LastUpdated { get; set; }
-
-            /// <summary>
-            ///     Gets or sets the score.
-            /// </summary>
-            /// <value>The score.</value>
             public float Score { get; set; }
-
-            /// <summary>
-            ///     Gets the title.
-            /// </summary>
-            /// <value>The title.</value>
             public string Title { get; private set; }
-
-            #endregion
         }
     }
 }

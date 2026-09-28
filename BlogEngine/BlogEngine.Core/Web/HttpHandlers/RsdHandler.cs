@@ -1,45 +1,33 @@
 ﻿namespace BlogEngine.Core.Web.HttpHandlers
 {
     using System.Text;
-    using System.Web;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Http.Extensions;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// RSD (Really Simple Discoverability) Handler
-    ///     http://cyber.law.harvard.edu/blogs/gems/tech/rsd.html
+    /// http://cyber.law.harvard.edu/blogs/gems/tech/rsd.html
     /// </summary>
-    public class RsdHandler : IHttpHandler
+    public static class RsdEndpoint
     {
-        #region Properties
-
         /// <summary>
-        /// Gets a value indicating whether another request can use the <see cref="T:System.Web.IHttpHandler"/> instance.
+        /// Maps the RSD handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref="T:System.Web.IHttpHandler"/> instance is reusable; otherwise, false.
-        /// </returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapRsdHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/rsd.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"/> interface.
-        /// </summary>
-        /// <param name="context">An <see cref="T:System.Web.HttpContext"/> object that provides references to the intrinsic server objects (for example, Request, Response, Session, and Server) used to service HTTP requests.</param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             context.Response.ContentType = "text/xml";
-            using (var rsd = new XmlTextWriter(context.Response.OutputStream, Encoding.UTF8))
+            using (var rsd = new XmlTextWriter(context.Response.Body, Encoding.UTF8))
             {
                 rsd.Formatting = Formatting.Indented;
                 rsd.WriteStartDocument();
@@ -48,7 +36,7 @@
                 rsd.WriteStartElement("rsd");
                 rsd.WriteAttributeString("version", "1.0");
 
-                // Service 
+                // Service
                 rsd.WriteStartElement("service");
                 rsd.WriteElementString("engineName", $"BlogEngine.NET {BlogSettings.Instance.Version()}");
                 rsd.WriteElementString("engineLink", "https://blogengine.io");
@@ -63,7 +51,7 @@
                 rsd.WriteAttributeString("preferred", "true");
                 var prefix = BlogSettings.Instance.RequireSslMetaWeblogApi ? "https://" : "http://";
                 rsd.WriteAttributeString(
-                    "apiLink", $"{prefix}{context.Request.Url.Authority}{Utils.RelativeWebRoot}metaweblog.axd");
+                    "apiLink", $"{prefix}{context.Request.Host}{Utils.RelativeWebRoot}metaweblog.axd");
                 rsd.WriteAttributeString("blogID", Utils.AbsoluteWebRoot.ToString());
                 rsd.WriteEndElement();
 
@@ -86,10 +74,8 @@
 
                 rsd.WriteEndDocument();
             }
+
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
     }
 }

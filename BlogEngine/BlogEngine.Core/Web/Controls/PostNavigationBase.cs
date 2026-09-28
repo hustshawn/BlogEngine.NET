@@ -1,11 +1,10 @@
-﻿using System.Web.UI;
-
-namespace BlogEngine.Core.Web.Controls
+﻿namespace BlogEngine.Core.Web.Controls
 {
     /// <summary>
-    /// Post navigation base
+    /// POCO/service class for post navigation (previous/next) logic.
+    /// Converted from UserControl inheritance to a plain class.
     /// </summary>
-    public class PostNavigationBase : UserControl
+    public class PostNavigationBase
     {
         Post next
         {
@@ -30,15 +29,15 @@ namespace BlogEngine.Core.Web.Controls
         /// <summary>
         /// Next post relative url
         /// </summary>
-        public string NextPostUrl 
+        public string NextPostUrl
         {
-            get 
+            get
             {
                 if (next == null)
                     return string.Empty;
 
                 return next.RelativeLink;
-            } 
+            }
         }
 
         /// <summary>

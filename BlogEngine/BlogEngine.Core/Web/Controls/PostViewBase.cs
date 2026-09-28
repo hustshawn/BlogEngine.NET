@@ -3,21 +3,15 @@
     using System;
     using System.Globalization;
     using System.Text;
-    using System.Web;
-    using System.Web.UI;
-    using System.Web.UI.WebControls;
+    using System.Net;
 
     /// <summary>
-    /// The PostView.ascx that is located in the themes folder
-    ///     has to inherit from this class.
-    ///     <remarks>
-    /// It provides the basic functionaly needed to display a post.
-    ///     </remarks>
+    /// POCO/service class for post rendering logic.
+    /// Converted from UserControl inheritance to a plain class.
+    /// Preserves all the post rendering methods and properties.
     /// </summary>
-    public class PostViewBase : UserControl
+    public class PostViewBase
     {
-        #region Constants and Fields
-
         /// <summary>
         /// Initializes a new instance of the <see cref="PostViewBase"/> class.
         /// </summary>
@@ -27,9 +21,12 @@
             ContentBy = ServingContentBy.Unspecified;
         }
 
-        #endregion
-
         #region Properties
+
+        /// <summary>
+        ///     Gets or sets whether the control is visible.
+        /// </summary>
+        public bool Visible { get; set; } = true;
 
         /// <summary>
         ///     Gets the body of the post. Important: use this instead of Post.Content.
@@ -71,7 +68,9 @@
                 {
                     if (arg.Location == ServingLocation.SinglePost)
                     {
-                        Response.Redirect("~/error404.aspx", true);
+                        // REVIEW: In the original, this redirected to ~/error404.aspx.
+                        // Callers should check Body/Visible and handle the redirect.
+                        Visible = false;
                     }
                     else
                     {
@@ -103,12 +102,14 @@
         /// <summary>
         ///     Gets or sets a value indicating how many characters should be shown of the description.
         /// </summary>
-        public int DescriptionCharacters 
-        { 
-            get 
+        public int DescriptionCharacters
+        {
+            get
             {
                 int chars = 0;
-                string url = HttpContext.Current.Request.RawUrl.ToUpperInvariant();
+                // REVIEW: behavior inferred from usage — the original used Blog._httpContextAccessor?.HttpContext.Request.RawUrl.
+                // Callers should set the RequestUrl property to enable URL-based logic.
+                string url = (RequestUrl ?? string.Empty).ToUpperInvariant();
 
                 if (url.Contains("/CATEGORY/") || url.Contains("?TAG=/"))
                 {
@@ -129,6 +130,12 @@
         }
 
         /// <summary>
+        /// Gets or sets the current request URL for URL-based logic.
+        /// Set this from the caller to replace Blog._httpContextAccessor?.HttpContext.Request.RawUrl.
+        /// </summary>
+        public string RequestUrl { get; set; }
+
+        /// <summary>
         ///     Gets or sets the index of the post in a list of posts displayed
         /// </summary>
         public int Index { get; set; }
@@ -142,25 +149,7 @@
         ///     Gets or sets the Post object that is displayed through the PostView.ascx control.
         /// </summary>
         /// <value>The Post object that has to be displayed.</value>
-        /// <remarks>
-        /// 
-        /// This was being stored to ViewState, though I can't see any reason why. Storing this
-        /// locally should improve performance.
-        /// 
-        /// </remarks>
         public Post Post { get; set; }
-        //public virtual Post Post
-        //{
-        //    get
-        //    {
-        //        return (Post)ViewState["Post"];
-        //    }
-
-        //    set
-        //    {
-        //        ViewState["Post"] = value;
-        //    }
-        //}
 
         /// <summary>
         ///     Gets or sets a value indicating whether or not to show the entire post or just the excerpt/description.
@@ -226,17 +215,16 @@
                             Utils.Translate("areYouSure"),
                             Utils.Translate("delete").ToLowerInvariant(),
                             Utils.Translate("thePost"));
-                       
+
                     sb.AppendFormat(
                         CultureInfo.InvariantCulture,
                         "<a href=\"#\" onclick=\"if (confirm('{2}')) location.href='{0}?deletepost={1}'\">{3}</a> | ",
                         postRelativeLink,
                         Post.Id,
-                        HttpUtility.JavaScriptStringEncode(confirmDelete),
+                        WebUtility.HtmlEncode(confirmDelete),
                         Utils.Translate("delete"));
                 }
                 return sb.ToString();
-
             }
         }
 
@@ -268,14 +256,10 @@
         #region Methods
 
         /// <summary>
-        /// Displays the Post's categories seperated by the specified string.
+        /// Displays the Post's categories separated by the specified string.
         /// </summary>
-        /// <param name="separator">
-        /// The separator.
-        /// </param>
-        /// <returns>
-        /// The category links.
-        /// </returns>
+        /// <param name="separator">The separator.</param>
+        /// <returns>The category links.</returns>
         public virtual string CategoryLinks(string separator)
         {
             var keywords = new string[Post.Categories.Count];
@@ -290,55 +274,10 @@
         }
 
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Control.Init"/> event.
+        /// Displays the Post's tags separated by the specified string.
         /// </summary>
-        /// <param name="e">An <see cref="T:System.EventArgs"/> object that contains the event data.</param>
-        protected override void OnInit(EventArgs e)
-        {
-            base.OnInit(e);
-
-            if (!Post.IsVisible)
-            {
-                Visible = false;
-            }
-        }
-
-        /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Control.Load"/> event.
-        /// </summary>
-        /// <param name="e">The <see cref="T:System.EventArgs"/> object that contains the event data.</param>
-        /// <remarks>
-        /// Lets process our .Body content and build up our controls collection
-        /// inside the 'BodyContent' placeholder.
-        /// User controls are insterted into the blog in the following format..
-        /// [UserControl:~/path/usercontrol.ascx]
-        /// TODO : Expose user control parameters.
-        /// </remarks>
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-
-
-            var bodyContent = (PlaceHolder)FindControl("BodyContent");
-            if (bodyContent == null)
-            {
-                // We have no placeholder so we assume this is an old style <% =Body %> theme and do nothing.
-            }
-            else
-            {
-                Utils.InjectUserControls(bodyContent, Body);
-            }
-        }
-
-        /// <summary>
-        /// Displays the Post's tags seperated by the specified string.
-        /// </summary>
-        /// <param name="separator">
-        /// The separator.
-        /// </param>
-        /// <returns>
-        /// The tag links.
-        /// </returns>
+        /// <param name="separator">The separator.</param>
+        /// <returns>The tag links.</returns>
         public virtual string TagLinks(string separator)
         {
             var tags = Post.Tags;
@@ -353,8 +292,8 @@
             {
                 var tag = tags[i];
                 tagStrings[i] = string.Format(
-                    CultureInfo.InvariantCulture, Link, Post.Blog.AbsoluteWebRoot, 
-                    HttpUtility.UrlEncode(tag), HttpUtility.HtmlEncode(tag));
+                    CultureInfo.InvariantCulture, Link, Post.Blog.AbsoluteWebRoot,
+                    WebUtility.UrlEncode(tag), WebUtility.HtmlEncode(tag));
             }
 
             return string.Join(separator, tagStrings);

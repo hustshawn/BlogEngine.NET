@@ -1,18 +1,20 @@
 ﻿using BlogEngine.Core.Data.Models;
 using Newtonsoft.Json;
-using NuGet;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
+using System.Net.Http;
 
 namespace BlogEngine.Core.Packaging
 {
     /// <summary>
-    /// Online gallery
+    /// Online gallery - uses HttpClient to fetch packages from the gallery feed.
     /// </summary>
     public static class Gallery
     {
+        // Shared HttpClient instance for gallery operations
+        private static readonly HttpClient _httpClient = new HttpClient();
+
         /// <summary>
         /// Load gallery packages
         /// </summary>
@@ -21,47 +23,48 @@ namespace BlogEngine.Core.Packaging
         {
             try
             {
-                var packs = GetNugetPackages().ToList();
+                var packs = GetNugetPackages();
                 var extras = GetPackageExtras();
+
+                if (packs == null) return;
 
                 foreach (var pkg in packs)
                 {
-                    if (pkg.IsLatestVersion)
+                    var jp = new Package
                     {
-                        var jp = new Package
+                        Id = pkg.Id,
+                        Authors = pkg.Authors ?? "unknown",
+                        Description = pkg.Description != null && pkg.Description.Length > 140 
+                            ? string.Format("{0}...", pkg.Description.Substring(0, 140)) 
+                            : (pkg.Description ?? ""),
+                        DownloadCount = pkg.DownloadCount,
+                        LastUpdated = pkg.LastUpdated ?? "",
+                        Title = string.IsNullOrEmpty(pkg.Title) ? pkg.Id : pkg.Title,
+                        OnlineVersion = pkg.Version ?? "",
+                        Website = pkg.ProjectUrl,
+                        Tags = pkg.Tags,
+                        IconUrl = pkg.IconUrl
+                    };
+
+                    if (!string.IsNullOrEmpty(jp.IconUrl) && !jp.IconUrl.StartsWith("http:"))
+                        jp.IconUrl = Constants.GalleryUrl + jp.IconUrl;
+
+                    if (string.IsNullOrEmpty(jp.IconUrl))
+                        jp.IconUrl = DefaultThumbnail("");
+
+                    if (extras != null && extras.Any())
+                    {
+                        var extra = extras.FirstOrDefault(e => e.Id.ToLower() == pkg.Id.ToLower() + "." + pkg.Version);
+
+                        if (extra != null)
                         {
-                            Id = pkg.Id,
-                            Authors = pkg.Authors == null ? "unknown" : string.Join(", ", pkg.Authors),
-                            Description = pkg.Description.Length > 140 ? string.Format("{0}...", pkg.Description.Substring(0, 140)) : pkg.Description,
-                            DownloadCount = pkg.DownloadCount,
-                            LastUpdated = pkg.Published != null ? pkg.Published.Value.ToString("yyyy-MM-dd HH:mm") : "", // format for sort order to work with strings
-                            Title = string.IsNullOrEmpty(pkg.Title) ? pkg.Id : pkg.Title,
-                            OnlineVersion = pkg.Version.ToString(),
-                            Website = pkg.ProjectUrl == null ? null : pkg.ProjectUrl.ToString(),
-                            Tags = pkg.Tags,
-                            IconUrl = pkg.IconUrl == null ? null : pkg.IconUrl.ToString()
-                        };
-
-                        if (!string.IsNullOrEmpty(jp.IconUrl) && !jp.IconUrl.StartsWith("http:"))
-                            jp.IconUrl = Constants.GalleryUrl + jp.IconUrl;
-
-                        if (string.IsNullOrEmpty(jp.IconUrl))
-                            jp.IconUrl = DefaultThumbnail("");
-
-                        if (extras != null && extras.Any())
-                        {
-                            var extra = extras.FirstOrDefault(e => e.Id.ToLower() == pkg.Id.ToLower() + "." + pkg.Version);
-
-                            if (extra != null)
-                            {
-                                jp.Extra = extra;
-                                jp.DownloadCount = extra.DownloadCount;
-                                jp.Rating = extra.Rating;
-                                jp.PackageType = extra.PkgType.ToString();
-                            }
+                            jp.Extra = extra;
+                            jp.DownloadCount = extra.DownloadCount;
+                            jp.Rating = extra.Rating;
+                            jp.PackageType = extra.PkgType.ToString();
                         }
-                        packages.Add(jp);
                     }
+                    packages.Add(jp);
                 }
 
             }
@@ -72,7 +75,7 @@ namespace BlogEngine.Core.Packaging
         }
 
         /// <summary>
-        /// Gets extra filds from remote gallery if gallery supports it
+        /// Gets extra fields from remote gallery if gallery supports it
         /// </summary>
         /// <param name="id">Package ID</param>
         /// <returns>Object with extra package fields</returns>
@@ -81,8 +84,7 @@ namespace BlogEngine.Core.Packaging
             try
             {
                 var url = BlogConfig.GalleryFeedUrl.Replace("/nuget", "/api/extras/" + id);
-                WebClient wc = new WebClient();
-                string json = wc.DownloadString(url);
+                string json = _httpClient.GetStringAsync(url).GetAwaiter().GetResult();
                 return JsonConvert.DeserializeObject<PackageExtra>(json);
             }
             catch (Exception)
@@ -101,8 +103,7 @@ namespace BlogEngine.Core.Packaging
             try
             {
                 var url = BlogConfig.GalleryFeedUrl.Replace("/nuget", "/api/extras");
-                WebClient wc = new WebClient();
-                string json = wc.DownloadString(url);
+                string json = _httpClient.GetStringAsync(url).GetAwaiter().GetResult();
                 return JsonConvert.DeserializeObject<List<PackageExtra>>(json);
             }
             catch (Exception)
@@ -122,10 +123,10 @@ namespace BlogEngine.Core.Packaging
             try
             {
                 var url = BlogConfig.GalleryFeedUrl.Replace("/nuget", "/api/review?pkgId=" + id);
-                WebClient wc = new WebClient();
                 var data = JsonConvert.SerializeObject(review);
-                wc.Headers.Add("content-type", "application/json");
-                var result = wc.UploadString(url, "PUT", data);
+                var content = new StringContent(data, System.Text.Encoding.UTF8, "application/json");
+                var response = _httpClient.PutAsync(url, content).GetAwaiter().GetResult();
+                var result = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 
                 // sanitize result replacing garbage returned by service
                 if (result == "\"\"") result = string.Empty;
@@ -144,10 +145,31 @@ namespace BlogEngine.Core.Packaging
 
         #region Private methods
 
-        static IEnumerable<IPackage> GetNugetPackages()
+        /// <summary>
+        /// Gets NuGet packages from the gallery feed using HttpClient.
+        /// </summary>
+        static List<GalleryPackage> GetNugetPackages()
         {
-            var rep = PackageRepositoryFactory.Default.CreateRepository(BlogConfig.GalleryFeedUrl);
-            return rep.GetPackages();
+            try
+            {
+                // The gallery feed URL is a NuGet v2 OData feed.
+                // Fetch packages as JSON from the feed endpoint.
+                var url = BlogConfig.GalleryFeedUrl + "/Packages?$filter=IsLatestVersion&$format=json";
+                string json = _httpClient.GetStringAsync(url).GetAwaiter().GetResult();
+
+                // Try to parse OData response
+                var odata = JsonConvert.DeserializeObject<ODataResponse>(json);
+                if (odata?.D?.Results != null)
+                    return odata.D.Results;
+
+                // Fallback: try direct array deserialization
+                return JsonConvert.DeserializeObject<List<GalleryPackage>>(json);
+            }
+            catch (Exception ex)
+            {
+                Utils.Log("Gallery.GetNugetPackages", ex);
+                return new List<GalleryPackage>();
+            }
         }
 
         static string DefaultThumbnail(string packageType)
@@ -162,6 +184,41 @@ namespace BlogEngine.Core.Packaging
                     return $"{Utils.ApplicationRelativeWebRoot}Content/images/blog/Widget.png";
             }
             return $"{Utils.ApplicationRelativeWebRoot}Content/images/blog/pkg.png";
+        }
+
+        #endregion
+
+        #region Internal models for OData deserialization
+
+        private class ODataResponse
+        {
+            [JsonProperty("d")]
+            public ODataD D { get; set; }
+        }
+
+        private class ODataD
+        {
+            [JsonProperty("results")]
+            public List<GalleryPackage> Results { get; set; }
+        }
+
+        /// <summary>
+        /// Represents a package from the gallery NuGet feed.
+        /// Replaces the NuGet.IPackage dependency.
+        /// </summary>
+        private class GalleryPackage
+        {
+            public string Id { get; set; }
+            public string Title { get; set; }
+            public string Version { get; set; }
+            public string Authors { get; set; }
+            public string Description { get; set; }
+            public int DownloadCount { get; set; }
+            public string LastUpdated { get; set; }
+            public string ProjectUrl { get; set; }
+            public string Tags { get; set; }
+            public string IconUrl { get; set; }
+            public bool IsLatestVersion { get; set; }
         }
 
         #endregion

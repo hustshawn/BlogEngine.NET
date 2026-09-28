@@ -1,65 +1,47 @@
 ﻿namespace BlogEngine.Core.Web.HttpHandlers
 {
     using System;
-    using System.Web;
+    using System.Threading.Tasks;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
-    /// Receives and records all ratings comming in from the rating control.
+    /// Receives and records all ratings coming in from the rating control.
     /// </summary>
-    public class RatingHandler : IHttpHandler
+    public static class RatingEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the rating handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapRatingHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/rate.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> 
-        ///     object that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
-
             if (!BlogSettings.Instance.EnableRating || !Security.IsAuthorizedTo(Rights.SubmitRatingsOnPosts))
             {
                 throw new System.Security.SecurityException();
             }
             else
             {
-                var rating = context.Request.QueryString["rating"];
+                var rating = context.Request.Query["rating"].ToString();
                 int rate;
-                if (rating != null && int.TryParse(rating, out rate))
+                if (!string.IsNullOrEmpty(rating) && int.TryParse(rating, out rate))
                 {
-                    var id = context.Request.QueryString["id"];
-                    if (id != null && id.Length == 36 && rate > 0 && rate < 6)
+                    var id = context.Request.Query["id"].ToString();
+                    if (!string.IsNullOrEmpty(id) && id.Length == 36 && rate > 0 && rate < 6)
                     {
                         try
                         {
-                            if (HasRated(id))
+                            if (HasRated(id, context))
                             {
-                                context.Response.Write($"{rate}HASRATED");
-                                context.Response.End();
+                                await context.Response.WriteAsync($"{rate}HASRATED");
+                                return;
                             }
                             else
                             {
@@ -67,48 +49,30 @@
                                 post.Rate(rate);
 
                                 SetCookie(id, context);
-                                context.Response.Write($"{rate}OK");
-                                context.Response.End();
+                                await context.Response.WriteAsync($"{rate}OK");
+                                return;
                             }
-
                         }
-                        catch(Exception)
+                        catch (Exception)
                         {
-                           
                             // Something failed.
                         }
                     }
                 }
-                context.Response.Write("FAIL");
+                await context.Response.WriteAsync("FAIL");
             }
         }
 
-        #endregion
-
-        #endregion
-
-        #region Methods
-
         /// <summary>
-        /// Determines whether the specified post id has rated.
+        /// Determines whether the specified post id has been rated.
         /// </summary>
-        /// <param name="postId">The post id.</param>
-        /// <returns>
-        ///     <c>true</c> if the specified post id has rated; otherwise, <c>false</c>.
-        /// </returns>
-        private static bool HasRated(string postId)
+        private static bool HasRated(string postId, HttpContext context)
         {
-            // This seems like a bad idea. Someone without cookies disabled
-            // they could repeatedly rate a post. Also, if someone rates
-            // a lot of posts, it's going to continue to increase the size
-            // of their rating cookie, increasing bandwidth.
-            //
-            // -rossisdead 10/28/2010
-            var ratingCookie = HttpContext.Current.Request.Cookies["rating"];
+            var ratingCookie = context.Request.Cookies["rating"];
 
             if (ratingCookie != null)
             {
-                return ratingCookie.Value.Contains(postId);
+                return ratingCookie.Contains(postId);
             }
 
             return false;
@@ -117,17 +81,14 @@
         /// <summary>
         /// Sets the cookie.
         /// </summary>
-        /// <param name="id">The cookie id.</param>
-        /// <param name="context">The context.</param>
         private static void SetCookie(string id, HttpContext context)
         {
-            var cookie = context.Request.Cookies["rating"] ?? new HttpCookie("rating");
+            var existingValue = context.Request.Cookies["rating"] ?? string.Empty;
 
-            cookie.Expires = DateTime.Now.AddYears(2);
-            cookie.Value += id;
-            context.Response.Cookies.Add(cookie);
+            context.Response.Cookies.Append("rating", existingValue + id, new CookieOptions
+            {
+                Expires = DateTime.Now.AddYears(2)
+            });
         }
-
-        #endregion
     }
 }

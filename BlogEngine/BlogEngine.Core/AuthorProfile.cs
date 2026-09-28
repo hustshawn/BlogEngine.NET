@@ -520,9 +520,9 @@
         /// </summary>
         /// <param name="username"></param>
         /// <returns></returns>
-        public static Profile ToJson(string username)
+        public static Data.Models.Profile ToJson(string username)
         {
-            var j = new Profile();
+            var j = new Data.Models.Profile();
             var p = Profiles.Find(ap => ap.UserName.Equals(username, StringComparison.OrdinalIgnoreCase));
 
             if (p != null)

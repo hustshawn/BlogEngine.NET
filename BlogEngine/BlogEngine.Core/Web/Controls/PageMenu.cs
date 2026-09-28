@@ -1,20 +1,31 @@
 ﻿using System;
-using System.Web.UI.HtmlControls;
 using System.Linq;
-using System.Web;
-using System.Web.UI;
+using System.Net;
+using System.Text;
 
 namespace BlogEngine.Core.Web.Controls
 {
     /// <summary>
-    /// The PageMenu class.
+    /// POCO/service class for page menu generation.
+    /// Converted from WebForms-dependent class to plain class.
+    /// Replaces HtmlGenericControl/HtmlAnchor/HtmlTextWriter with StringBuilder-based HTML generation.
+    /// Replaces Blog._httpContextAccessor?.HttpContext with a requestPath parameter.
     /// </summary>
     public class PageMenu
     {
         #region Properties
 
         private bool _ulIdSet = false;
-        string _curPage = HttpUtility.UrlEncode(GetPageName(HttpContext.Current.Request.RawUrl.ToLower()));
+        private string _curPage;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="PageMenu"/> class.
+        /// </summary>
+        /// <param name="requestPath">The current request path (replaces Blog._httpContextAccessor?.HttpContext.Request.RawUrl).</param>
+        public PageMenu(string requestPath = "")
+        {
+            _curPage = WebUtility.UrlEncode(GetPageName((requestPath ?? string.Empty).ToLower()));
+        }
 
         /// <summary>
         /// Home label.
@@ -48,66 +59,64 @@ namespace BlogEngine.Core.Web.Controls
         {
             get
             {
-                HtmlGenericControl ul = BindPages();
-                System.IO.StringWriter sw = new System.IO.StringWriter();
-                ul.RenderControl(new HtmlTextWriter(sw));
-                return sw.ToString();
+                return BindPages();
             }
         }
 
         #endregion
 
-        private HtmlGenericControl BindPages()
+        private string BindPages()
         {
-            // recursivly get all children of the root page
-            HtmlGenericControl ul = GetChildren(Guid.Empty);
+            var sb = new StringBuilder();
+            _ulIdSet = false;
+
+            // recursively get all children of the root page
+            BuildChildren(sb, Guid.Empty);
 
             // items that will be appended to the end of menu list
-            AddMenuItem(ul, Contact, Utils.RelativeWebRoot + "contact.aspx");
+            AppendMenuItem(sb, Contact, Utils.RelativeWebRoot + "contact.aspx");
 
             if (Security.IsAuthenticated)
             {
-                AddMenuItem(ul, Logoff, Utils.RelativeWebRoot + "Account/login.aspx?logoff");
+                AppendMenuItem(sb, Logoff, Utils.RelativeWebRoot + "Account/login.aspx?logoff");
             }
             else
             {
-                AddMenuItem(ul, Logon, Utils.RelativeWebRoot + "Account/login.aspx");
+                AppendMenuItem(sb, Logon, Utils.RelativeWebRoot + "Account/login.aspx");
             }
 
-            return ul;
+            sb.Append("</ul>");
+            return sb.ToString();
         }
 
         bool HasChildren(Guid pageId)
         {
-            bool returnValue = false;
-
             foreach (BlogEngine.Core.Page page in BlogEngine.Core.Page.Pages.OrderBy(page => page.SortOrder))
             {
                 if (page.ShowInList && page.IsPublished)
                 {
                     if (page.Parent == pageId)
                     {
-                        returnValue = true;
-                        break;
+                        return true;
                     }
                 }
             }
-
-            return returnValue;
+            return false;
         }
 
-        HtmlGenericControl GetChildren(Guid parentId)
+        void BuildChildren(StringBuilder sb, Guid parentId)
         {
-            HtmlGenericControl ul = new HtmlGenericControl("ul");
-
             if (!_ulIdSet)
             {
-                ul.Attributes.Add("id", "menu-topmenu");
-                ul.Attributes.Add("class", "menu");
+                sb.Append("<ul id=\"menu-topmenu\" class=\"menu\">");
                 _ulIdSet = true;
 
-                AddMenuItem(ul, Home, Utils.RelativeWebRoot + "default.aspx");
-                AddMenuItem(ul, Archive, Utils.RelativeWebRoot + "archive.aspx");
+                AppendMenuItem(sb, Home, Utils.RelativeWebRoot + "default.aspx");
+                AppendMenuItem(sb, Archive, Utils.RelativeWebRoot + "archive.aspx");
+            }
+            else
+            {
+                sb.Append("<ul>");
             }
 
             foreach (BlogEngine.Core.Page page in BlogEngine.Core.Page.Pages)
@@ -116,50 +125,36 @@ namespace BlogEngine.Core.Web.Controls
                 {
                     if (page.Parent == parentId)
                     {
-                        HtmlGenericControl li = new HtmlGenericControl("li");
-                        string pageName = HttpUtility.UrlEncode(GetPageName(page.RelativeLink.ToString().ToLower()));
+                        sb.Append("<li>");
+                        string pageName = WebUtility.UrlEncode(GetPageName(page.RelativeLink.ToString().ToLower()));
 
-                        HtmlAnchor anc = new HtmlAnchor();
-                        anc.HRef = page.RelativeLink.ToString();
-                        anc.InnerHtml = page.Title;
-                        anc.Title = page.Description;
-
-                        if (pageName == _curPage)
-                        {
-                            anc.Attributes.Add("class", "current");
-                        }
-
-                        li.Controls.Add(anc);
+                        string cssClass = (pageName == _curPage) ? " class=\"current\"" : "";
+                        sb.AppendFormat("<a href=\"{0}\" title=\"{1}\"{2}>{3}</a>",
+                            WebUtility.HtmlEncode(page.RelativeLink.ToString()),
+                            WebUtility.HtmlEncode(page.Description ?? ""),
+                            cssClass,
+                            WebUtility.HtmlEncode(page.Title));
 
                         if (HasChildren(page.Id))
                         {
-                            HtmlGenericControl subUl = GetChildren(page.Id);
-                            li.Controls.Add(subUl);
+                            BuildChildren(sb, page.Id);
+                            sb.Append("</ul>");
                         }
-                        ul.Controls.Add(li);
+                        sb.Append("</li>");
                     }
                 }
             }
-
-            return ul;
         }
 
-        private void AddMenuItem(HtmlGenericControl ul, string pageName, string pageUrl)
+        private void AppendMenuItem(StringBuilder sb, string pageName, string pageUrl)
         {
-            HtmlGenericControl li = new HtmlGenericControl("li");
-            HtmlAnchor anc = new HtmlAnchor();
-
-            anc.HRef = pageUrl;
-            anc.InnerHtml = pageName;
-            anc.Title = pageName;
-
-            if (GetPageName(pageUrl).ToLower() == _curPage.ToLower())
-            {
-                anc.Attributes.Add("class", "current");
-            }
-
-            li.Controls.Add(anc);
-            ul.Controls.Add(li);
+            sb.Append("<li>");
+            string cssClass = (GetPageName(pageUrl).ToLower() == (_curPage ?? "").ToLower()) ? " class=\"current\"" : "";
+            sb.AppendFormat("<a href=\"{0}\" title=\"{1}\"{2}>{1}</a>",
+                WebUtility.HtmlEncode(pageUrl),
+                WebUtility.HtmlEncode(pageName ?? ""),
+                cssClass);
+            sb.Append("</li>");
         }
 
         static string GetPageName(string requestPath)

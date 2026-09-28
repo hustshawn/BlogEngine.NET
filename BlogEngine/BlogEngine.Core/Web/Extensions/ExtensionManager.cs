@@ -6,7 +6,6 @@
     using System.IO;
     using System.Linq;
     using System.Reflection;
-    using System.Web;
     using System.Xml.Serialization;
 
     using BlogEngine.Core.Web.Controls;
@@ -444,8 +443,8 @@
         /// </summary>
         private static void LoadExtensions()
         {
-            if (HttpRuntime.Cache["Extensions"] != null &&
-                ((Dictionary<string, ManagedExtension>)HttpRuntime.Cache["Extensions"]).Count != 0)
+            if (Blog.CurrentInstance.Cache["Extensions"] != null &&
+                ((Dictionary<string, ManagedExtension>)Blog.CurrentInstance.Cache["Extensions"]).Count != 0)
             {
                 return;
             }
@@ -524,8 +523,8 @@
         /// </summary>
         private static void SaveToCache()
         {
-            HttpRuntime.Cache.Remove("Extensions");
-            HttpRuntime.Cache["Extensions"] = extensions;
+            Blog.CurrentInstance.Cache.Remove("Extensions");
+            Blog.CurrentInstance.Cache["Extensions"] = extensions;
         }
 
         #endregion

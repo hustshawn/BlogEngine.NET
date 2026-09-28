@@ -1,3 +1,4 @@
+using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Data.Services;
@@ -7,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic;
-using System.Web.Caching;
 
 namespace BlogEngine.Core.Data
 {
@@ -182,14 +182,11 @@ namespace BlogEngine.Core.Data
 
                 if (Blog.CurrentInstance.Cache[Constants.CacheKey] == null)
                 {
-                    Blog.CurrentInstance.Cache.Add(
+                    Blog.CurrentInstance.Cache.Insert(
                         Constants.CacheKey,
                         LoadPackages(),
-                        null,
-                        Cache.NoAbsoluteExpiration,
-                        new TimeSpan(0, 15, 0),
-                        CacheItemPriority.Low,
-                        null);
+                        DateTime.MaxValue,
+                        new TimeSpan(0, 15, 0));
                 }
                 return (List<Package>)Blog.CurrentInstance.Cache[Constants.CacheKey];
             }

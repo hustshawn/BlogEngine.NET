@@ -1,19 +1,18 @@
 ﻿namespace BlogEngine.Core.Web.HttpHandlers
 {
     using System;
-    using System.Web;
+    using System.Threading.Tasks;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
+
     using BlogEngine.Core.Providers;
 
     /// <summary>
-    /// The ImageHanlder serves all images that is uploaded from
-    ///     the admin pages.
+    /// The ImageHandler serves all images that are uploaded from the admin pages.
     /// </summary>
-    /// <remarks>
-    /// By using a HttpHandler to serve images, it is very easy
-    ///     to add the capability to stop bandwidth leeching or
-    ///     to create a statistics analysis feature upon it.
-    /// </remarks>
-    public class ImageHandler : IHttpHandler
+    public static class ImageEndpoint
     {
         #region Events
 
@@ -34,41 +33,21 @@
 
         #endregion
 
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the image handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapImageHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/image.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object 
-        ///     that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
-            if (!string.IsNullOrEmpty(context.Request.QueryString["picture"]))
+            var picture = context.Request.Query["picture"].ToString();
+            if (!string.IsNullOrEmpty(picture))
             {
-                var fileName = context.Request.QueryString["picture"];
+                var fileName = picture;
                 OnServing(fileName);
                 try
                 {
@@ -79,21 +58,22 @@
                     {
                         OnBadRequest(fileName);
                         context.Response.Redirect($"{Utils.AbsoluteWebRoot}error404.aspx");
+                        return;
                     }
 
                     var file = BlogService.GetFile($"{Blog.CurrentInstance.StorageLocation}files{fileName}");
                     if (file != null)
                     {
-                        context.Response.Cache.SetCacheability(HttpCacheability.Public);
-                        context.Response.Cache.SetExpires(DateTime.Now.AddYears(1));
-                        
+                        context.Response.Headers.CacheControl = "public";
+                        context.Response.Headers.Expires = DateTime.Now.AddYears(1).ToString("R");
+
                         if (Utils.SetConditionalGetHeaders(file.DateCreated.ToUniversalTime()))
                             return;
-                        
+
                         var index = fileName.LastIndexOf(".") + 1;
                         var extension = fileName.Substring(index).ToUpperInvariant();
                         context.Response.ContentType = string.Compare(extension, "JPG") == 0 ? "image/jpeg" : $"image/{extension}";
-                        context.Response.BinaryWrite(file.FileContents);
+                        await context.Response.Body.WriteAsync(file.FileContents);
 
                         OnServed(fileName);
                     }
@@ -111,48 +91,19 @@
             }
         }
 
-        #endregion
-
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Called when [bad request].
-        /// </summary>
-        /// <param name="file">The file name.</param>
         private static void OnBadRequest(string file)
         {
-            if (BadRequest != null)
-            {
-                BadRequest(file, EventArgs.Empty);
-            }
+            BadRequest?.Invoke(file, EventArgs.Empty);
         }
 
-        /// <summary>
-        /// Called when [served].
-        /// </summary>
-        /// <param name="file">The file name.</param>
         private static void OnServed(string file)
         {
-            if (Served != null)
-            {
-                Served(file, EventArgs.Empty);
-            }
+            Served?.Invoke(file, EventArgs.Empty);
         }
 
-        /// <summary>
-        /// Called when [serving].
-        /// </summary>
-        /// <param name="file">The file name.</param>
         private static void OnServing(string file)
         {
-            if (Serving != null)
-            {
-                Serving(file, EventArgs.Empty);
-            }
+            Serving?.Invoke(file, EventArgs.Empty);
         }
-
-        #endregion
     }
 }

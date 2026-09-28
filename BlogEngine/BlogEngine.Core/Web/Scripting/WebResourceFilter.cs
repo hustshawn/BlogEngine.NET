@@ -1,8 +1,9 @@
+using Microsoft.AspNetCore.Http;
+using System.Net;
 ﻿using System;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Web;
 using System.Net.Sockets;
 using System.Collections.Generic;
 using BlogEngine.Core.Data.Services;
@@ -171,9 +172,11 @@ namespace BlogEngine.Core.Web.Scripting
         public string Evaluator(Match match)
         {
             var relative = match.Groups[1].Value;
-            var absolute = HttpContext.Current.Request.Url.GetLeftPart(UriPartial.Authority);
+            var absolute = Blog._httpContextAccessor?.HttpContext != null
+                ? $"{Blog._httpContextAccessor.HttpContext.Request.Scheme}://{Blog._httpContextAccessor.HttpContext.Request.Host}"
+                : "";
             return match.Value.Replace(
-                relative, $"{Utils.ApplicationRelativeWebRoot}js.axd?path={HttpUtility.UrlEncode(absolute + relative)}");
+                relative, $"{Utils.ApplicationRelativeWebRoot}js.axd?path={WebUtility.UrlEncode(absolute + relative)}");
         }
 
         /// <summary>

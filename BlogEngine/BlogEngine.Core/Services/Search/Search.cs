@@ -1,3 +1,4 @@
+using System.Net;
 ﻿namespace BlogEngine.Core
 {
     using System;
@@ -7,7 +8,6 @@
     using System.Linq;
     using System.Text;
     using System.Text.RegularExpressions;
-    using System.Web;
     using System.Xml;
 
     using BlogEngine.Core.Providers;
@@ -166,11 +166,11 @@
             {
                 Item = item,
                 Title = CleanContent(item.Title, false),
-                Content = HttpUtility.HtmlDecode(CleanContent(item.Content, true))
+                Content = WebUtility.HtmlDecode(CleanContent(item.Content, true))
             };
             if (item is Comment)
             {
-                entry.Content += HttpUtility.HtmlDecode(CleanContent(item.Author, false));
+                entry.Content += WebUtility.HtmlDecode(CleanContent(item.Author, false));
             }
 
             Entries.Add(entry);

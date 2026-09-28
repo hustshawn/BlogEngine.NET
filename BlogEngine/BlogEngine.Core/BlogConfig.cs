@@ -1,10 +1,11 @@
 ﻿using System;
-using System.Web.Configuration;
+using Microsoft.Extensions.Configuration;
 
 namespace BlogEngine.Core
 {
     /// <summary>
-    ///     Wrapper class for accessing Blog configuration settings from Web.config.
+    ///     Wrapper class for accessing Blog configuration settings.
+    ///     Settings are loaded from IConfiguration (appsettings.json).
     /// </summary>
     public class BlogConfig
     {
@@ -12,6 +13,43 @@ namespace BlogEngine.Core
         /// The default storage location virtual path (App_Data).
         /// </summary>
         public const string DefaultStorageLocation = "~/App_Data/";
+
+        /// <summary>
+        /// The application content root path (physical path to the app root).
+        /// Set at startup from IWebHostEnvironment.ContentRootPath.
+        /// </summary>
+        public static string ContentRootPath { get; set; } = AppDomain.CurrentDomain.BaseDirectory;
+
+        /// <summary>
+        /// The IConfiguration instance for reading app settings.
+        /// Set at startup via AddBlogEngineCore().
+        /// </summary>
+        public static IConfiguration Configuration { get; set; }
+
+        /// <summary>
+        /// Resolves a virtual path (e.g. ~/App_Data/foo) to a physical path.
+        /// Replaces BlogConfig.MapPath and BlogConfig.MapPath.
+        /// </summary>
+        public static string MapPath(string virtualPath)
+        {
+            if (string.IsNullOrWhiteSpace(virtualPath))
+                return ContentRootPath;
+
+            var relative = virtualPath.Replace("~/", string.Empty).Replace("~", string.Empty);
+            relative = relative.Replace('/', System.IO.Path.DirectorySeparatorChar);
+            return System.IO.Path.Combine(ContentRootPath, relative);
+        }
+
+        public static string GetAppSetting(string key, string defaultValue = null)
+        {
+            if (Configuration != null)
+            {
+                var value = Configuration[$"BlogEngine:{key}"] ?? Configuration[key];
+                if (!string.IsNullOrEmpty(value))
+                    return value;
+            }
+            return defaultValue;
+        }
 
         #region FileExtension
 
@@ -27,7 +65,7 @@ namespace BlogEngine.Core
                 if (BlogSettings.Instance.RemoveExtensionsFromUrls)
                     return "";
 
-                return _fileExtension ?? (_fileExtension = WebConfigurationManager.AppSettings["BlogEngine.FileExtension"] ?? ".aspx");
+                return _fileExtension ?? (_fileExtension = GetAppSetting("BlogEngine.FileExtension") ?? ".aspx");
             }
         }
 
@@ -44,7 +82,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _virtualPath?? (_virtualPath = WebConfigurationManager.AppSettings["BlogEngine.VirtualPath"] ?? "~/");
+                return _virtualPath?? (_virtualPath = GetAppSetting("BlogEngine.VirtualPath") ?? "~/");
             }
         }
         #endregion
@@ -60,7 +98,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _mobileServices ?? (_mobileServices = WebConfigurationManager.AppSettings["BlogEngine.MobileDevices"] ??
+                return _mobileServices ?? (_mobileServices = GetAppSetting("BlogEngine.MobileDevices") ??
                     @"(iemobile|iphone|ipod|android|nokia|sonyericsson|blackberry|samsung|sec\-|windows ce|motorola|mot\-|up.b|midp\-)");
             }
         }
@@ -78,7 +116,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _reservedBlogNames ?? (_reservedBlogNames = WebConfigurationManager.AppSettings["BlogEngine.ReservedBlogNames"] ?? @"(account|admin|api|app_code|app_data|app_globalresources|bin|content|editors|modules|pics|scripts|setup|templates|tests|themes|user controls|widgets|post|page|category|author|tag|calendar)");
+                return _reservedBlogNames ?? (_reservedBlogNames = GetAppSetting("BlogEngine.ReservedBlogNames") ?? @"(account|admin|api|app_code|app_data|app_globalresources|bin|content|editors|modules|pics|scripts|setup|templates|tests|themes|user controls|widgets|post|page|category|author|tag|calendar)");
             }
         }
 
@@ -99,9 +137,9 @@ namespace BlogEngine.Core
             get
             {
                 return _storageLocation?? (
-                _storageLocation = string.IsNullOrEmpty(WebConfigurationManager.AppSettings["StorageLocation"])
+                _storageLocation = string.IsNullOrEmpty(GetAppSetting("StorageLocation"))
                            ? DefaultStorageLocation
-                           : WebConfigurationManager.AppSettings["StorageLocation"]);
+                           : GetAppSetting("StorageLocation"));
             }
         }
 
@@ -118,7 +156,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _blogInstancesFolderName ?? (_blogInstancesFolderName = WebConfigurationManager.AppSettings["BlogInstancesFolderName"] ?? "blogs");
+                return _blogInstancesFolderName ?? (_blogInstancesFolderName = GetAppSetting("BlogInstancesFolderName") ?? "blogs");
             }
         }
 
@@ -135,7 +173,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _administrativeRole ?? (_administrativeRole = WebConfigurationManager.AppSettings["BlogEngine.AdminRole"] ?? "administrators");
+                return _administrativeRole ?? (_administrativeRole = GetAppSetting("BlogEngine.AdminRole") ?? "administrators");
             }
         }
         #endregion
@@ -151,7 +189,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _anonymousRole ?? (_anonymousRole = WebConfigurationManager.AppSettings["BlogEngine.AnonymousRole"] ?? "Anonymous");
+                return _anonymousRole ?? (_anonymousRole = GetAppSetting("BlogEngine.AnonymousRole") ?? "Anonymous");
             }
         }
 
@@ -168,7 +206,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _editorsRole ?? (_editorsRole = WebConfigurationManager.AppSettings["BlogEngine.EditorsRole"] ?? "Editors");
+                return _editorsRole ?? (_editorsRole = GetAppSetting("BlogEngine.EditorsRole") ?? "Editors");
             }
         }
 
@@ -206,7 +244,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                var tmp = WebConfigurationManager.AppSettings["BlogEngine.GenericPageSize"];
+                var tmp = GetAppSetting("BlogEngine.GenericPageSize");
                 if (!string.IsNullOrEmpty(tmp))
                     _genericPageSize = int.Parse(tmp);
 
@@ -228,7 +266,7 @@ namespace BlogEngine.Core
             {
                 if (_singleSignOn == null)
                 {
-                    string setting = WebConfigurationManager.AppSettings["BlogEngine.SingleSignOn"] ?? "false";
+                    string setting = GetAppSetting("BlogEngine.SingleSignOn") ?? "false";
 
                     if (!string.IsNullOrEmpty(setting))
                     {
@@ -257,7 +295,7 @@ namespace BlogEngine.Core
         {
             get
             {
-                return _siteMapUrlSet ?? (_siteMapUrlSet = WebConfigurationManager.AppSettings["BlogEngine.SiteMapUrlSet"] 
+                return _siteMapUrlSet ?? (_siteMapUrlSet = GetAppSetting("BlogEngine.SiteMapUrlSet") 
                     ?? "http://www.sitemaps.org/schemas/sitemap/0.9");
             }
         }
@@ -273,9 +311,9 @@ namespace BlogEngine.Core
         {
             get
             {
-                return string.IsNullOrEmpty(WebConfigurationManager.AppSettings["BlogEngine.DefaultEditor"])
+                return string.IsNullOrEmpty(GetAppSetting("BlogEngine.DefaultEditor"))
                     ? "~/admin/editors/tinymce/editor.cshtml"
-                    : WebConfigurationManager.AppSettings["BlogEngine.DefaultEditor"];
+                    : GetAppSetting("BlogEngine.DefaultEditor");
             }
         }
         #endregion
@@ -289,9 +327,9 @@ namespace BlogEngine.Core
         {
             get
             {
-                return string.IsNullOrEmpty(WebConfigurationManager.AppSettings["BlogEngine.GalleryFeedUrl"])
+                return string.IsNullOrEmpty(GetAppSetting("BlogEngine.GalleryFeedUrl"))
                     ? "http://dnbe.net/v01/nuget"
-                    : WebConfigurationManager.AppSettings["BlogEngine.GalleryFeedUrl"];
+                    : GetAppSetting("BlogEngine.GalleryFeedUrl");
             }
         }
         #endregion
@@ -305,9 +343,9 @@ namespace BlogEngine.Core
         {
             get
             {
-                return string.IsNullOrEmpty(WebConfigurationManager.AppSettings["BlogEngine.UsageScenario"])
+                return string.IsNullOrEmpty(GetAppSetting("BlogEngine.UsageScenario"))
                     ? "singleblog"
-                    : WebConfigurationManager.AppSettings["BlogEngine.UsageScenario"];
+                    : GetAppSetting("BlogEngine.UsageScenario");
             }
         }
         #endregion

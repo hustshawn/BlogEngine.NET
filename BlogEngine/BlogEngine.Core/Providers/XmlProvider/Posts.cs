@@ -5,7 +5,6 @@
     using System.Globalization;
     using System.IO;
     using System.Linq;
-    using System.Web;
     using System.Xml;
 
     /// <summary>
@@ -38,8 +37,7 @@
             // if "blog" == null, this means it's the primary instance being asked for -- which
             // is in the root of BlogConfig.StorageLocation.
             string location = blog == null ? BlogConfig.StorageLocation : blog.StorageLocation;
-            var p = location.Replace("~/", string.Empty);
-            return Path.Combine(HttpRuntime.AppDomainAppPath, p);
+            return BlogConfig.MapPath(location);
         }
 
         #endregion

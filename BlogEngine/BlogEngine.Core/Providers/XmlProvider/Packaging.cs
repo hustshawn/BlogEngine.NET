@@ -3,14 +3,13 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
-using System.Web;
 using BlogEngine.Core.Packaging;
 
 namespace BlogEngine.Core.Providers
 {
     public partial class XmlBlogProvider : BlogProvider
     {
-        string dataFolder = HttpContext.Current.Server.MapPath(BlogConfig.StorageLocation);
+        string dataFolder = BlogConfig.MapPath(BlogConfig.StorageLocation);
 
         /// <summary>
         /// Log of all installed packages

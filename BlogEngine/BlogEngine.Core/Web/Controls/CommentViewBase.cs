@@ -4,17 +4,13 @@
     using System.Globalization;
     using System.Linq;
     using System.Text;
-    using System.Web.UI;
 
     /// <summary>
-    /// Inherit from this class when you are building the
-    ///     commentview.ascx user control in your custom theme.
+    /// POCO/service class for comment rendering logic.
+    /// Converted from UserControl inheritance to a plain class.
+    /// Preserves all the comment rendering methods and properties.
     /// </summary>
-    /// <remarks>
-    /// The class exposes a lot of functionality to the custom
-    ///     comment control in the theme folder.
-    /// </remarks>
-    public class CommentViewBase : UserControl
+    public class CommentViewBase
     {
         #region Constants and Fields
 
@@ -24,26 +20,14 @@
         private const string FlagImage =
             "<span class=\"adr\"><img src=\"{0}Content/images/blog/flags/{1}.png\" class=\"country-name flag\" width=\"16\" height=\"11\" title=\"{2}\" alt=\"{2}\" /></span>";
 
-/*
-        /// <summary>
-        /// The link.
-        /// </summary>
-        private const string Link = "<a href=\"{0}{1}\" rel=\"nofollow\">{2}</a>";
-*/
-
-/*
-        /// <summary>
-        /// The link regex.
-        /// </summary>
-        private static readonly Regex LinkRegex =
-            new Regex(
-                "((http://|www\\.)([A-Z0-9.-]{1,})\\.[0-9A-Z?;~&#=\\-_\\./]{2,})", 
-                RegexOptions.Compiled | RegexOptions.IgnoreCase);
-*/
-
         #endregion
 
         #region Properties
+
+        /// <summary>
+        ///     Gets or sets whether the control is visible.
+        /// </summary>
+        public bool Visible { get; set; } = true;
 
         /// <summary>
         ///     Gets or sets the Comment.
@@ -92,44 +76,44 @@
                     var sb = new StringBuilder();
                     sb.AppendFormat(" | <a class=\"email\" href=\"mailto:{0}\">{0}</a>", this.Comment.Email);
                     sb.AppendFormat(
-                        " | <a href=\"http://www.domaintools.com/go/?service=whois&amp;q={0}/\">{0}</a>", 
+                        " | <a href=\"http://www.domaintools.com/go/?service=whois&amp;q={0}/\">{0}</a>",
                         this.Comment.IP);
 
                     if (this.Comment.Comments.Count > 0)
                     {
                         var confirmDelete = string.Format(
-                            CultureInfo.InvariantCulture, 
-                            Utils.Translate("areYouSure"), 
-                            Utils.Translate("delete").ToLowerInvariant(), 
+                            CultureInfo.InvariantCulture,
+                            Utils.Translate("areYouSure"),
+                            Utils.Translate("delete").ToLowerInvariant(),
                             Utils.Translate("theComment"));
                         sb.AppendFormat(
-                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecomment={0}'\">{2}</a>", 
-                            this.Comment.Id, 
-                            confirmDelete, 
+                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecomment={0}'\">{2}</a>",
+                            this.Comment.Id,
+                            confirmDelete,
                             Utils.Translate("deleteKeepReplies"));
 
                         var confirmRepliesDelete = string.Format(
-                            CultureInfo.InvariantCulture, 
-                            Utils.Translate("areYouSure"), 
-                            Utils.Translate("delete").ToLowerInvariant(), 
+                            CultureInfo.InvariantCulture,
+                            Utils.Translate("areYouSure"),
+                            Utils.Translate("delete").ToLowerInvariant(),
                             Utils.Translate("theComment"));
                         sb.AppendFormat(
-                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecommentandchildren={0}'\">{2}</a>", 
-                            this.Comment.Id, 
-                            confirmRepliesDelete, 
+                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecommentandchildren={0}'\">{2}</a>",
+                            this.Comment.Id,
+                            confirmRepliesDelete,
                             Utils.Translate("deletePlusReplies"));
                     }
                     else
                     {
                         var confirmDelete = string.Format(
-                            CultureInfo.InvariantCulture, 
-                            Utils.Translate("areYouSure"), 
-                            Utils.Translate("delete").ToLowerInvariant(), 
+                            CultureInfo.InvariantCulture,
+                            Utils.Translate("areYouSure"),
+                            Utils.Translate("delete").ToLowerInvariant(),
                             Utils.Translate("theComment"));
                         sb.AppendFormat(
-                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecomment={0}'\">{2}</a>", 
-                            this.Comment.Id, 
-                            confirmDelete, 
+                            " | <a href=\"javascript:void(0);\" onclick=\"if (confirm('{1}?')) location.href='?deletecomment={0}'\">{2}</a>",
+                            this.Comment.Id,
+                            confirmDelete,
                             Utils.Translate("delete"));
                     }
 
@@ -148,10 +132,6 @@
 
         /// <summary>
         ///     Gets the flag of the country from which the comment was written.
-        ///     <remarks>
-        ///         If the country hasn't been resolved from the authors IP address or
-        ///         the flag does not exist for that country, nothing is displayed.
-        ///     </remarks>
         /// </summary>
         public string Flag
         {
@@ -159,7 +139,6 @@
             {
                 if (!string.IsNullOrEmpty(this.Comment.Country))
                 {
-                    // return "<img src=\"" + Utils.RelativeWebRoot + "Content/images/blog/flags/" + Comment.Country + ".png\" class=\"country-name flag\" title=\"" + Comment.Country + "\" alt=\"" + Comment.Country + "\" />";
                     return string.Format(
                         FlagImage, Utils.RelativeWebRoot, this.Comment.Country, FindCountry(this.Comment.Country));
                 }
@@ -202,12 +181,8 @@
         /// <summary>
         /// Displays the Gravatar image that matches the specified email.
         /// </summary>
-        /// <param name="size">
-        /// The image size
-        /// </param>
-        /// <returns>
-        /// The gravatar.
-        /// </returns>
+        /// <param name="size">The image size</param>
+        /// <returns>The gravatar HTML.</returns>
         public string Gravatar(int size)
         {
             var website = this.Comment.Website == null ? "" : this.Comment.Website.ToString();
@@ -217,14 +192,10 @@
 
         /// <summary>
         /// Examines the comment body for any links and turns them
-        ///     automatically into one that can be clicked.
+        /// automatically into one that can be clicked.
         /// </summary>
-        /// <param name="body">
-        /// The body string.
-        /// </param>
-        /// <returns>
-        /// The resolve links.
-        /// </returns>
+        /// <param name="body">The body string.</param>
+        /// <returns>The resolve links.</returns>
         [Obsolete("Use the Text property instead. This method will be removed in a future version.")]
         public string ResolveLinks(string body)
         {
@@ -234,12 +205,8 @@
         /// <summary>
         /// Finds country.
         /// </summary>
-        /// <param name="isoCode">
-        /// The iso code.
-        /// </param>
-        /// <returns>
-        /// The find country.
-        /// </returns>
+        /// <param name="isoCode">The iso code.</param>
+        /// <returns>The find country.</returns>
         private static string FindCountry(string isoCode)
         {
             foreach (var ri in

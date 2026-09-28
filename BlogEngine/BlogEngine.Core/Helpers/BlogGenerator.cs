@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Web.Hosting;
 
 namespace BlogEngine.Core
 {
@@ -122,7 +121,7 @@ namespace BlogEngine.Core
                 return false;
             }
 
-            if(Directory.Exists(HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "blogs", blogName))))
+            if(Directory.Exists(BlogConfig.MapPath(Path.Combine(BlogConfig.StorageLocation, "blogs", blogName))))
             {
                 message = "Blog with this name already exists; Please select different name";
                 return false;
@@ -143,8 +142,8 @@ namespace BlogEngine.Core
         {
             string templateUrl = Path.Combine(BlogConfig.StorageLocation, "blogs", "_new");
             string newBlogUrl = Path.Combine(BlogConfig.StorageLocation, "blogs", blogName);
-            string templateFolderPath = HostingEnvironment.MapPath(templateUrl);
-            string newBlogFolderPath = HostingEnvironment.MapPath(newBlogUrl);
+            string templateFolderPath = BlogConfig.MapPath(templateUrl);
+            string newBlogFolderPath = BlogConfig.MapPath(newBlogUrl);
             try
             {
 

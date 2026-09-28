@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.IO;
-using System.Web;
+using System.Net;
 using BlogEngine.Core.Providers;
 
 namespace BlogEngine.Core.FileSystem
@@ -184,7 +184,7 @@ namespace BlogEngine.Core.FileSystem
         {
             get
             {
-                return HttpUtility.UrlEncode(this.FilePath);
+                return WebUtility.UrlEncode(this.FilePath);
             }
         }
 

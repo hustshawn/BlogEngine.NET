@@ -1,6 +1,5 @@
 ﻿using BlogEngine.Core.DataStore;
 using System.IO;
-using System.Web.Hosting;
 using System.Xml;
 using System.Xml.Serialization;
 using System.Collections.Specialized;
@@ -12,7 +11,7 @@ namespace BlogEngine.Core
     /// </summary>
     public class BlogGeneratorConfig
     {
-        static string TemplateLocation = HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "blogs/_new"));
+        static string TemplateLocation = BlogConfig.MapPath(Path.Combine(BlogConfig.StorageLocation, "blogs/_new"));
         static string ConfigFile = "setup.xml";
 
         /// <summary>

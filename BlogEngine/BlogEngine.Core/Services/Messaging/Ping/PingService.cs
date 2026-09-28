@@ -1,7 +1,9 @@
 ﻿namespace BlogEngine.Core.Ping
 {
     using System;
+    using System.IO;
     using System.Net;
+    using System.Net.Http;
     using System.Text;
     using System.Xml;
 
@@ -9,22 +11,24 @@
 
     /// <summary>
     /// Pings various blog ping services.
-    ///     <remarks>
-    /// Whenever a post is created or updated, it is important
-    ///         to notify the ping services so that they have the latest
-    ///         updated posts from the blog.
-    ///     </remarks>
+    /// Converted from HttpWebRequest to static HttpClient.
     /// </summary>
     public static class PingService
     {
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        })
+        {
+            Timeout = TimeSpan.FromSeconds(3)
+        };
+
         #region Public Methods
 
         /// <summary>
         /// Sends a ping to various ping services asynchronously.
         /// </summary>
-        /// <param name="url">
-        /// The url Uri.
-        /// </param>
+        /// <param name="url">The url Uri.</param>
         public static void Send(Uri url)
         {
             var services = BlogService.LoadPingServices();
@@ -39,19 +43,14 @@
         #region Methods
 
         /// <summary>
-        /// Adds the XML to web request. The XML is the standard
-        ///     XML used by RPC-XML requests.
+        /// Builds the XML-RPC content for the ping request.
         /// </summary>
-        /// <param name="request">
-        /// The request.
-        /// </param>
-        /// <param name="url">
-        /// The url Uri.
-        /// </param>
-        private static void AddXmlToRequest(HttpWebRequest request, Uri url)
+        /// <param name="url">The url Uri.</param>
+        /// <returns>The XML content as a string.</returns>
+        private static string BuildXmlContent(Uri url)
         {
-            var stream = request.GetRequestStream();
-            using (var writer = new XmlTextWriter(stream, Encoding.ASCII))
+            using var sw = new StringWriter();
+            using (var writer = new XmlTextWriter(sw))
             {
                 writer.WriteStartDocument();
                 writer.WriteStartElement("methodCall");
@@ -66,29 +65,22 @@
                 writer.WriteEndElement();
                 writer.WriteEndElement();
             }
+            return sw.ToString();
         }
 
         /// <summary>
-        /// Creates a web request and invokes the response asynchronous.
+        /// Creates a request and invokes the ping service.
         /// </summary>
-        /// <param name="service">
-        /// The service.
-        /// </param>
-        /// <param name="url">
-        /// The url Uri.
-        /// </param>
+        /// <param name="service">The service URL.</param>
+        /// <param name="url">The url Uri.</param>
         private static void Execute(string service, Uri url)
         {
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create(service);
-                request.Method = "POST";
-                request.ContentType = "text/xml";
-                request.Timeout = 3000;
-                request.Credentials = CredentialCache.DefaultNetworkCredentials;
-
-                AddXmlToRequest(request, url);
-                request.GetResponse();
+                var xmlContent = BuildXmlContent(url);
+                var content = new StringContent(xmlContent, Encoding.ASCII, "text/xml");
+                var response = _httpClient.PostAsync(service, content).GetAwaiter().GetResult();
+                // We don't need to process the response for ping services
             }
             catch (Exception)
             {

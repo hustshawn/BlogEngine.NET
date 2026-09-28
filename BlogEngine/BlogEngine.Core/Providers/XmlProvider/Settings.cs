@@ -2,7 +2,6 @@
 {
     using System;
     using System.Collections.Specialized;
-    using System.Web;
     using System.Xml;
 
     /// <summary>
@@ -22,7 +21,7 @@
         /// <returns>A StringDictionary.</returns>
         public override StringDictionary LoadSettings(Blog blog)
         {
-            var filename = HttpContext.Current.Server.MapPath($"{blog.StorageLocation}settings.xml");               
+            var filename = BlogConfig.MapPath($"{blog.StorageLocation}settings.xml");               
             var dic = new StringDictionary();
 
             var doc = new XmlDocument();

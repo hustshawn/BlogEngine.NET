@@ -5,48 +5,33 @@ namespace BlogEngine.Core.Web.HttpHandlers
     using System;
     using System.Net;
     using System.Text;
-    using System.Web;
-    using System.Web.Caching;
+    using System.Threading.Tasks;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
+
     using HttpModules;
 
     /// <summary>
-    /// Removes whitespace in all stylesheets added to the 
-    ///     header of the HTML document in site.master.
+    /// Serves embedded resource scripts with caching.
     /// </summary>
-    public class ResourceHandler : IHttpHandler
+    public static class ResourceEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the resource handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapResourceHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/{lang}.res.axd", HandleAsync);
+            endpoints.MapGet("/admin.res.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom 
-        ///     HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides 
-        ///     references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             var request = context.Request;
-            var lang = request.FilePath;
+            var lang = request.Path.Value ?? string.Empty;
 
             lang = lang.Replace(".res.axd", "");
 
@@ -64,7 +49,7 @@ namespace BlogEngine.Core.Web.HttpHandlers
             string cacheKey;
             string script;
 
-            if (request.FilePath.Contains("admin.res.axd"))
+            if ((request.Path.Value ?? string.Empty).Contains("admin.res.axd"))
             {
                 lang = BlogSettings.Instance.Culture;
 
@@ -98,7 +83,7 @@ namespace BlogEngine.Core.Web.HttpHandlers
                     sbSiteVars.Append("BlogFilesFolder: '" + Utils.FilesFolder + "',");
 
                     sbSiteVars.Append("GenericPageSize:  '" + BlogConfig.GenericPageSize.ToString() + "',");
-                    sbSiteVars.Append("GalleryFeedUrl:  '" + BlogConfig.GalleryFeedUrl + "',");                 
+                    sbSiteVars.Append("GalleryFeedUrl:  '" + BlogConfig.GalleryFeedUrl + "',");
                     sbSiteVars.Append("Version: 'BlogEngine.NET " + BlogSettings.Instance.Version() + "'");
 
                     sb.Append("SiteVars = {" + sbSiteVars.ToString() + "}; BlogAdmin = { i18n: " + jc.ToJsonString() + "};");
@@ -109,7 +94,7 @@ namespace BlogEngine.Core.Web.HttpHandlers
             {
                 cacheKey = "resource.axd - " + lang;
                 script = (string)Blog.CurrentInstance.Cache[cacheKey];
-                
+
                 if (String.IsNullOrEmpty(script))
                 {
                     System.Globalization.CultureInfo culture;
@@ -135,28 +120,20 @@ namespace BlogEngine.Core.Web.HttpHandlers
                 }
             }
 
-            Blog.CurrentInstance.Cache.Insert(cacheKey, script, null, Cache.NoAbsoluteExpiration, new TimeSpan(3, 0, 0, 0));
+            Blog.CurrentInstance.Cache.Insert(cacheKey, script);
 
             SetHeaders(script.GetHashCode(), context);
-            context.Response.Write(script);
+            await context.Response.WriteAsync(script);
 
             if (BlogSettings.Instance.EnableHttpCompression)
             {
-                CompressionModule.CompressResponse(context); // Compress(context);
+                // Compression handled by ResponseCompression middleware
             }
         }
 
-        #endregion
-
-        #region Methods
-
         /// <summary>
-        /// Returns the script path used to load resources on a page. 
-        /// Resource script needs to use CURRENT INSTANCE relative root
-        /// to support child-blog widgets, unlike other site-wide scripts
+        /// Returns the script path used to load resources on a page.
         /// </summary>
-        /// <param name="cultureInfo"></param>
-        /// <returns></returns>
         public static string GetScriptPath(System.Globalization.CultureInfo cultureInfo)
         {
             return $"{Utils.RelativeWebRoot}{cultureInfo.Name.ToLowerInvariant()}.res.axd";
@@ -164,39 +141,27 @@ namespace BlogEngine.Core.Web.HttpHandlers
 
         /// <summary>
         /// This will make the browser and server keep the output
-        ///     in its cache and thereby improve performance.
+        /// in its cache and thereby improve performance.
         /// </summary>
-        /// <param name="hash">
-        /// The hash number.
-        /// </param>
-        /// <param name="context">
-        /// The context.
-        /// </param>
         private static void SetHeaders(int hash, HttpContext context)
         {
             var response = context.Response;
             response.ContentType = "text/javascript";
-            var cache = response.Cache;
 
-            cache.VaryByHeaders["Accept-Encoding"] = true;
-            cache.SetExpires(DateTime.UtcNow.AddDays(30));
-            cache.SetMaxAge(new TimeSpan(30, 0, 0, 0));
-            cache.SetRevalidation(HttpCacheRevalidation.AllCaches);
+            response.Headers["Vary"] = "Accept-Encoding";
+            response.Headers.Expires = DateTime.UtcNow.AddDays(30).ToString("R");
+            response.Headers.CacheControl = "public, max-age=2592000"; // 30 days
 
             var etag = $"\"{hash}\"";
-            var incomingEtag = context.Request.Headers["If-None-Match"];
+            var incomingEtag = context.Request.Headers["If-None-Match"].ToString();
 
-            cache.SetETag(etag);
-            cache.SetCacheability(HttpCacheability.Public);
+            response.Headers["ETag"] = etag;
 
-            if (String.Compare(incomingEtag, etag) != 0)
+            if (String.Compare(incomingEtag, etag) == 0)
+            {
+                response.StatusCode = (int)HttpStatusCode.NotModified;
                 return;
-
-            response.Clear();
-            response.StatusCode = (int)HttpStatusCode.NotModified;
-            response.SuppressContent = true;
+            }
         }
-
-        #endregion
     }
 }

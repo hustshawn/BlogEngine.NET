@@ -1,9 +1,9 @@
+using Microsoft.AspNetCore.Http;
 ﻿namespace BlogEngine.Core.API.MetaWeblog
 {
     using System;
     using System.Collections.Generic;
     using System.Text;
-    using System.Web;
     using System.Xml;
 
     /// <summary>
@@ -124,7 +124,7 @@
         public void Response(HttpContext context)
         {
             context.Response.ContentType = "text/xml";
-            using (var data = new XmlTextWriter(context.Response.OutputStream, Encoding.UTF8))
+            using (var data = new XmlTextWriter(context.Response.Body, Encoding.UTF8))
             {
                 data.Formatting = Formatting.Indented;
                 data.WriteStartDocument();

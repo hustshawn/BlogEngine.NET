@@ -1,24 +1,17 @@
 ﻿namespace BlogEngine.Core.Providers
 {
-    // Written by: Roman D. Clarkson
-    // http://www.romanclarkson.com  inspirit@romanclarkson.com
     using System;
     using System.Collections.Generic;
-    using System.Collections.Specialized;
-    using System.Configuration.Provider;
     using System.IO;
     using System.Linq;
-    using System.Security.Permissions;
-    using System.Web;
-    using System.Web.Hosting;
-    using System.Web.Security;
     using System.Xml;
-
+    using BlogEngine.Core.Services.Security;
 
     /// <summary>
-    /// The xml role provider.
+    /// XML-based role service implementation.
+    /// Replaces the legacy XmlRoleProvider (RoleProvider).
     /// </summary>
-    public class XmlRoleProvider : RoleProvider
+    public class XmlRoleService : IRoleService
     {
         #region Constants and Fields
 
@@ -42,6 +35,37 @@
         /// </summary>
         private string xmlFileName;
 
+        /// <summary>
+        /// Reference to membership service for initial user loading.
+        /// </summary>
+        private readonly IMembershipService _membershipService;
+
+        #endregion
+
+        #region Constructor
+
+        /// <summary>
+        /// Creates a new XmlRoleService.
+        /// </summary>
+        /// <param name="membershipService">The membership service for loading initial users.</param>
+        /// <param name="xmlFileName">The XML file name (e.g. "roles.xml").</param>
+        public XmlRoleService(IMembershipService membershipService, string xmlFileName = "roles.xml")
+        {
+            this._membershipService = membershipService;
+            this.xmlFileName = xmlFileName;
+
+            // Load initial user names from membership service
+            this.ReadMembershipDataStore();
+
+            // Initialize roles data store
+            if (!File.Exists(this.XmlFullyQualifiedPath))
+            {
+                this.AddUsersToRoles(this.userNames.ToArray(), this.defaultRolesToAdd);
+            }
+
+            this.ReadRoleDataStore();
+        }
+
         #endregion
 
         #region Properties
@@ -51,31 +75,8 @@
             get
             {
                 string location = Blog.CurrentInstance.StorageLocation;
-
-                string fullyQualifiedPath =
-                    HostingEnvironment.MapPath(
-                        VirtualPathUtility.Combine(
-                        VirtualPathUtility.AppendTrailingSlash(HttpRuntime.AppDomainAppVirtualPath), location + xmlFileName));
-
+                string fullyQualifiedPath = BlogConfig.MapPath(location + xmlFileName);
                 return fullyQualifiedPath;
-            }
-        }
-
-        /// <summary>
-        ///     Gets or sets the name of the application to store and retrieve role information for.
-        /// </summary>
-        /// <returns>
-        ///     The name of the application to store and retrieve role information for.
-        /// </returns>
-        public override string ApplicationName
-        {
-            get
-            {
-                return "BlogEngine.NET";
-            }
-
-            set
-            {
             }
         }
 
@@ -84,15 +85,9 @@
         #region Public Methods
 
         /// <summary>
-        /// Adds the specified user names to the specified roles for the configured applicationName.
+        /// Adds the specified user names to the specified roles.
         /// </summary>
-        /// <param name="usernames">
-        /// A string array of user names to be added to the specified roles. 
-        /// </param>
-        /// <param name="roleNames">
-        /// A string array of the role names to add the specified user names to. 
-        /// </param>
-        public override void AddUsersToRoles(string[] usernames, string[] roleNames)
+        public void AddUsersToRoles(string[] usernames, string[] roleNames)
         {
             ReadRoleDataStore();
 
@@ -122,16 +117,12 @@
         }
 
         /// <summary>
-        /// Adds a new role to the data source for the configured applicationName.
+        /// Adds a new role.
         /// </summary>
-        /// <param name="roleName">
-        /// The name of the role to create.
-        /// </param>
-        public override void CreateRole(string roleName)
+        public void CreateRole(string roleName)
         {
             ReadRoleDataStore();
 
-            // This needs to be fixed. This will always return false.
             if (this.roles[Blog.CurrentInstance.Id].Contains(new Role(roleName)))
             {
                 return;
@@ -142,18 +133,9 @@
         }
 
         /// <summary>
-        /// Removes a role from the data source for the configured applicationName.
+        /// Removes a role.
         /// </summary>
-        /// <returns>
-        /// true if the role was successfully deleted; otherwise, false.
-        /// </returns>
-        /// <param name="roleName">
-        /// The name of the role to delete.
-        /// </param>
-        /// <param name="throwOnPopulatedRole">
-        /// If true, throw an exception if roleName has one or more members and do not delete roleName.
-        /// </param>
-        public override bool DeleteRole(string roleName, bool throwOnPopulatedRole)
+        public bool DeleteRole(string roleName, bool throwOnPopulatedRole)
         {
             if (Security.IsSystemRole(roleName))
                 return false;
@@ -181,16 +163,7 @@
         /// <summary>
         /// Gets an array of user names in a role where the user name contains the specified user name to match.
         /// </summary>
-        /// <returns>
-        /// A string array containing the names of all the users where the user name matches usernameToMatch and the user is a member of the specified role.
-        /// </returns>
-        /// <param name="roleName">
-        /// The role to search in.
-        /// </param>
-        /// <param name="usernameToMatch">
-        /// The user name to search for.
-        /// </param>
-        public override string[] FindUsersInRole(string roleName, string usernameToMatch)
+        public string[] FindUsersInRole(string roleName, string usernameToMatch)
         {
             var usersInRole = new List<string>();
             if (this.IsUserInRole(usernameToMatch, roleName))
@@ -202,27 +175,18 @@
         }
 
         /// <summary>
-        /// Gets a list of all the roles for the configured applicationName.
+        /// Gets a list of all the roles.
         /// </summary>
-        /// <returns>
-        /// A string array containing the names of all the roles stored in the data source for the configured applicationName.
-        /// </returns>
-        public override string[] GetAllRoles()
+        public string[] GetAllRoles()
         {
             ReadRoleDataStore();
             return this.roles[Blog.CurrentInstance.Id].Select(role => role.Name).ToArray();
         }
 
         /// <summary>
-        /// Gets a list of the roles that a specified user is in for the configured applicationName.
+        /// Gets a list of the roles that a specified user is in.
         /// </summary>
-        /// <returns>
-        /// A string array containing the names of all the roles that the specified user is in for the configured applicationName.
-        /// </returns>
-        /// <param name="username">
-        /// The user to return a list of roles for.
-        /// </param>
-        public override string[] GetRolesForUser(string username)
+        public string[] GetRolesForUser(string username)
         {
             ReadRoleDataStore();
             return (from role in this.roles[Blog.CurrentInstance.Id]
@@ -231,17 +195,10 @@
                     select role.Name).ToArray();
         }
 
-
         /// <summary>
-        /// Gets a list of users in the specified role for the configured applicationName.
+        /// Gets a list of users in the specified role.
         /// </summary>
-        /// <returns>
-        /// A string array containing the names of all the users who are members of the specified role for the configured applicationName.
-        /// </returns>
-        /// <param name="roleName">
-        /// The name of the role to get the list of users for. 
-        /// </param>
-        public override string[] GetUsersInRole(string roleName)
+        public string[] GetUsersInRole(string roleName)
         {
             ReadRoleDataStore();
             return (from role in this.roles[Blog.CurrentInstance.Id]
@@ -251,100 +208,9 @@
         }
 
         /// <summary>
-        /// Initializes the provider.
+        /// Gets a value indicating whether the specified user is in the specified role.
         /// </summary>
-        /// <param name="name">
-        /// The friendly name of the provider.
-        /// </param>
-        /// <param name="config">
-        /// A collection of the name/value pairs representing the provider-specific attributes specified in the configuration for this provider.
-        /// </param>
-        /// <exception cref="T:System.ArgumentNullException">
-        /// The name of the provider is null.
-        /// </exception>
-        /// <exception cref="T:System.ArgumentException">
-        /// The name of the provider has a length of zero.
-        /// </exception>
-        /// <exception cref="T:System.InvalidOperationException">
-        /// An attempt is made to call <see cref="M:System.Configuration.Provider.ProviderBase.Initialize(System.string,System.Collections.Specialized.NameValueCollection)"/> on a provider after the provider has already been initialized.
-        /// </exception>
-        public override void Initialize(string name, NameValueCollection config)
-        {
-            if (config == null)
-            {
-                throw new ArgumentNullException(nameof(config));
-            }
-
-            if (string.IsNullOrEmpty(name))
-            {
-                name = "XmlMembershipProvider";
-            }
-
-            if (string.IsNullOrEmpty(config["description"]))
-            {
-                config.Remove("description");
-                config.Add("description", "XML role provider");
-            }
-
-            base.Initialize(name, config);
-
-            // Initialize _XmlFileName and make sure the path
-            // is app-relative
-            var filename = config["xmlFileName"];
-
-            if (string.IsNullOrEmpty(filename))
-            {
-                filename = "roles.xml";
-            }
-            else
-            {
-                if (!VirtualPathUtility.IsAppRelative(filename))
-                {
-                    throw new ArgumentException("xmlFileName must be app-relative");
-                }
-            }
-
-            this.xmlFileName = filename;
-            config.Remove("xmlFileName");
-
-            // Make sure we have permission to read the XML data source and
-            // throw an exception if we don't
-            var permission = new FileIOPermission(FileIOPermissionAccess.Write, this.XmlFullyQualifiedPath);
-            permission.Demand();
-
-            this.ReadMembershipDataStore();
-            if (!File.Exists(this.XmlFullyQualifiedPath))
-            {
-                this.AddUsersToRoles(this.userNames.ToArray(), this.defaultRolesToAdd);
-            }
-
-            // Now that we know a xml file exists we can call it.
-            this.ReadRoleDataStore();
-
-            // Throw an exception if unrecognized attributes remain
-            if (config.Count > 0)
-            {
-                var attr = config.GetKey(0);
-                if (!string.IsNullOrEmpty(attr))
-                {
-                    throw new ProviderException($"Unrecognized attribute: {attr}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets a value indicating whether the specified user is in the specified role for the configured applicationName.
-        /// </summary>
-        /// <returns>
-        /// true if the specified user is in the specified role for the configured applicationName; otherwise, false.
-        /// </returns>
-        /// <param name="username">
-        /// The user name to search for.
-        /// </param>
-        /// <param name="roleName">
-        /// The role to search in.
-        /// </param>
-        public override bool IsUserInRole(string username, string roleName)
+        public bool IsUserInRole(string username, string roleName)
         {
             ReadRoleDataStore();
             return
@@ -353,15 +219,9 @@
         }
 
         /// <summary>
-        /// Removes the specified user names from the specified roles for the configured applicationName.
+        /// Removes the specified user names from the specified roles.
         /// </summary>
-        /// <param name="usernames">
-        /// A string array of user names to be removed from the specified roles. 
-        /// </param>
-        /// <param name="roleNames">
-        /// A string array of role names to remove the specified user names from. 
-        /// </param>
-        public override void RemoveUsersFromRoles(string[] usernames, string[] roleNames)
+        public void RemoveUsersFromRoles(string[] usernames, string[] roleNames)
         {
             ReadRoleDataStore();
 
@@ -382,15 +242,11 @@
                         {
                             if (role.Users.Count != 1)
                             {
-                                // if (role.Users.Contains(user))
-                                // role.Users.Remove(user);
                                 RemoveItemFromList(role.Users, user);
                             }
                         }
                         else
                         {
-                            // if (role.Users.Contains(user))
-                            // role.Users.Remove(user);
                             RemoveItemFromList(role.Users, user);
                         }
                     }
@@ -401,15 +257,9 @@
         }
 
         /// <summary>
-        /// Gets a value indicating whether the specified role name already exists in the role data source for the configured applicationName.
+        /// Gets a value indicating whether the specified role name already exists.
         /// </summary>
-        /// <returns>
-        /// true if the role name already exists in the data source for the configured applicationName; otherwise, false.
-        /// </returns>
-        /// <param name="roleName">
-        /// The name of the role to search for in the data source. 
-        /// </param>
-        public override bool RoleExists(string roleName)
+        public bool RoleExists(string roleName)
         {
             if (String.IsNullOrWhiteSpace(roleName))
             {
@@ -417,15 +267,12 @@
             }
             else
             {
-                // Role names are not supposed to be case sensitive. This needs to be kept consistent with
-                // other RoleProvider classes.
-
                 return (this.GetAllRoles().Contains(roleName, StringComparer.OrdinalIgnoreCase));
             }
         }
 
         /// <summary>
-        /// Saves this instance.
+        /// Saves roles to XML file.
         /// </summary>
         public void Save()
         {
@@ -454,7 +301,6 @@
 
             // This needs to be called in order to keep the Right class in sync.
             Right.RefreshAllRights();
-
         }
 
         #endregion
@@ -464,12 +310,6 @@
         /// <summary>
         /// The remove item from list.
         /// </summary>
-        /// <param name="list">
-        /// The list of string.
-        /// </param>
-        /// <param name="item">
-        /// The item of string.
-        /// </param>
         private static void RemoveItemFromList(ICollection<string> list, string item)
         {
             if (list == null || string.IsNullOrEmpty(item) || list.Count == 0)
@@ -486,20 +326,22 @@
         }
 
         /// <summary>
-        /// Only so we can add users to the adminstrators role.
+        /// Only so we can add users to the administrators role.
         /// </summary>
         private void ReadMembershipDataStore()
         {
             this.userNames = new List<string>();
 
-            foreach (MembershipUser user in Membership.GetAllUsers())
+            int totalRecords;
+            var allUsers = _membershipService.GetAllUsers(out totalRecords);
+            foreach (var user in allUsers)
             {
                 this.userNames.Add(user.UserName);
             }
         }
 
         /// <summary>
-        /// Builds the internal cache of users.
+        /// Builds the internal cache of roles.
         /// </summary>
         private void ReadRoleDataStore()
         {

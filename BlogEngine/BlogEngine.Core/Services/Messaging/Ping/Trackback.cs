@@ -3,12 +3,23 @@
     using System;
     using System.IO;
     using System.Net;
+    using System.Net.Http;
+    using System.Text;
 
     /// <summary>
     /// The trackback.
+    /// Converted from HttpWebRequest to static HttpClient.
     /// </summary>
     public static class Trackback
     {
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        })
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+
         #region Events
 
         /// <summary>
@@ -28,11 +39,8 @@
         /// <summary>
         /// The send.
         /// </summary>
-        /// <param name="message">
-        /// </param>
-        /// <returns>
-        /// The send.
-        /// </returns>
+        /// <param name="message">The trackback message.</param>
+        /// <returns>True if the trackback was sent successfully.</returns>
         public static bool Send(TrackbackMessage message)
         {
             if (!BlogSettings.Instance.EnableTrackBackSend)
@@ -47,45 +55,21 @@
 
             OnSending(message.UrlToNotifyTrackback);
 
-            // Warning:next line if for local debugging porpuse please donot remove it until you need to
-            // tMessage.PostURL = new Uri("http://www.artinsoft.com/webmaster/trackback.html");
-            var request = (HttpWebRequest)WebRequest.Create(message.UrlToNotifyTrackback);
-                
-                // HttpHelper.CreateRequest(trackBackItem);
-            request.Credentials = CredentialCache.DefaultNetworkCredentials;
-            request.Method = "POST";
-            request.ContentLength = message.ToString().Length;
-            request.ContentType = "application/x-www-form-urlencoded";
-            request.KeepAlive = false;
-            request.Timeout = 10000;
-
-            using (var writer = new StreamWriter(request.GetRequestStream()))
-            {
-                writer.Write(message.ToString());
-            }
-
-            bool result;
-            HttpWebResponse response;
             try
             {
-                response = (HttpWebResponse)request.GetResponse();
-                OnSent(message.UrlToNotifyTrackback);
-                string answer;
-                using (var sr = new StreamReader(response.GetResponseStream()))
-                {
-                    answer = sr.ReadToEnd();
-                }
+                var content = new StringContent(message.ToString(), Encoding.UTF8, "application/x-www-form-urlencoded");
+                var response = _httpClient.PostAsync(message.UrlToNotifyTrackback, content).GetAwaiter().GetResult();
 
-                // TODO: This could be a strict XML parsing if necesary/maybe logging activity here too
-                result = response.StatusCode == HttpStatusCode.OK && answer.Contains("<error>0</error>");
+                OnSent(message.UrlToNotifyTrackback);
+
+                string answer = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+                return response.StatusCode == HttpStatusCode.OK && answer.Contains("<error>0</error>");
             }
             catch
             {
-                // (WebException wex)
-                result = false;
+                return false;
             }
-
-            return result;
         }
 
         #endregion
@@ -98,10 +82,7 @@
         /// <param name="url">The URL.</param>
         private static void OnSending(Uri url)
         {
-            if (Sending != null)
-            {
-                Sending(url, EventArgs.Empty);
-            }
+            Sending?.Invoke(url, EventArgs.Empty);
         }
 
         /// <summary>
@@ -110,10 +91,7 @@
         /// <param name="url">The URL.</param>
         private static void OnSent(Uri url)
         {
-            if (Sent != null)
-            {
-                Sent(url, EventArgs.Empty);
-            }
+            Sent?.Invoke(url, EventArgs.Empty);
         }
 
         #endregion

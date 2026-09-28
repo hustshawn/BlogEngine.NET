@@ -3,58 +3,44 @@
 namespace BlogEngine.Core.Web.Controls
 {
     using System;
-    using System.Web;
-    using System.Web.UI;
-    using System.Web.UI.HtmlControls;
 
     /// <summary>
-    /// All pages in the custom themes as well as pre-defined pages in the root
-    ///     must inherit from this class.
+    /// Abstract base class for blog pages. In the original WebForms architecture,
+    /// all pages inherited from this class (which extended System.Web.UI.Page).
+    /// Now converted to a plain abstract class that exposes the same logic as methods
+    /// callable by the web project (Blazor/MVC/Razor Pages).
     /// </summary>
-    /// <remarks>
-    /// The class is responsible for assigning the theme to all
-    ///     derived pages as well as adding RSS, RSD, tracking script
-    ///     and a whole lot more.
-    /// </remarks>
-    public abstract class BlogBasePage : Page
+    public abstract class BlogBasePage
     {
         #region Public Methods
 
         /// <summary>
-        /// Adds the generic link to the header.
+        /// Generates the generic link HTML tag.
         /// </summary>
-        /// <param name="relation">
-        /// The relation string.
-        /// </param>
-        /// <param name="title">
-        /// The title string.
-        /// </param>
-        /// <param name="href">
-        /// The href string.
-        /// </param>
-        public virtual void AddGenericLink(string relation, string title, string href)
+        /// <param name="relation">The relation string.</param>
+        /// <param name="title">The title string.</param>
+        /// <param name="href">The href string.</param>
+        /// <returns>HTML string for the link tag.</returns>
+        public virtual string GenerateGenericLink(string relation, string title, string href)
         {
-            AddGenericLink(null, relation, title, href);
+            return GenerateGenericLink(null, relation, title, href);
         }
 
         /// <summary>
-        /// Adds the generic link to the header.
+        /// Generates the generic link HTML tag.
         /// </summary>
-        /// <param name="type">
-        /// The type string.
-        /// </param>
-        /// <param name="relation">
-        /// The relation string.
-        /// </param>
-        /// <param name="title">
-        /// The title string.
-        /// </param>
-        /// <param name="href">
-        /// The href string.
-        /// </param>
-        public virtual void AddGenericLink(string type, string relation, string title, string href)
+        /// <param name="type">The type string.</param>
+        /// <param name="relation">The relation string.</param>
+        /// <param name="title">The title string.</param>
+        /// <param name="href">The href string.</param>
+        /// <returns>HTML string for the link tag.</returns>
+        public virtual string GenerateGenericLink(string type, string relation, string title, string href)
         {
-            Scripting.Helpers.AddGenericLink(this, type, relation, title, href);
+            if (!string.IsNullOrEmpty(type))
+            {
+                return $"<link type=\"{type}\" rel=\"{relation}\" title=\"{title}\" href=\"{href}\" />";
+            }
+            return $"<link rel=\"{relation}\" title=\"{title}\" href=\"{href}\" />";
         }
 
         #endregion
@@ -62,235 +48,155 @@ namespace BlogEngine.Core.Web.Controls
         #region Methods
 
         /// <summary>
-        /// Adds the default stylesheet language
+        /// Returns the default language headers for the page.
         /// </summary>
-        protected virtual void AddDefaultLanguages()
+        /// <returns>Dictionary of header name to value.</returns>
+        public virtual System.Collections.Generic.Dictionary<string, string> GetDefaultLanguageHeaders()
         {
-            Response.AppendHeader("Content-Style-Type", "text/css");
-            Response.AppendHeader("Content-Script-Type", "text/javascript");
+            return new System.Collections.Generic.Dictionary<string, string>
+            {
+                { "Content-Style-Type", "text/css" },
+                { "Content-Script-Type", "text/javascript" }
+            };
         }
 
         /// <summary>
-        /// Adds the content-type meta tag to the header.
+        /// Generates the content-type meta tag HTML string.
         /// </summary>
-        protected virtual void AddMetaContentType()
+        /// <param name="contentType">The content type (e.g., "text/html").</param>
+        /// <param name="charsetName">The charset name (e.g., "utf-8").</param>
+        /// <returns>HTML string for the meta tag.</returns>
+        public virtual string GenerateMetaContentType(string contentType = "text/html", string charsetName = "utf-8")
         {
-            var meta = new HtmlMeta
-                {
-                    HttpEquiv = "content-type",
-                    Content = $"{Response.ContentType}; charset={Response.ContentEncoding.HeaderName}"
-                };
-            Page.Header.Controls.AddAt(0, meta);
+            return $"<meta http-equiv=\"content-type\" content=\"{contentType}; charset={charsetName}\" />";
         }
 
         /// <summary>
-        /// Add a meta tag to the page's header.
+        /// Generates a meta tag HTML string.
         /// </summary>
-        /// <param name="name">
-        /// The tag name.
-        /// </param>
-        /// <param name="value">
-        /// The tag value.
-        /// </param>
-        protected virtual void AddMetaTag(string name, string value)
+        /// <param name="name">The tag name.</param>
+        /// <param name="value">The tag value.</param>
+        /// <returns>HTML string for the meta tag, or empty string if name/value is empty.</returns>
+        public virtual string GenerateMetaTag(string name, string value)
         {
             if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(value))
-                return;
+                return string.Empty;
 
-            const string tag = "\n\t<meta name=\"{0}\" content=\"{1}\" />";
-            Header.Controls.Add(new LiteralControl(string.Format(tag, name, value)));
+            return $"\n\t<meta name=\"{name}\" content=\"{value}\" />";
         }
 
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.TemplateControl.Error"></see> event.
+        /// Gets the standard header links for a blog page (RSS, RSD, SIOC, APML, FOAF, OpenSearch).
         /// </summary>
-        /// <param name="e">
-        /// An <see cref="T:System.EventArgs"></see> that contains the event data.
-        /// </param>
-        protected override void OnError(EventArgs e)
+        /// <returns>Array of link HTML strings to include in the page header.</returns>
+        public virtual string[] GetHeaderLinks()
         {
-            var ctx = HttpContext.Current;
-            var exception = ctx.Server.GetLastError();
-
-            if (exception != null && exception.Message.Contains("callback"))
-            {
-                // This is a robot spam attack so we send it a 404 status to make it go away.
-                ctx.Response.StatusCode = 404;
-                ctx.Server.ClearError();
-                Comment.OnSpamAttack();
-            }
-
-            if (exception != null && exception.Message.Contains("site.master"))
-            {
-                ctx.Server.ClearError();
-                this.MasterPageFile = $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/RazorHost/site.master";
-                base.OnInit(EventArgs.Empty);
-            }
-
-            base.OnError(e);
-        }
-
-        /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Control.Load"/> event.
-        /// Adds links and javascript to the HTML header tag.
-        /// </summary>
-        /// <param name="e">The <see cref="T:System.EventArgs"/> object that contains the event data.</param>
-        protected override void OnLoad(EventArgs e)
-        {
-            base.OnLoad(e);
-
             string relativeWebRoot = Utils.RelativeWebRoot;
             Uri absoluteWebRoot = Utils.AbsoluteWebRoot;
             string instanceName = BlogSettings.Instance.Name;
 
-            if (!Page.IsCallback)
+            var links = new System.Collections.Generic.List<string>();
+
+            links.Add(GenerateGenericLink("", "contents", "Archive", $"{relativeWebRoot}archive{BlogConfig.FileExtension}"));
+            links.Add(GenerateGenericLink("", "start", instanceName, relativeWebRoot));
+            links.Add(GenerateGenericLink("application/rsd+xml", "edituri", "RSD", $"{absoluteWebRoot}rsd.axd"));
+            links.Add(GenerateGenericLink("application/rdf+xml", "meta", "SIOC", $"{absoluteWebRoot}sioc.axd"));
+            links.Add(GenerateGenericLink("application/apml+xml", "meta", "APML", $"{absoluteWebRoot}apml.axd"));
+            links.Add(GenerateGenericLink("application/rdf+xml", "meta", "FOAF", $"{absoluteWebRoot}foaf.axd"));
+
+            if (string.IsNullOrEmpty(BlogSettings.Instance.AlternateFeedUrl))
             {
-                var header = new Scripting.PageHeader();
-
-                AddDefaultLanguages();
-
-                header.AddLink("", "contents", "Archive", $"{relativeWebRoot}archive{BlogConfig.FileExtension}");
-                header.AddLink("", "start", instanceName, relativeWebRoot);
-                header.AddLink("application/rsd+xml", "edituri", "RSD", $"{absoluteWebRoot}rsd.axd");
-                header.AddLink("application/rdf+xml", "meta", "SIOC", $"{absoluteWebRoot}sioc.axd");
-                header.AddLink("application/apml+xml", "meta", "APML", $"{absoluteWebRoot}apml.axd");
-                header.AddLink("application/rdf+xml", "meta", "FOAF", $"{absoluteWebRoot}foaf.axd");
-
-                if (string.IsNullOrEmpty(BlogSettings.Instance.AlternateFeedUrl))
-                {
-                    header.AddLink("application/rss+xml", "alternate", $"{instanceName} (RSS)", $"{Utils.FeedUrl}");
-                    header.AddLink("application/atom+xml", "alternate", $"{instanceName} (ATOM)", $"{Utils.FeedUrl}?format=atom");
-                }
-                else
-                {
-                    header.AddLink("application/rss+xml", "alternate", instanceName, Utils.FeedUrl);
-                }
-                if (BlogSettings.Instance.EnableOpenSearch)
-                {
-                    header.AddLink("application/opensearchdescription+xml", "search", instanceName, $"{absoluteWebRoot}opensearch.axd");
-                }
-                header.Render(this);
-
-                AddMetaContentType();
-
-                Scripting.Helpers.AddCustomCodeToHead(this);
-                Scripting.Helpers.AddTrackingScript(this);
+                links.Add(GenerateGenericLink("application/rss+xml", "alternate", $"{instanceName} (RSS)", $"{Utils.FeedUrl}"));
+                links.Add(GenerateGenericLink("application/atom+xml", "alternate", $"{instanceName} (ATOM)", $"{Utils.FeedUrl}?format=atom"));
             }
+            else
+            {
+                links.Add(GenerateGenericLink("application/rss+xml", "alternate", instanceName, Utils.FeedUrl));
+            }
+
+            if (BlogSettings.Instance.EnableOpenSearch)
+            {
+                links.Add(GenerateGenericLink("application/opensearchdescription+xml", "search", instanceName, $"{absoluteWebRoot}opensearch.axd"));
+            }
+
+            return links.ToArray();
         }
 
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Page.PreInit"/> event at the beginning of page initialization.
-        /// Assignes the selected theme to the pages.
+        /// Checks if the current user is allowed to view the page.
         /// </summary>
-        /// <param name="e">An <see cref="T:System.EventArgs"/> that contains the event data.</param>
-        protected override void OnPreInit(EventArgs e)
+        /// <returns>True if viewing is allowed.</returns>
+        public virtual bool IsViewingAllowed()
         {
-            bool allowViewing = false;
-
-            // - To prevent authenticated users from accessing the site, you would assign
-            //   that user to a role that does not have the right to ViewPublicPosts.
-            // - To prevent unauthenticated users from accessing the site, remove
-            //   the ViewPublicPosts from the Anonymous role.
-            // - If the user is authenticated, but hasn't been assigned to any roles, allow
-            //   them to access the site.
-            // - Even though we allow authenticated users without any roles to access the
-            //   site, the user will still usually not be able to view any published posts.
-            //   It is ideal that all users are assigned to a role, even if that role has
-            //   minimal rights such as ViewPublicPosts.
-
             if (Security.IsAuthorizedTo(Rights.ViewPublicPosts))
-                allowViewing = true;
-            else if (Security.IsAuthenticated && Security.GetCurrentUserRoles().Length == 0)
-                allowViewing = true;
+                return true;
 
-            if (!allowViewing)
-                Response.Redirect($"{Utils.RelativeWebRoot}Account/login.aspx");
+            if (Security.IsAuthenticated && Security.GetCurrentUserRoles().Length == 0)
+                return true;
 
-            MasterPageFile = GetSiteMaster();
-
-            base.OnPreInit(e);
-
-            if (Page.IsPostBack || string.IsNullOrEmpty(Request.QueryString["deletepost"]))
-                return;
-
-            var post = Post.GetPost(new Guid(Request.QueryString["deletepost"]));
-            if (post == null || !post.CanUserDelete)
-                return;
-
-            post.Delete();
-            post.Save();
-            Response.Redirect(Utils.RelativeWebRoot);
+            return false;
         }
 
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Page.PreRenderComplete"></see> event after 
-        ///     the <see cref="M:System.Web.UI.Page.OnPreRenderComplete(System.EventArgs)"></see> event and before the page is rendered.
+        /// Gets the page title with blog name prefix if configured.
         /// </summary>
-        /// <param name="e">
-        /// An <see cref="T:System.EventArgs"></see> that contains the event data.
-        /// </param>
-        protected override void OnPreRenderComplete(EventArgs e)
+        /// <param name="pageTitle">The original page title.</param>
+        /// <returns>The formatted page title.</returns>
+        public virtual string GetFormattedTitle(string pageTitle)
         {
-            base.OnPreRenderComplete(e);
             if (BlogSettings.Instance.UseBlogNameInPageTitles)
             {
-                Page.Title = $"{BlogSettings.Instance.Name} | {Page.Title}";
+                return $"{BlogSettings.Instance.Name} | {pageTitle}";
             }
+            return pageTitle;
         }
 
         /// <summary>
-        /// Initializes the <see cref="T:System.Web.UI.HtmlTextWriter"></see> object and calls on the child
-        ///     controls of the <see cref="T:System.Web.UI.Page"></see> to render.
+        /// Gets the appropriate master/layout based on the request path.
+        /// Returns the theme-relative path to the layout file.
         /// </summary>
-        /// <param name="writer">
-        /// The <see cref="T:System.Web.UI.HtmlTextWriter"></see> that receives the page content.
-        /// </param>
-        protected override void Render(HtmlTextWriter writer)
+        /// <param name="requestPath">The current request path.</param>
+        /// <param name="contentRootPath">The content root path for file existence checks.</param>
+        /// <returns>Path to the master/layout file.</returns>
+        public string GetSiteMaster(string requestPath, string contentRootPath)
         {
-            base.Render(new RewriteFormHtmlTextWriter(writer));
-        }
-
-        #endregion
-
-        /// <summary>
-        /// Allows custom master page for a single post or page
-        /// </summary>
-        /// <returns>Path to the master page</returns>
-        string GetSiteMaster()
-        {
-            if(FilePathContains("post.aspx"))
+            if (requestPath != null && requestPath.Contains("post.aspx", StringComparison.InvariantCultureIgnoreCase))
             {
                 string path = $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/{BlogSettings.Instance.Theme}/post.master";
-                if (File.Exists(Server.MapPath(path)))
+                string physicalPath = System.IO.Path.Combine(contentRootPath, path.TrimStart('~', '/'));
+                if (File.Exists(physicalPath))
                     return path;
             }
 
             // if page.master exists, use it for all common pages
             // and site.master only for post list
-            if (PageMasterExists)
+            if (IsPageMasterPath(requestPath))
             {
                 string path = $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/{BlogSettings.Instance.Theme}/page.master";
-                if (File.Exists(Server.MapPath(path)))
+                string physicalPath = System.IO.Path.Combine(contentRootPath, path.TrimStart('~', '/'));
+                if (File.Exists(physicalPath))
                     return path;
             }
 
             var siteMaster = $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/{BlogSettings.Instance.GetThemeWithAdjustments(null)}/site.master";
+            string siteMasterPhysical = System.IO.Path.Combine(contentRootPath, siteMaster.TrimStart('~', '/'));
 
-            return File.Exists(Server.MapPath(siteMaster))
+            return File.Exists(siteMasterPhysical)
                 ? siteMaster
                 : $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/Standard/site.master";
         }
 
-        private bool PageMasterExists => FilePathContains("page.aspx") ||
-                                FilePathContains("archive.aspx") ||
-                                FilePathContains("contact.aspx") ||
-                                FilePathContains("error.aspx") ||
-                                FilePathContains("error404.aspx") ||
-                                FilePathContains("search.aspx");
-
-        private bool FilePathContains(string path)
+        private bool IsPageMasterPath(string requestPath)
         {
-            return Request.FilePath.Contains(path, StringComparison.InvariantCultureIgnoreCase);
+            if (requestPath == null) return false;
+            return requestPath.Contains("page.aspx", StringComparison.InvariantCultureIgnoreCase) ||
+                   requestPath.Contains("archive.aspx", StringComparison.InvariantCultureIgnoreCase) ||
+                   requestPath.Contains("contact.aspx", StringComparison.InvariantCultureIgnoreCase) ||
+                   requestPath.Contains("error.aspx", StringComparison.InvariantCultureIgnoreCase) ||
+                   requestPath.Contains("error404.aspx", StringComparison.InvariantCultureIgnoreCase) ||
+                   requestPath.Contains("search.aspx", StringComparison.InvariantCultureIgnoreCase);
         }
+
+        #endregion
     }
 }

@@ -2,53 +2,34 @@
 {
     using System;
     using System.Net;
-    using System.Web;
+    using System.Threading.Tasks;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
-    /// Removes whitespace in all stylesheets added to the 
-    ///     header of the HTML document in site.master.
+    /// Serves cached JavaScript resources.
     /// </summary>
-    /// <remarks>
-    /// 
-    /// This handler uses an external library to perform minification of scripts. 
-    /// See the BlogEngine.Core.JavascriptMinifier class for more details.
-    /// 
-    /// </remarks>
-    public class JavaScriptHandler : IHttpHandler
+    public static class JavaScriptEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the JavaScript handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapJavaScriptHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/js.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom 
-        ///     HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides 
-        ///     references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             var request = context.Request;
-            string fileName = request.FilePath;
-            fileName = fileName.Substring(Utils.RelativeWebRoot.Length);
+            string fileName = request.Path.Value ?? string.Empty;
+            if (fileName.StartsWith(Utils.RelativeWebRoot))
+            {
+                fileName = fileName.Substring(Utils.RelativeWebRoot.Length);
+            }
 
             string resKey = "";
             string script = "";
@@ -65,50 +46,30 @@
             }
 
             SetHeaders(script.GetHashCode(), context);
-            context.Response.Write(script);
+            await context.Response.WriteAsync(script);
         }
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// This will make the browser and server keep the output
-        ///     in its cache and thereby improve performance.
+        /// in its cache and thereby improve performance.
         /// </summary>
-        /// <param name="hash">
-        /// The hash number.
-        /// </param>
-        /// <param name="context">
-        /// The context.
-        /// </param>
         private static void SetHeaders(int hash, HttpContext context)
         {
             var response = context.Response;
             response.ContentType = "text/javascript";
-            var cache = response.Cache;
 
-            cache.VaryByHeaders["Accept-Encoding"] = true;
-            cache.SetExpires(DateTime.Now.ToUniversalTime().AddDays(7));
-            cache.SetMaxAge(new TimeSpan(30, 0, 0, 0));
-            cache.SetRevalidation(HttpCacheRevalidation.AllCaches);
+            response.Headers["Vary"] = "Accept-Encoding";
+            response.Headers.Expires = DateTime.Now.ToUniversalTime().AddDays(7).ToString("R");
+            response.Headers.CacheControl = "public, max-age=2592000"; // 30 days
 
             var etag = $"\"{hash}\"";
-            var incomingEtag = context.Request.Headers["If-None-Match"];
+            var incomingEtag = context.Request.Headers["If-None-Match"].ToString();
 
-            //cache.SetETag(etag);
-            cache.SetCacheability(HttpCacheability.Public);
-
-            if (String.Compare(incomingEtag, etag) != 0)
+            if (String.Compare(incomingEtag, etag) == 0)
             {
+                response.StatusCode = (int)HttpStatusCode.NotModified;
                 return;
             }
-
-            response.Clear();
-            response.StatusCode = (int)HttpStatusCode.NotModified;
-            response.SuppressContent = true;
         }
-
-        #endregion
     }
 }

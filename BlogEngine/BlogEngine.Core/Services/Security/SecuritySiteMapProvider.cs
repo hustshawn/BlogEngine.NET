@@ -2,28 +2,60 @@
 {
     using System;
     using System.Collections.Generic;
-    using System.Web;
+    using BlogEngine.Core.Services.Security;
 
     /// <summary>
-    /// Implementation of the XmlSiteMapProvider that is Rights aware.
+    /// Implementation of ISiteMapService that is Rights aware.
+    /// Replaces the legacy SecuritySiteMapProvider (XmlSiteMapProvider).
     /// </summary>
-    public class SecuritySiteMapProvider : XmlSiteMapProvider
+    public class SecuritySiteMapService : ISiteMapService
     {
         /// <summary>
-        /// Returns whether the SiteMapNode is accessible to the current user.
+        /// Finds a navigation node by raw URL — not implemented for security site map.
         /// </summary>
-        public override bool IsAccessibleToUser(HttpContext context, SiteMapNode node)
+        public NavigationNode FindNode(string rawUrl)
         {
-            // We are checking Rights, and other custom attributes here.
-            // Roles may also be part of the SiteMapNode.  Let the base class
-            // check for that.  If false, return false, otherwise, continue
-            // with our checks.
+            // Security site map doesn't resolve nodes by URL.
+            return null;
+        }
 
-            if (!base.IsAccessibleToUser(context, node))
+        /// <summary>
+        /// Gets the child nodes of a specific node — not implemented for security site map.
+        /// </summary>
+        public IList<NavigationNode> GetChildNodes(NavigationNode node)
+        {
+            return new List<NavigationNode>();
+        }
+
+        /// <summary>
+        /// Gets the parent node of a specific node — not implemented for security site map.
+        /// </summary>
+        public NavigationNode GetParentNode(NavigationNode node)
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the root node — not implemented for security site map.
+        /// </summary>
+        public NavigationNode GetRootNode()
+        {
+            return null;
+        }
+
+        /// <summary>
+        /// Returns whether the given navigation node is accessible to the current user.
+        /// Checks Rights and other custom attributes on the node.
+        /// </summary>
+        public bool IsAccessibleToUser(NavigationNode node)
+        {
+            if (node == null)
                 return false;
 
+            // Check if primary blog instance only
             bool primaryBlogInstanceOnly;
-            if (!string.IsNullOrWhiteSpace(node["primaryBlogInstanceOnly"]) && bool.TryParse(node["primaryBlogInstanceOnly"], out primaryBlogInstanceOnly))
+            var primaryBlogAttr = node["primaryBlogInstanceOnly"];
+            if (!string.IsNullOrWhiteSpace(primaryBlogAttr) && bool.TryParse(primaryBlogAttr, out primaryBlogInstanceOnly))
             {
                 if (primaryBlogInstanceOnly && !Blog.CurrentInstance.IsPrimary)
                 {
@@ -31,19 +63,19 @@
                 }
             }
 
-            if (!String.IsNullOrWhiteSpace(node["rights"]))
+            var rightsAttr = node["rights"];
+            if (!string.IsNullOrWhiteSpace(rightsAttr))
             {
                 // By default, all specified Rights must exist.
-                // We allow this to be overridden via the "rightsAuthorizationCheck"
-                // attribute.
-
+                // We allow this to be overridden via the "rightsAuthorizationCheck" attribute.
                 AuthorizationCheck authCheck = AuthorizationCheck.HasAll;
-                if (!String.IsNullOrWhiteSpace(node["rightsAuthorizationCheck"]))
+                var authCheckAttr = node["rightsAuthorizationCheck"];
+                if (!string.IsNullOrWhiteSpace(authCheckAttr))
                 {
-                    authCheck = Utils.ParseEnum<AuthorizationCheck>(node["rightsAuthorizationCheck"], AuthorizationCheck.HasAll);
+                    authCheck = Utils.ParseEnum<AuthorizationCheck>(authCheckAttr, AuthorizationCheck.HasAll);
                 }
 
-                string[] rightsRaw = node["rights"].Split(new char[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                string[] rightsRaw = rightsAttr.Split(new char[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
 
                 List<Rights> rightsToCheck = new List<Rights>();
                 foreach (string r in rightsRaw)

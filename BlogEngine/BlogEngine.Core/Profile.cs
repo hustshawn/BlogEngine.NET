@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Web.Security;
 using System.Xml.Serialization;
 
 namespace BlogEngine.Core
@@ -264,7 +263,7 @@ namespace BlogEngine.Core
         protected override void DataDelete()
         {
             string path = BlogSettings.Instance.StorageLocation + userName.ToLowerInvariant() + ".xml";
-            if (IsDeleted)
+            if (Deleted)
             {
                 try
                 {

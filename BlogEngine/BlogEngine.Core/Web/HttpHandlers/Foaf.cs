@@ -6,14 +6,19 @@
     using System.Linq;
     using System.Security.Cryptography;
     using System.Text;
-    using System.Web;
-    using System.Web.Security;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Http.Extensions;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// Based on John Dyer's (http://johndyer.name/) extension.
+    /// Serves FOAF RDF XML.
     /// </summary>
-    public class Foaf : IHttpHandler
+    public static class FoafEndpoint
     {
         #region Constants and Fields
 
@@ -23,21 +28,6 @@
         private static Dictionary<string, string> xmlNamespaces;
 
         #endregion
-
-        #region Properties
-
-        /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
-        /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
-        {
-            get
-            {
-                return false;
-            }
-        }
 
         /// <summary>
         ///     Gets SupportedNamespaces.
@@ -57,75 +47,70 @@
             }
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
         /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
+        /// Maps the FOAF handler endpoint.
         /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides references to the intrinsic server objects (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        public static IEndpointRouteBuilder MapFoafHandler(this IEndpointRouteBuilder endpoints)
+        {
+            endpoints.MapGet("/foaf.axd", HandleAsync);
+            endpoints.MapGet("/{name}.axd", HandleFoafNameAsync);
+            return endpoints;
+        }
+
+        private static async Task HandleFoafNameAsync(HttpContext context)
+        {
+            var path = context.Request.Path.Value ?? string.Empty;
+            if (!path.Contains("foaf"))
+            {
+                context.Response.StatusCode = 404;
+                return;
+            }
+
+            await HandleAsync(context);
+        }
+
+        private static async Task HandleAsync(HttpContext context)
         {
             // attempt to grab the username from the URL
             // where URL = www.mysite.com/foaf_admin.axd
             // username = 'admin'
-            var filename = context.Request.Url.ToString();
+            var requestUrl = context.Request.GetDisplayUrl();
+            var filename = requestUrl;
             var name =
                 filename.Substring(filename.LastIndexOf("/") + 1).Replace(".axd", string.Empty).Replace(
                     "foaf_", string.Empty).Replace("foaf", string.Empty);
 
-            // if no name is specificied, then grab the first user from Membership
+            // if no name is specified, then grab the first user from available profiles
             if (name == string.Empty)
             {
-                foreach (MembershipUser user in Membership.GetAllUsers())
+                var userNames = Providers.BlogService.GetUserNames();
+                if (userNames != null && userNames.Length > 0)
                 {
-                    name = user.UserName;
-                    break;
+                    name = userNames[0];
                 }
             }
 
             context.Response.ContentType = "application/rdf+xml";
-            this.WriteFoaf(context, name);
+            WriteFoaf(context, name);
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// Calculates the SHA1.
         /// </summary>
-        /// <param name="text">
-        /// The text string.
-        /// </param>
-        /// <param name="enc">
-        /// The encoding.
-        /// </param>
-        /// <returns>
-        /// The hash string.
-        /// </returns>
         private static string CalculateSha1(string text, Encoding enc)
         {
             var buffer = enc.GetBytes(text);
-            var cryptoTransformSha1 = new SHA1CryptoServiceProvider();
-            var hash = BitConverter.ToString(cryptoTransformSha1.ComputeHash(buffer)).Replace("-", string.Empty);
-
-            return hash.ToLower();
+            using (var sha1 = SHA1.Create())
+            {
+                var hash = BitConverter.ToString(sha1.ComputeHash(buffer)).Replace("-", string.Empty);
+                return hash.ToLower();
+            }
         }
 
         /// <summary>
         /// Closes up the FOAF document
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The XML writer.
-        /// </param>
         private static void CloseWriter(XmlWriter xmlWriter)
         {
             xmlWriter.WriteEndElement(); // rdf:RDF
@@ -136,12 +121,6 @@
         /// <summary>
         /// Creates the necessary startup information for the FOAF document
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
-        /// <returns>
-        /// The xml writer.
-        /// </returns>
         private static XmlWriter GetWriter(Stream stream)
         {
             var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
@@ -161,16 +140,10 @@
         /// <summary>
         /// Writes the FOAF.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        /// <param name="name">
-        /// The name of the FOAF.
-        /// </param>
-        private void WriteFoaf(HttpContext context, string name)
+        private static void WriteFoaf(HttpContext context, string name)
         {
             // begin FOAF
-            var writer = GetWriter(context.Response.OutputStream);
+            var writer = GetWriter(context.Response.Body);
 
             // write DOCUMENT
             writer.WriteStartElement("foaf", "PersonalProfileDocument", null);
@@ -186,25 +159,28 @@
             // get main person's data
             var ap = AuthorProfile.GetProfile(name);
 
-            if (!ap.Private)
+            if (ap != null && !ap.Private)
             {
                 // main author object
                 var me = new FoafPerson("#me", ap) { Friends = new List<FoafPerson>() };
 
-                // TODO: this really should be it's own data store
-
                 // assume all other authors are friends
-                foreach (var user in
-                    Membership.GetAllUsers().Cast<MembershipUser>().Where(
-                        user => !user.UserName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                var userNames = Providers.BlogService.GetUserNames();
+                if (userNames != null)
                 {
-                    var friend = AuthorProfile.GetProfile(user.UserName);
-                    if (friend == null)
+                    foreach (var userName in userNames)
                     {
-                        continue;
-                    }
+                        if (userName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                            continue;
 
-                    me.Friends.Add(new FoafPerson("#" + user.UserName, friend));
+                        var friend = AuthorProfile.GetProfile(userName);
+                        if (friend == null)
+                        {
+                            continue;
+                        }
+
+                        me.Friends.Add(new FoafPerson("#" + userName, friend));
+                    }
                 }
 
                 // assume blog roll = friends
@@ -243,7 +219,7 @@
                 }
 
                 // begin writing FOAF Persons
-                this.WriteFoafPerson(writer, me);
+                WriteFoafPerson(writer, me, context);
             }
 
             CloseWriter(writer);
@@ -252,16 +228,10 @@
         /// <summary>
         /// Write a FOAF:Person and any friends to the output stream
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="person">The person.</param>
-        private void WriteFoafPerson(XmlWriter writer, FoafPerson person)
+        private static void WriteFoafPerson(XmlWriter writer, FoafPerson person, HttpContext context)
         {
             writer.WriteStartElement("foaf", "Person", null);
 
-            // if (person.ID != "")
-            // {
-            // writer.WriteAttributeString("rdf", "ID", null, person.ID);
-            // }
             writer.WriteElementString("foaf", "name", null, person.Name);
             if (person.Title != string.Empty)
             {
@@ -297,7 +267,8 @@
                 writer.WriteEndElement();
             }
 
-            if (person.Rdf != string.Empty && person.Rdf != HttpContext.Current.Request.Url.ToString())
+            var requestUrl = context.Request.GetDisplayUrl();
+            if (person.Rdf != string.Empty && person.Rdf != requestUrl)
             {
                 writer.WriteStartElement("rdfs", "seeAlso", null);
                 writer.WriteAttributeString("rdf", "resource", null, person.Rdf);
@@ -327,7 +298,7 @@
                 {
                     writer.WriteStartElement("foaf", "knows", null);
 
-                    this.WriteFoafPerson(writer, friend);
+                    WriteFoafPerson(writer, friend, context);
 
                     writer.WriteEndElement(); // foaf:knows
                 }
@@ -335,8 +306,6 @@
 
             writer.WriteEndElement(); // foaf:Person
         }
-
-        #endregion
     }
 
     /// <summary>
@@ -344,14 +313,9 @@
     /// </summary>
     public class FoafPerson
     {
-        #region Constructors and Destructors
-
         /// <summary>
         /// Initializes a new instance of the <see cref="FoafPerson"/> class.
         /// </summary>
-        /// <param name="id">
-        /// The FOAF person id.
-        /// </param>
         public FoafPerson(string id)
         {
             this.Birthday = string.Empty;
@@ -372,12 +336,6 @@
         /// <summary>
         /// Initializes a new instance of the <see cref="FoafPerson"/> class.
         /// </summary>
-        /// <param name="id">
-        /// The FOAF id.
-        /// </param>
-        /// <param name="ap">
-        /// The AuthorProfile.
-        /// </param>
         public FoafPerson(string id, AuthorProfile ap)
         {
             this.Homepage = string.Empty;
@@ -386,8 +344,6 @@
             this.Name = ap.FullName;
             this.Email = ap.EmailAddress;
 
-            // no homepage
-            // this website = blog
             this.Blog = Utils.AbsoluteWebRoot.ToString();
             this.Rdf = $"{Utils.AbsoluteWebRoot}foaf_{ap.UserName}.axd";
             this.Firstname = ap.FirstName;
@@ -401,42 +357,6 @@
         /// <summary>
         /// Initializes a new instance of the <see cref="FoafPerson"/> class.
         /// </summary>
-        /// <param name="id">
-        /// The FOAF person id.
-        /// </param>
-        /// <param name="name">
-        /// The FOAF person name.
-        /// </param>
-        /// <param name="title">
-        /// The title.
-        /// </param>
-        /// <param name="email">
-        /// The email.
-        /// </param>
-        /// <param name="homepage">
-        /// The homepage.
-        /// </param>
-        /// <param name="blog">
-        /// The FOAF person blog.
-        /// </param>
-        /// <param name="rdf">
-        /// The FOAF person rdf.
-        /// </param>
-        /// <param name="firstname">
-        /// The firstname.
-        /// </param>
-        /// <param name="lastname">
-        /// The lastname.
-        /// </param>
-        /// <param name="image">
-        /// The image.
-        /// </param>
-        /// <param name="birthday">
-        /// The birthday.
-        /// </param>
-        /// <param name="phone">
-        /// The phone.
-        /// </param>
         public FoafPerson(
             string id,
             string name,
@@ -466,94 +386,19 @@
             this.Phone = phone;
         }
 
-        #endregion
-
-        #region Properties
-
-        /// <summary>
-        /// Gets or sets the birthday.
-        /// </summary>
-        /// <value>The birthday.</value>
         public string Birthday { get; set; }
-
-        /// <summary>
-        /// Gets or sets the blog.
-        /// </summary>
-        /// <value>The FOAF blog.</value>
         public string Blog { get; set; }
-
-        /// <summary>
-        /// Gets or sets the email.
-        /// </summary>
-        /// <value>The email.</value>
         public string Email { get; set; }
-
-        /// <summary>
-        /// Gets or sets the firstname.
-        /// </summary>
-        /// <value>The firstname.</value>
         public string Firstname { get; set; }
-
-        /// <summary>
-        /// Gets or sets the friends.
-        /// </summary>
-        /// <value>The friends.</value>
         public List<FoafPerson> Friends { get; set; }
-
-        /// <summary>
-        /// Gets or sets the homepage.
-        /// </summary>
-        /// <value>The homepage.</value>
         public string Homepage { get; set; }
-
-        /// <summary>
-        /// Gets or sets the id.
-        /// </summary>
-        /// <value>The FOAF id.</value>
         public string Id { get; set; }
-
-        /// <summary>
-        /// Gets or sets the image.
-        /// </summary>
-        /// <value>The image.</value>
         public string Image { get; set; }
-
-        /// <summary>
-        /// Gets or sets the lastname.
-        /// </summary>
-        /// <value>The lastname.</value>
         public string Lastname { get; set; }
-
-        /// <summary>
-        /// Gets or sets the name.
-        /// </summary>
-        /// <value>The FOAF name.</value>
         public string Name { get; set; }
-
-        /// <summary>
-        /// Gets or sets the phone.
-        /// </summary>
-        /// <value>The phone.</value>
         public string Phone { get; set; }
-
-        /// <summary>
-        /// Gets or sets the photo URL.
-        /// </summary>
-        /// <value>The photo URL.</value>
         public string PhotoUrl { get; set; }
-
-        /// <summary>
-        /// Gets or sets the RDF.
-        /// </summary>
-        /// <value>The FOAF RDF.</value>
         public string Rdf { get; set; }
-
-        /// <summary>
-        /// Gets or sets the title.
-        /// </summary>
-        /// <value>The title.</value>
         public string Title { get; set; }
-
-        #endregion
     }
 }

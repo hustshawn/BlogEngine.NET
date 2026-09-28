@@ -18,7 +18,7 @@ namespace BlogEngine.Core
   public class CategoryDictionary : Dictionary<Guid, string>
   {
 
-    internal static string _Folder = System.Web.HttpContext.Current.Server.MapPath(BlogSettings.Instance.StorageLocation);
+    internal static string _Folder = BlogConfig.MapPath(BlogSettings.Instance.StorageLocation);
 
     #region Properties
 

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Web.Script.Serialization;
 
 namespace BlogEngine.Core.Web
 {
@@ -40,7 +39,7 @@ namespace BlogEngine.Core.Web
             {
                 try
                 {
-                    var filePath = System.Web.HttpContext.Current.Server.MapPath(
+                    var filePath = BlogConfig.MapPath(
                         System.IO.Path.Combine(BlogConfig.StorageLocation, "labels.txt"));
 
                     if (System.IO.File.Exists(filePath))
@@ -129,7 +128,7 @@ namespace BlogEngine.Core.Web
         /// <returns></returns>
         public string ToJsonString()
         {
-            return new JavaScriptSerializer().Serialize(this.translationDict);
+            return System.Text.Json.JsonSerializer.Serialize(this.translationDict);
         }
 
         // this is fall back if file with JS

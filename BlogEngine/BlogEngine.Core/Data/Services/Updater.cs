@@ -1,12 +1,13 @@
 ﻿using ICSharpCode.SharpZipLib.Zip;
 using System;
 using System.IO;
-using System.Net;
+using System.Net.Http;
 
 namespace BlogEngine.Core.Data.Services
 {
     /// <summary>
-    /// Used by auto-upgrade to update to latest version
+    /// Used by auto-upgrade to update to latest version.
+    /// Converted from WebClient/WebRequest to static HttpClient.
     /// </summary>
     public class Updater
     {
@@ -14,7 +15,21 @@ namespace BlogEngine.Core.Data.Services
         private string _versionsTxt = _upgradeReleases + "versions.txt";
         private string _setupTxt = _upgradeReleases + "setup.txt";
         private string _latestSetup = _upgradeReleases + "setup.zip";
-        private string _root = System.Web.Hosting.HostingEnvironment.MapPath("~/");
+        private string _root;
+
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        });
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="Updater"/> class.
+        /// </summary>
+        /// <param name="contentRootPath">The application content root path (replaces BlogConfig.MapPath).</param>
+        public Updater(string contentRootPath)
+        {
+            _root = contentRootPath ?? string.Empty;
+        }
 
         /// <summary>
         /// Check if newer version exists
@@ -25,17 +40,15 @@ namespace BlogEngine.Core.Data.Services
         {
             try
             {
-                if (_root.EndsWith("\\")) 
+                if (_root.EndsWith(Path.DirectorySeparatorChar.ToString()))
                     _root = _root.Substring(0, _root.Length - 1);
 
-                WebClient client = new WebClient();
-                Stream stream = client.OpenRead(_versionsTxt);
-                StreamReader reader = new StreamReader(stream);
-                string line = "";
+                var content = _httpClient.GetStringAsync(_versionsTxt).GetAwaiter().GetResult();
+                using var reader = new StringReader(content);
+                string line;
 
-                while (reader.Peek() >= 0)
+                while ((line = reader.ReadLine()) != null)
                 {
-                    line = reader.ReadLine();
                     if (!string.IsNullOrEmpty(version) && line.Contains("|"))
                     {
                         var iCurrent = int.Parse(version.Replace(".", ""));
@@ -59,7 +72,7 @@ namespace BlogEngine.Core.Data.Services
 
         void UpdateSetupFolder()
         {
-            var localVersionPath = _root + "\\setup\\upgrade\\setup.txt";
+            var localVersionPath = Path.Combine(_root, "setup", "upgrade", "setup.txt");
 
             if (!File.Exists(localVersionPath))
                 return;
@@ -68,11 +81,7 @@ namespace BlogEngine.Core.Data.Services
             {
                 var localVersion = File.ReadAllText(localVersionPath);
 
-                WebClient client = new WebClient();
-                Stream stream = client.OpenRead(_setupTxt);
-                StreamReader reader = new StreamReader(stream);
-
-                var remoteVersion = reader.ReadToEnd();
+                var remoteVersion = _httpClient.GetStringAsync(_setupTxt).GetAwaiter().GetResult();
 
                 if (localVersion != remoteVersion)
                 {
@@ -87,53 +96,48 @@ namespace BlogEngine.Core.Data.Services
         {
             try
             {
-                var setupFolder = _root + "\\setup\\upgrade";
+                var setupFolder = Path.Combine(_root, "setup", "upgrade");
 
                 if (Directory.Exists(setupFolder))
                     Directory.Delete(setupFolder, true);
 
                 Directory.CreateDirectory(setupFolder);
 
-                WebRequest request = System.Net.WebRequest.Create(_latestSetup);
-                WebResponse response = request.GetResponse();
+                using var responseStream = _httpClient.GetStreamAsync(_latestSetup).GetAwaiter().GetResult();
+                ZipInputStream myZipInputStream = new ZipInputStream(responseStream);
+                ZipEntry myZipEntry;
 
-                using (Stream responseStream = response.GetResponseStream())
+                while ((myZipEntry = myZipInputStream.GetNextEntry()) != null)
                 {
-                    ZipInputStream myZipInputStream = new ZipInputStream(responseStream);
-                    ZipEntry myZipEntry;
-
-                    while ((myZipEntry = myZipInputStream.GetNextEntry()) != null)
+                    if (myZipEntry.IsDirectory)
                     {
-                        if (myZipEntry.IsDirectory)
+                        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(setupFolder, myZipEntry.Name)));
+                    }
+                    else
+                    {
+                        // Ensure non-empty file name
+                        if (myZipEntry.Name.Length > 0)
                         {
-                            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(setupFolder, myZipEntry.Name)));
-                        }
-                        else
-                        {
-                            // Ensure non-empty file name
-                            if (myZipEntry.Name.Length > 0)
+                            // Create a new file, get the file stream
+                            FileStream myFileStream = File.Create(Path.Combine(setupFolder, myZipEntry.Name));
+                            int size = 2048;
+                            byte[] data = new byte[2048];
+
+                            // Write out the file
+                            while (true)
                             {
-                                // Create a new file, get the file stream
-                                FileStream myFileStream = File.Create(Path.Combine(setupFolder, myZipEntry.Name));
-                                int size = 2048;
-                                byte[] data = new byte[2048];
+                                size = myZipInputStream.Read(data, 0, data.Length);
 
-                                // Write out the file
-                                while (true)
+                                if (size > 0)
                                 {
-                                    size = myZipInputStream.Read(data, 0, data.Length);
-
-                                    if (size > 0)
-                                    {
-                                        myFileStream.Write(data, 0, size);
-                                    }
-                                    else
-                                    {
-                                        break;
-                                    }
+                                    myFileStream.Write(data, 0, size);
                                 }
-                                myFileStream.Close();
+                                else
+                                {
+                                    break;
+                                }
                             }
+                            myFileStream.Close();
                         }
                     }
                 }

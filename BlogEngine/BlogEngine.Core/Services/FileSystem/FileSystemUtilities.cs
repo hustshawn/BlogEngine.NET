@@ -1,8 +1,6 @@
 ﻿using ICSharpCode.SharpZipLib.Zip;
 using System.IO;
 using BlogEngine.Core.Providers;
-using System.Web.Configuration;
-using System.Configuration;
 
 namespace BlogEngine.Core.FileSystem
 {
@@ -39,12 +37,6 @@ namespace BlogEngine.Core.FileSystem
         /// <summary>
         /// Adds a directory to a specific ZipStream
         /// </summary>
-        /// <param name="RootDirectory">the root directory</param>
-        /// <param name="CurrentDirectory">the directory to push</param>
-        /// <param name="zStream">stream to write to</param>
-        /// <remarks>
-        /// do not call this method directly, this method is designed be called in a recursive manor.
-        /// </remarks>
         private void ZipDirectory(Directory RootDirectory, Directory CurrentDirectory, ZipOutputStream zStream)
         {
             foreach (var file in CurrentDirectory.Files)
@@ -59,34 +51,33 @@ namespace BlogEngine.Core.FileSystem
         }
 
         /// <summary>
-        /// Dumps the file store provider to a zip file, clears the old file store, switches and reloads a new providers
+        /// Dumps the file store provider to a zip file, clears the old file store, switches and reloads a new provider,
         ///     clears the new file storage provider, then loads the new file store provider from the zip.
         /// </summary>
-        /// <param name="NewProviderName">The name of the new provider</param>
+        /// <param name="NewProviderName">The name of the new provider (unused in DI model, kept for API compat).</param>
         /// <param name="ArchiveOutputLocation">The output archive location.</param>
-        /// <returns>bool if complete</returns>
+        /// <returns>Message string, empty if successful</returns>
+        /// <remarks>
+        /// In the DI-based model, provider switching requires re-initializing via DI.
+        /// This method preserves the archive/restore logic but provider switching
+        /// should be handled at the DI composition root level.
+        /// </remarks>
         public string DumpProvider(string NewProviderName, string ArchiveOutputLocation)
         {
             string Message = string.Empty;
             CompressDirectory(ArchiveOutputLocation, Blog.CurrentInstance.RootFileStore);
             try
             {
-                //file system may throw an error if there is a lock on a file while trying to delete. As this is the 
-                //old provider we *will* allow for residue to be left behind. The user may wish to manually clear the provider
                 BlogService.ClearFileSystem();
             }
             catch
             {
                 Message = "Error while clearing the old file system provider, there may have been a lock on a file. You will have to manually clear the old file system. The update operation has bypassed clearing the old file storage, however will continue to import your data into your new file storage.<br/>";
             }
-            var config = WebConfigurationManager.OpenWebConfiguration("~");
-            BlogFileSystemProviderSection section = (BlogFileSystemProviderSection)config.GetSection("BlogEngine/blogFileSystemProvider");
-            var olderProivder = section.DefaultProvider.Clone().ToString();
-            section.DefaultProvider = NewProviderName;
-            config.Save();
-            ConfigurationManager.RefreshSection("BlogEngine/blogFileSystemProvider");
-            config = null;
-            config = WebConfigurationManager.OpenWebConfiguration("~");
+
+            // REVIEW: In the DI-based model, provider switching is done at startup configuration level.
+            // The archive/restore still works, but dynamic provider switching at runtime
+            // requires re-initializing BlogService.InitializeFileSystem() with the new provider.
             try
             {
                 BlogService.ReloadFileSystemProvider();
@@ -95,12 +86,7 @@ namespace BlogEngine.Core.FileSystem
             }
             catch
             {
-                section = (BlogFileSystemProviderSection)config.GetSection("BlogEngine/blogFileSystemProvider");
-                section.DefaultProvider = olderProivder;
-                config.Save();
-                ConfigurationManager.RefreshSection("BlogEngine/blogFileSystemProvider");
-                config = null;
-                config = WebConfigurationManager.OpenWebConfiguration("~");
+                // Restore failed - try to restore original data
                 BlogService.ReloadFileSystemProvider();
                 BlogService.ClearFileSystem();
                 ExtractDirectory(ArchiveOutputLocation);
@@ -144,16 +130,15 @@ namespace BlogEngine.Core.FileSystem
         }
 
         /// <summary>
-        /// Retrieves the given provider from Web.config and attempts to instantiate it.
+        /// Retrieves the blog provider from DI.
+        /// In the DI model, providers are resolved from the service container, not from web.config.
         /// </summary>
-        /// <param name="ProviderName">The blog provider to instantiate.</param>
-        /// <returns>A BlogProvider instance.</returns>
+        /// <param name="ProviderName">Unused in DI model - kept for API compatibility.</param>
+        /// <returns>The current blog provider instance.</returns>
         public static BlogProvider CreateProvider(string ProviderName)
         {
-            var section = (BlogProviderSection)WebConfigurationManager.GetSection("BlogEngine/blogProvider");
-            var _providers = new BlogProviderCollection();
-            ProvidersHelper.InstantiateProviders(section.Providers, _providers, typeof(BlogProvider));
-            return _providers[ProviderName];
+            // In the DI-based model, the provider is always BlogService.Provider
+            return BlogService.Provider as BlogProvider;
         }
 
     }        

@@ -12,7 +12,6 @@ namespace BlogEngine.Core.Providers
 {
     using System;
     using System.IO;
-    using System.Web.Hosting;
     using System.Xml.Serialization;
 
     using BlogEngine.Core.DataStore;
@@ -131,13 +130,7 @@ namespace BlogEngine.Core.Providers
                     throw new NotSupportedException($"Unknown extension type: {extensionType}");
             }
 
-            string mappedResult = HostingEnvironment.MapPath(result);
-            if (string.IsNullOrEmpty(mappedResult) && result.StartsWith(BlogConfig.DefaultStorageLocation))
-            {
-                // this can only happen in Mono. We'll try again with AppDomain but it will only work if BlogConfig.StorageLocation == "~/App_Data/" (which is the default value)
-				string appDataPhysical = AppDomain.CurrentDomain.GetData("DataDirectory").ToString();
-				mappedResult = Path.Combine(appDataPhysical, result.Substring(BlogConfig.DefaultStorageLocation.Length));
-            }
+            string mappedResult = BlogConfig.MapPath(result);
 
             if (string.IsNullOrEmpty(mappedResult))
             {

@@ -2,15 +2,17 @@
 {
     using System;
     using System.Text.RegularExpressions;
-    using System.Web;
+    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Http;
 
     /// <summary>
     /// Removes or adds the www subdomain from all requests
-    ///     and makes a permanent redirection to the new location.
+    /// and makes a permanent redirection to the new location.
+    /// Converted from IHttpModule to ASP.NET Core middleware.
     /// </summary>
-    public class WwwSubDomainModule : IHttpModule
+    public class WwwSubDomainMiddleware
     {
-        #region Constants and Fields
+        private readonly RequestDelegate _next;
 
         /// <summary>
         /// The link regex.
@@ -18,56 +20,84 @@
         private static readonly Regex LinkRegex = new Regex(
             "(http|https)://www\\.", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpModule
-
         /// <summary>
-        /// Disposes of the resources (other than memory) used by the module that implements <see cref="T:System.Web.IHttpModule"/>.
+        /// Initializes a new instance of the <see cref="WwwSubDomainMiddleware"/> class.
         /// </summary>
-        public void Dispose()
+        /// <param name="next">The next middleware in the pipeline.</param>
+        public WwwSubDomainMiddleware(RequestDelegate next)
         {
-            // Nothing to dispose
+            _next = next;
         }
 
         /// <summary>
-        /// Initializes a module and prepares it to handle requests.
+        /// Processes the request and handles www subdomain redirection.
         /// </summary>
-        /// <param name="context">An <see cref="T:System.Web.HttpApplication"/> that provides access to the methods, properties, and events common to all application objects within an ASP.NET application</param>
-        public void Init(HttpApplication context)
+        /// <param name="context">The HTTP context.</param>
+        public async Task InvokeAsync(HttpContext context)
         {
-            context.BeginRequest += ContextBeginRequest;
+            // Clear the InstanceIdOverride to ensure any values are not
+            // carried over from previous times this thread from the thread
+            // pool was used.
+            Blog.InstanceIdOverride = Guid.Empty;
+
+            if (BlogSettings.Instance.HandleWwwSubdomain == "ignore" ||
+                string.IsNullOrEmpty(BlogSettings.Instance.HandleWwwSubdomain))
+            {
+                await _next(context);
+                return;
+            }
+
+            var request = context.Request;
+            var requestMethod = request.Method;
+            var rawUrl = request.Path.Value + request.QueryString.Value;
+            var isLocal = IsLocalRequest(context);
+
+            if (requestMethod != "GET" || (rawUrl?.Contains("/admin/") ?? false) || isLocal)
+            {
+                await _next(context);
+                return;
+            }
+
+            var requestPath = request.Path.Value ?? string.Empty;
+            var pathExtension = System.IO.Path.GetExtension(requestPath)?.Trim().ToLower() ?? string.Empty;
+
+            if (requestPath.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase) ||
+                pathExtension == BlogConfig.FileExtension.Trim().ToLower())
+            {
+                var url = $"{request.Scheme}://{request.Host}{request.Path}{request.QueryString}";
+
+                if (url.Contains("://www.") && BlogSettings.Instance.HandleWwwSubdomain == "remove")
+                {
+                    RemoveWww(context, url);
+                    return;
+                }
+
+                if (!url.Contains("://www.") && BlogSettings.Instance.HandleWwwSubdomain == "add")
+                {
+                    AddWww(context, url);
+                    return;
+                }
+            }
+
+            await _next(context);
         }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// Adds the www subdomain to the request and redirects.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        private static void AddWww(HttpContext context)
+        /// <param name="context">The HTTP context.</param>
+        /// <param name="url">The current URL.</param>
+        private static void AddWww(HttpContext context, string url)
         {
-            var url = context.Request.Url.ToString().Replace("://", "://www.");
+            url = url.Replace("://", "://www.");
             PermanentRedirect(url, context);
         }
 
         /// <summary>
         /// Sends permanent redirection headers (301)
         /// </summary>
-        /// <param name="url">
-        /// The url to redirect to.
-        /// </param>
-        /// <param name="context">
-        /// The HTTP context.
-        /// </param>
+        /// <param name="url">The url to redirect to.</param>
+        /// <param name="context">The HTTP context.</param>
         private static void PermanentRedirect(string url, HttpContext context)
         {
             if (url.EndsWith("default.aspx", StringComparison.OrdinalIgnoreCase))
@@ -75,21 +105,17 @@
                 url = url.ToLowerInvariant().Replace("default.aspx", string.Empty);
             }
 
-            context.Response.Clear();
             context.Response.StatusCode = 301;
-            context.Response.AppendHeader("location", url);
-            context.Response.End();
+            context.Response.Headers["Location"] = url;
         }
 
         /// <summary>
         /// Removes the www subdomain from the request and redirects.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        private static void RemoveWww(HttpContext context)
+        /// <param name="context">The HTTP context.</param>
+        /// <param name="url">The current URL.</param>
+        private static void RemoveWww(HttpContext context, string url)
         {
-            var url = context.Request.Url.ToString();
             if (!LinkRegex.IsMatch(url))
             {
                 return;
@@ -100,53 +126,21 @@
         }
 
         /// <summary>
-        /// Handles the BeginRequest event of the context control.
+        /// Determines if the request is from localhost.
         /// </summary>
-        /// <param name="sender">The source of the event.</param>
-        /// <param name="e">The <see cref="System.EventArgs"/> instance containing the event data.</param>
-        private static void ContextBeginRequest(object sender, EventArgs e)
+        private static bool IsLocalRequest(HttpContext context)
         {
-            // Clear the InstanceIdOverride to ensure any values are not
-            // carried over from previous times this thread from the thread
-            // pool was used.
-            //
-            // This should be done at the beginning of each HTTP request as
-            // early as possible.  It is being done here because in the
-            // list of HTTP modules defined in the web.config file, this
-            // module (WwwSubdomainModule) is the first defined one so will
-            // fire before any other modules.
-            Blog.InstanceIdOverride = Guid.Empty;
-
-            if (BlogSettings.Instance.HandleWwwSubdomain == "ignore" ||
-                string.IsNullOrEmpty(BlogSettings.Instance.HandleWwwSubdomain))
+            var connection = context.Connection;
+            if (connection.RemoteIpAddress != null)
             {
-                return;
-            }
-
-            var context = ((HttpApplication)sender).Context;
-            if (context.Request.HttpMethod != "GET" || context.Request.RawUrl.Contains("/admin/") ||
-                context.Request.IsLocal)
-            {
-                return;
-            }
-
-            if (context.Request.PhysicalPath.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase) ||
-                context.Request.CurrentExecutionFilePathExtension.Trim().ToLower() == BlogConfig.FileExtension.Trim().ToLower())
-            {
-                var url = context.Request.Url.ToString();
-
-                if (url.Contains("://www.") && BlogSettings.Instance.HandleWwwSubdomain == "remove")
+                if (connection.LocalIpAddress != null)
                 {
-                    RemoveWww(context);
+                    return connection.RemoteIpAddress.Equals(connection.LocalIpAddress);
                 }
-
-                if (!url.Contains("://www.") && BlogSettings.Instance.HandleWwwSubdomain == "add")
-                {
-                    AddWww(context);
-                }
+                return System.Net.IPAddress.IsLoopback(connection.RemoteIpAddress);
             }
+            // If RemoteIpAddress is null, it's a local connection
+            return connection.LocalIpAddress == null;
         }
-
-        #endregion
     }
 }

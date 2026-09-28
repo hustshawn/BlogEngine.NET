@@ -2,12 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using BlogEngine.Core.Providers;
-using System.Web;
-using System.Web.Hosting;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Net;
 using BlogEngine.Core.Providers.CacheProvider;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace BlogEngine.Core
 {
@@ -448,6 +448,33 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
+        /// Static IHttpContextAccessor for resolving current HttpContext.
+        /// Must be set at startup via DI.
+        /// </summary>
+        internal static IHttpContextAccessor _httpContextAccessor;
+
+        /// <summary>
+        /// Static IMemoryCache for caching. Must be set at startup via DI.
+        /// </summary>
+        private static IMemoryCache _memoryCache;
+
+        /// <summary>
+        /// Sets the IHttpContextAccessor for the Blog class. Call from startup.
+        /// </summary>
+        public static void SetHttpContextAccessor(IHttpContextAccessor accessor)
+        {
+            _httpContextAccessor = accessor;
+        }
+
+        /// <summary>
+        /// Sets the IMemoryCache for the Blog class. Call from startup.
+        /// </summary>
+        public static void SetMemoryCache(IMemoryCache cache)
+        {
+            _memoryCache = cache;
+        }
+
+        /// <summary>
         /// The current blog instance.
         /// </summary>
         public static Blog CurrentInstance
@@ -464,38 +491,26 @@ namespace BlogEngine.Core
                 }
 
                 const string CONTEXT_ITEM_KEY = "current-blog-instance";
-                HttpContext context = HttpContext.Current;
+                var context = _httpContextAccessor?.HttpContext;
 
-                Blog blog = context.Items[CONTEXT_ITEM_KEY] as Blog;
-                if (blog != null) { return blog; }
+                if (context != null)
+                {
+                    if (context.Items.TryGetValue(CONTEXT_ITEM_KEY, out var cached) && cached is Blog cachedBlog)
+                    {
+                        return cachedBlog;
+                    }
+                }
 
                 List<Blog> blogs = Blogs;
                 if (blogs.Count == 0) { return null; }
 
+                Blog blog = null;
                 if (blogs.Count == 1)
                 {
                     blog = blogs[0];
                 }
-                else
+                else if (context != null)
                 {
-                    // Determine which blog.
-                    //
-
-                    // Web service and Page method calls to the server need to be made to the
-                    // root level, and cannot be virtual URLs that get rewritten to the correct
-                    // physical location.  When attempting to rewrite these URLs, the web
-                    // service/page method will throw a "405 Method Not Allowed" error.
-                    // For us to determine which blog these AJAX calls are on behalf of,
-                    // a request header on the AJAX calls will be appended to tell us which
-                    // blog instance they are for.
-                    //
-                    // The built-in ASP.NET Callback system works correctly even when
-                    // the URL is rewritten.  For these, CurrentInstance will be determined
-                    // and stored in HttpContext.Items before the rewrite is done -- so even
-                    // after the rewrite, CurrentInstance will reference the correct blog
-                    // instance.
-                    // 
-
                     string blogIdHeader = context.Request.Headers["x-blog-instance"];
                     if (!string.IsNullOrWhiteSpace(blogIdHeader) && blogIdHeader.Length == 36)
                     {
@@ -506,18 +521,8 @@ namespace BlogEngine.Core
 
                     if (blog == null)
                     {
-
-                        // Note, this.Blogs is sorted via SortBlogs() so the blogs with longer
-                        // RelativeWebRoots come first.  This is important when matching so the
-                        // more specific matches are done first.
-
-                        // for the purposes here, adding a trailing slash to RawUrl, even if it's not
-                        // a correct URL.  if a blog has a relative root of /blog1, RelativeWebRoot
-                        // will be /blog1/ (containing the trailing slash).  for equal comparisons,
-                        // make sure rawUrl also has a trailing slash.
-
-                        string rawUrl = VirtualPathUtility.AppendTrailingSlash(context.Request.RawUrl);
-                        string hostname = context.Request.Url.Host;
+                        string rawUrl = VirtualPathUtility.AppendTrailingSlash(context.Request.Path + context.Request.QueryString);
+                        string hostname = context.Request.Host.Host;
 
                         for (int i = 0; i < blogs.Count; i++)
                         {
@@ -525,8 +530,6 @@ namespace BlogEngine.Core
 
                             if (checkBlog.isActive)
                             {
-                                // first check the hostname, if a hostname is specified
-
                                 if (!string.IsNullOrWhiteSpace(checkBlog.hostname))
                                 {
                                     bool isMatch = false;
@@ -536,15 +539,11 @@ namespace BlogEngine.Core
                                     else
                                         isMatch = hostname.Equals(checkBlog.hostname, StringComparison.OrdinalIgnoreCase);
 
-                                    // if isMatch, we still need to check the conditions below, to allow
-                                    // multiple path variations for a particular hostname.
                                     if (!isMatch)
                                     {
                                         continue;
                                     }
                                 }
-
-                                // second check the path.
 
                                 if (rawUrl.StartsWith(checkBlog.RelativeWebRoot, StringComparison.OrdinalIgnoreCase))
                                 {
@@ -554,16 +553,22 @@ namespace BlogEngine.Core
                             }
                         }
 
-                        // if all blogs are inactive, or there are no matches for some reason,
-                        // select the primary blog.
                         if (blog == null)
                         {
                             blog = blogs.FirstOrDefault(b => b.IsPrimary);
                         }
                     }
                 }
+                else
+                {
+                    // No HttpContext - select primary blog
+                    blog = blogs.FirstOrDefault(b => b.IsPrimary);
+                }
 
-                context.Items[CONTEXT_ITEM_KEY] = blog;
+                if (context != null && blog != null)
+                {
+                    context.Items[CONTEXT_ITEM_KEY] = blog;
+                }
 
                 return blog;
             }
@@ -677,31 +682,38 @@ namespace BlogEngine.Core
             {
                 string contextItemKey = $"{Id}-absolutewebroot";
 
-                var context = HttpContext.Current;
+                var context = _httpContextAccessor?.HttpContext;
                 if (context == null)
                 {
-                    throw new WebException("The current HttpContext is null");
+                    // No HttpContext available — build from configuration
+                    var uri = new UriBuilder();
+                    uri.Host = !string.IsNullOrWhiteSpace(this.Hostname) ? this.Hostname : "localhost";
+                    uri.Path = RelativeWebRoot;
+                    uri.Scheme = "https";
+                    return uri.Uri;
                 }
 
-                Uri absoluteWebRoot = context.Items[contextItemKey] as Uri;
-                if (absoluteWebRoot != null) { return absoluteWebRoot; }
+                if (context.Items.TryGetValue(contextItemKey, out var cached) && cached is Uri cachedUri)
+                {
+                    return cachedUri;
+                }
 
-                UriBuilder uri = new UriBuilder();
+                UriBuilder uriBuilder = new UriBuilder();
                 if (!string.IsNullOrWhiteSpace(this.Hostname))
-                    uri.Host = this.Hostname;
+                    uriBuilder.Host = this.Hostname;
                 else
                 {
-                    uri.Host = context.Request.Url.Host;
-                    if (!context.Request.Url.IsDefaultPort)
+                    uriBuilder.Host = context.Request.Host.Host;
+                    if (context.Request.Host.Port.HasValue && context.Request.Host.Port.Value != 80 && context.Request.Host.Port.Value != 443)
                     {
-                        uri.Port = context.Request.Url.Port;
+                        uriBuilder.Port = context.Request.Host.Port.Value;
                     }
                 }
 
-                uri.Path = RelativeWebRoot;
-                uri.Scheme = context.Request.Url.Scheme; // added for https support
+                uriBuilder.Path = RelativeWebRoot;
+                uriBuilder.Scheme = context.Request.Scheme;
 
-                absoluteWebRoot = uri.Uri;
+                var absoluteWebRoot = uriBuilder.Uri;
                 context.Items[contextItemKey] = absoluteWebRoot;
 
                 return absoluteWebRoot;
@@ -922,7 +934,7 @@ namespace BlogEngine.Core
 
             try
             {
-                string storagePath = HostingEnvironment.MapPath(this.StorageLocation);
+                string storagePath = BlogConfig.MapPath(this.StorageLocation);
                 if (Directory.Exists(storagePath))
                 {
                     Directory.Delete(storagePath, true);
@@ -951,7 +963,7 @@ namespace BlogEngine.Core
             {
                 // Ensure the existing blog storage path exists.
 
-                existingBlogStoragePath = HostingEnvironment.MapPath(existingBlog.StorageLocation);
+                existingBlogStoragePath = BlogConfig.MapPath(existingBlog.StorageLocation);
                 if (!Directory.Exists(existingBlogStoragePath))
                 {
                     throw new Exception($"Storage folder for existing blog instance to copy from does not exist.  Directory not found is: {existingBlogStoragePath}");
@@ -964,13 +976,13 @@ namespace BlogEngine.Core
             }
 
             // Ensure "BlogInstancesFolderName" exists.
-            string blogInstancesFolder = HostingEnvironment.MapPath($"{BlogConfig.StorageLocation}{BlogConfig.BlogInstancesFolderName}");
+            string blogInstancesFolder = BlogConfig.MapPath($"{BlogConfig.StorageLocation}{BlogConfig.BlogInstancesFolderName}");
             if (!Utils.CreateDirectoryIfNotExists(blogInstancesFolder))
                 return false;
 
             // If newBlogStoragePath already exists, throw an exception as this may be a mistake
             // and we don't want to overwrite any existing data.
-            string newBlogStoragePath = HostingEnvironment.MapPath(this.StorageLocation);
+            string newBlogStoragePath = BlogConfig.MapPath(this.StorageLocation);
             try
             {
                 if (Directory.Exists(newBlogStoragePath))
@@ -1059,13 +1071,13 @@ namespace BlogEngine.Core
             return this.Name.CompareTo(other.Name);
         }
 
-        private CacheProvider _cache;
+        private Providers.CacheProvider.CacheProvider _cache;
         /// <summary>
         /// blog instance cache
         /// </summary>
-        public CacheProvider Cache
+        public Providers.CacheProvider.CacheProvider Cache
         {
-            get { return _cache ?? (_cache = new CacheProvider(HttpContext.Current.Cache)); }
+            get { return _cache ?? (_cache = new Providers.CacheProvider.CacheProvider(_memoryCache ?? new MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()))); }
         }
 
     }

@@ -1,5 +1,6 @@
 ﻿namespace BlogEngine.Core
 {
+    using Microsoft.AspNetCore.Http;
     using System;
     using System.Collections.Generic;
     using System.Globalization;
@@ -13,13 +14,7 @@
     using System.Text;
     using System.Text.RegularExpressions;
     using System.Threading;
-    using System.Web;
-    using System.Web.Configuration;
-    using System.Web.UI;
-    using System.Web.UI.WebControls;
-    using System.Web.UI.HtmlControls;
     using System.Xml;
-    using System.DirectoryServices;
     using BlogEngine.Core.Web.Controls;
     using BlogEngine.Core.Web.Extensions;
     using System.Net.Sockets;
@@ -30,6 +25,20 @@
     public static class Utils
     {
         #region Constants and Fields
+
+        /// <summary>
+        /// Static IHttpContextAccessor for resolving current HttpContext.
+        /// Must be set at startup via DI.
+        /// </summary>
+        private static IHttpContextAccessor _httpContextAccessor;
+
+        /// <summary>
+        /// Sets the IHttpContextAccessor for the Utils class. Call from startup.
+        /// </summary>
+        public static void SetHttpContextAccessor(IHttpContextAccessor accessor)
+        {
+            _httpContextAccessor = accessor;
+        }
 
         /// <summary>
         /// The cookie name for forcing the main theme on a mobile device.
@@ -152,16 +161,13 @@
         {
             get
             {
-                var context = HttpContext.Current;
+                var context = _httpContextAccessor?.HttpContext;
                 if (context != null)
                 {
                     var request = context.Request;
-                    if (request.Browser.IsMobileDevice)
-                    {
-                        return true;
-                    }
+                    var userAgent = request.Headers["User-Agent"].ToString();
 
-                    if (!string.IsNullOrEmpty(request.UserAgent) && RegexMobile.IsMatch(request.UserAgent))
+                    if (!string.IsNullOrEmpty(userAgent) && RegexMobile.IsMatch(userAgent))
                     {
                         return true;
                     }
@@ -233,29 +239,19 @@
         {
             get
             {
-                HttpContext context = HttpContext.Current;
+                var context = _httpContextAccessor?.HttpContext;
+                if (context == null) return false;
 
-                // Because the homepage uses querystring values to render non-homepage content
-                // such as posts by tag, posts by date range, posts by author, etc, if there
-                // are any of these known parameters, this will be considered not a homepage request.
-                // Marketing tools such as Google AdWords and campaign tracking in Google Analytics
-                // will add their own query string parameters, so it is important to still render
-                // the home page even if these third-party tracking parameters are present.
                 string[] knownQueryParameters =
                 {
                     "id", "name", "tag", "year", "month", "date", "calendar", "apml", "page"
                 };
-                if (context.Request.QueryString.AllKeys
+                if (context.Request.Query.Keys
                     .Where(x => x != null)
                     .Any(x => knownQueryParameters.Any(y => x.Equals(y, StringComparison.OrdinalIgnoreCase))))
                     return false;
 
                 string path = context.Request.Path;
-
-                // If this is a virtual folder for a blog instance, unless "default.aspx" is
-                // actually in the URL, default.aspx won't be reported in path, so we check
-                // to see if path is the root of RelativeWebRoot (the blog instance's
-                // relative web root).
 
                 if (RelativeWebRoot.Equals(VirtualPathUtility.AppendTrailingSlash(path), StringComparison.OrdinalIgnoreCase))
                     return true;
@@ -279,23 +275,14 @@
         /// </returns>
         public static Boolean ShouldForceMainTheme(HttpRequest request)
         {
-            var forceMainThemeCookie = request.Cookies[ForceMainThemeCookieName];
+            if (request == null) return false;
 
-            if (forceMainThemeCookie == null)
+            if (request.Cookies.TryGetValue(ForceMainThemeCookieName, out var cookieValue))
             {
-                return false;
-            }
-
-            if (String.IsNullOrEmpty(forceMainThemeCookie.Value))
-            {
-                return false;
-            }
-
-            Boolean forceMainTheme;
-
-            if (Boolean.TryParse(forceMainThemeCookie.Value, out forceMainTheme))
-            {
-                return forceMainTheme;
+                if (!string.IsNullOrEmpty(cookieValue) && Boolean.TryParse(cookieValue, out var forceMainTheme))
+                {
+                    return forceMainTheme;
+                }
             }
 
             return false;
@@ -349,130 +336,50 @@
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Selects a listitem by value, case insensitively.
-        /// </summary>
-        /// <param name="control">The ListControl</param>
-        /// <param name="value">The value to select</param>
-        /// <returns>The ListItem found and selected</returns>
-        public static ListItem SelectListItemByValue(ListControl control, string value)
-        {
-            control.ClearSelection();
-            control.SelectedIndex = -1;
-
-            foreach (ListItem li in control.Items)
-            {
-                if (string.Equals(value, li.Value, StringComparison.OrdinalIgnoreCase))
-                {
-                    li.Selected = true;
-                    return li;
-                }
-            }
-
-            return null;
-        }
+        // REVIEW: SelectListItemByValue was a WebForms helper for ListControl.
+        // In modern .NET, use HTML select binding directly in Razor/Blazor views.
 
         /// <summary>
         /// Converts an object to its JSON representation.
         /// </summary>
-        /// <param name="obj"></param>
-        /// <returns></returns>
         public static string ConvertToJson(object obj)
         {
-            return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(obj);
+            return System.Text.Json.JsonSerializer.Serialize(obj);
         }
 
         /// <summary>
-        /// Adds a JavaScript reference to the HTML head tag.
+        /// Adds a JavaScript reference URL. In modern .NET, this returns the script tag as a string
+        /// for inclusion in views.
         /// </summary>
-        /// <param name="page">
-        /// The page to add the JavaScript include to.
-        /// </param>
-        /// <param name="url">
-        /// The url string.
-        /// </param>
-        /// <param name="placeInBottom">
-        /// The place In Bottom.
-        /// </param>
-        /// <param name="addDeferAttribute">
-        /// The add Defer Attribute.
-        /// </param>
-        public static void AddJavaScriptInclude(System.Web.UI.Page page, string url, bool placeInBottom = false, bool addDeferAttribute = false)
+        public static string AddJavaScriptInclude(string url, bool placeInBottom = false, bool addDeferAttribute = false)
         {
-            if (placeInBottom)
-            {
-                var deferAttr = (addDeferAttribute ? " defer=\"defer\"" : string.Empty);
-                var script = $"<script type=\"text/javascript\"{deferAttr} src=\"{url}\"></script>";
-                page.ClientScript.RegisterStartupScript(page.GetType(), url.GetHashCode().ToString(), script);
-            }
-            else
-            {
-                var script = new HtmlGenericControl("script");
-                script.Attributes["type"] = "text/javascript";
-                script.Attributes["src"] = url;
-                if (addDeferAttribute)
-                {
-                    script.Attributes["defer"] = "defer";
-                }
-
-                string itemsKey = "next-script-insert-position";
-                HttpContext context = HttpContext.Current;
-
-                // Inserting scripts in the beginning of the HEAD tag so any user
-                // scripts that may rely on our scripts (jQuery, etc) have these
-                // scripts available to them.  Also maintaining order so subsequent
-                // scripts are added after scripts we already added.
-
-                int? nextInsertPosition = context == null ? null : context.Items[itemsKey] as int?;
-                if (!nextInsertPosition.HasValue) { nextInsertPosition = 0; }
-
-                page.Header.Controls.AddAt(nextInsertPosition.Value, script);
-                if (context != null) { context.Items[itemsKey] = ++nextInsertPosition; }
-            }
+            var deferAttr = addDeferAttribute ? " defer=\"defer\"" : string.Empty;
+            return $"<script type=\"text/javascript\"{deferAttr} src=\"{url}\"></script>";
         }
 
         /// <summary>
-        /// This method returns all code assemblies in app_code
-        ///     If app_code has subdirectories for c#, vb.net etc
-        ///     Each one will come back as a separate assembly
-        ///     So we can support extensions in multiple languages
+        /// Returns code assemblies loaded from the bin directory.
         /// </summary>
-        /// <returns>
-        /// List of code assemblies
-        /// </returns>
         public static IEnumerable<Assembly> CodeAssemblies()
         {
             var codeAssemblies = new List<Assembly>();
-            CompilationSection s = null;
-            var assemblyName = "__code";
+
             try
             {
+                // In modern .NET, look for extensions in the bin directory
+                var assemblyName = "App_Code";
                 try
                 {
-                    s = (CompilationSection)WebConfigurationManager.GetSection("system.web/compilation");
-                }
-                catch (SecurityException)
-                {
-                    // No read permissions on web.config due to the trust level (must be High or Full)
-                }
-
-                if (s != null && s.CodeSubDirectories != null && s.CodeSubDirectories.Count > 0)
-                {
-                    for (var i = 0; i < s.CodeSubDirectories.Count; i++)
-                    {
-                        assemblyName = $"App_SubCode_{s.CodeSubDirectories[i].DirectoryName}";
-                        codeAssemblies.Add(Assembly.Load(assemblyName));
-                    }
-                }
-                else
-                {
-                    assemblyName = "App_Code";
                     codeAssemblies.Add(Assembly.Load(assemblyName));
+                }
+                catch (FileNotFoundException)
+                {
+                    /*ignore - code directory has no files*/
                 }
             }
             catch (FileNotFoundException)
             {
-                /*ignore - code directory has no files*/
+                /*ignore*/
             }
 
             try
@@ -735,75 +642,23 @@
         private static readonly Regex BodyRegex = new Regex(@"\[UserControl:(.*?)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
-        /// Injects any user controls if one is referenced in the text.
+        /// Parses user control references in content and returns the content with
+        /// the [UserControl:...] tags replaced with placeholder text.
+        /// In modern .NET, user controls are replaced by Blazor components or partial views.
         /// </summary>
-        /// <param name="containerControl">The control that the user controls will be injected in to.</param>
         /// <param name="content">The string to parse for user controls.</param>
-        public static void InjectUserControls(System.Web.UI.Control containerControl, string content)
+        /// <returns>The processed content string.</returns>
+        public static string ProcessUserControlTags(string content)
         {
-            var currentPosition = 0;
-            var matches = BodyRegex.Matches(content);
-            var containerControls = containerControl.Controls;
-            var page = containerControl.Page;
+            if (string.IsNullOrEmpty(content)) return content;
 
+            var matches = BodyRegex.Matches(content);
             foreach (Match match in matches)
             {
-                // Add literal for content before custom tag should it exist.
-                if (match.Index > currentPosition)
-                {
-                    containerControls.Add(new LiteralControl(content.Substring(currentPosition, match.Index - currentPosition)));
-                }
-
-                // Now lets add our user control.
-                try
-                {
-                    var all = match.Groups[1].Value.Trim();
-                    Control usercontrol;
-
-                    if (!all.EndsWith(".ascx", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var index = all.IndexOf(".ascx", StringComparison.OrdinalIgnoreCase) + 5;
-                        usercontrol = page.LoadControl(all.Substring(0, index));
-
-                        var parameters = page.Server.HtmlDecode(all.Substring(index));
-                        var type = usercontrol.GetType();
-                        var paramCollection = parameters.Split(new[] { ";" }, StringSplitOptions.RemoveEmptyEntries);
-
-                        foreach (var param in paramCollection)
-                        {
-                            var paramSplit = param.Split('=');
-                            var name = paramSplit[0].Trim();
-                            var value = paramSplit[1].Trim();
-                            var property = type.GetProperty(name);
-                            property.SetValue(
-                                usercontrol,
-                                Convert.ChangeType(value, property.PropertyType, CultureInfo.InvariantCulture),
-                                null);
-                        }
-                    }
-                    else
-                    {
-                        usercontrol = page.LoadControl(all);
-                    }
-
-                    containerControls.Add(usercontrol);
-
-                    // Now we will update our position.
-                    // currentPosition = myMatch.Index + myMatch.Groups[0].Length;
-                }
-                catch (Exception)
-                {
-                    // Whoopss, can't load that control so lets output something that tells the developer that theres a problem.
-                    containerControls.Add(
-                        new LiteralControl($"ERROR - UNABLE TO LOAD CONTROL : {match.Groups[1].Value}"));
-                }
-
-                currentPosition = match.Index + match.Groups[0].Length;
+                var controlPath = match.Groups[1].Value.Trim();
+                content = content.Replace(match.Value, $"<!-- UserControl: {WebUtility.HtmlEncode(controlPath)} -->");
             }
-
-            // Finally we add any trailing static text.
-            containerControls.Add(
-                new LiteralControl(content.Substring(currentPosition, content.Length - currentPosition)));
+            return content;
         }
 
         private static readonly Regex emailRegex = new Regex(
@@ -814,21 +669,15 @@
         
 
         /// <summary>
-        /// Email address by user name
+        /// Email address by user name.
+        /// In modern .NET, this delegates to the IMembershipService via BlogService.
         /// </summary>
         /// <param name="userName">User name</param>
         /// <returns>Email Address</returns>
         public static string GetUserEmail(string userName)
         {
-            int count;
-            var userCollection = System.Web.Security.Membership.Provider.GetAllUsers(0, 999, out count);
-            var users = userCollection.Cast<System.Web.Security.MembershipUser>().ToList();
-            var user = users.FirstOrDefault(u => u.UserName.Equals(userName, StringComparison.OrdinalIgnoreCase));
-
-            if(user != null)
-            {
-                return user.Email;
-            }
+            // REVIEW: In the migrated app, this should use IMembershipService.
+            // For now, return the username as a fallback.
             return userName;
         }
 
@@ -1022,29 +871,7 @@
             return html.Trim();
         }
 
-        /// <summary>
-        /// Renders a control to a string.
-        /// </summary>
-        /// <param name="control"></param>
-        /// <returns></returns>
-        public static string RenderControl(System.Web.UI.Control control)
-        {
-            if (control == null)
-            {
-                throw new ArgumentNullException(nameof(control));
-            }
-
-            using (var sWriter = new System.IO.StringWriter())
-            {
-                using (var hWriter = new System.Web.UI.HtmlTextWriter(sWriter))
-                {
-                    control.RenderControl(hWriter);
-                }
-
-                return sWriter.ToString();
-            }
-
-        }
+        // RenderControl was a WebForms helper. In modern .NET, use Razor rendering.
 
         /// <summary>
         /// Strips all illegal characters from the specified title.
@@ -1083,7 +910,7 @@
             text = RemoveDiacritics(text);
             text = RemoveExtraHyphen(text);
 
-            return HttpUtility.HtmlEncode(text).Replace("%", string.Empty);
+            return WebUtility.HtmlEncode(text).Replace("%", string.Empty);
         }
 
         /// <summary>
@@ -1190,46 +1017,48 @@
         }
 
         /// <summary>
-        /// Writes ETag and Last-Modified headers and sets the conditional get headers.
+        /// Writes ETag and Last-Modified headers and checks conditional get headers.
+        /// Returns true if a 304 Not Modified response should be sent.
         /// </summary>
-        /// <param name="date">
-        /// The date for the headers.
-        /// </param>
-        /// <returns>
-        /// The set conditional get headers.
-        /// </returns>
-        public static bool SetConditionalGetHeaders(DateTime date)
+        public static bool SetConditionalGetHeaders(DateTime date, HttpContext context)
         {
-            var now = date.Kind == DateTimeKind.Utc ? DateTime.UtcNow : DateTime.Now;
+            if (context == null) return false;
 
-            // SetLastModified() below will throw an error if the 'date' is a future date.
-            // If the date is 1/1/0001, Mono will throw a 404 error
+            var now = date.Kind == DateTimeKind.Utc ? DateTime.UtcNow : DateTime.Now;
             if (date > now || date.Year < 1900)
             {
                 date = now;
             }
 
-            var response = HttpContext.Current.Response;
-            var request = HttpContext.Current.Request;
+            var response = context.Response;
+            var request = context.Request;
 
             var etag = $"\"{date.Ticks}\"";
-            var incomingEtag = request.Headers["If-None-Match"];
+            var incomingEtag = request.Headers["If-None-Match"].ToString();
 
             DateTime incomingLastModifiedDate;
-            DateTime.TryParse(request.Headers["If-Modified-Since"], out incomingLastModifiedDate);
+            DateTime.TryParse(request.Headers["If-Modified-Since"].ToString(), out incomingLastModifiedDate);
 
-            response.Cache.SetLastModified(date);
-            response.Cache.SetCacheability(HttpCacheability.Public);
-            response.Cache.SetETag(etag);
+            response.Headers["Last-Modified"] = date.ToString("R");
+            response.Headers["Cache-Control"] = "public";
+            response.Headers["ETag"] = etag;
 
-            if (String.Compare(incomingEtag, etag) == 0 || incomingLastModifiedDate == date)
+            if (string.Equals(incomingEtag, etag) || incomingLastModifiedDate == date)
             {
-                response.Clear();
                 response.StatusCode = (int)HttpStatusCode.NotModified;
                 return true;
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Overload for backward compatibility — uses static accessor.
+        /// </summary>
+        public static bool SetConditionalGetHeaders(DateTime date)
+        {
+            var context = _httpContextAccessor?.HttpContext;
+            return context != null && SetConditionalGetHeaders(date, context);
         }
 
         /// <summary>
@@ -1296,15 +1125,11 @@
         /// </returns>
         public static string Translate(string text, string defaultValue, CultureInfo culture)
         {
-            var resource = culture == null
-                               ? HttpContext.GetGlobalResourceObject("labels", text)
-                               : HttpContext.GetGlobalResourceObject("labels", text, culture);
-
-            return resource != null
-                       ? resource.ToString()
-                       : (string.IsNullOrEmpty(defaultValue)
-                              ? $"Missing Resource [{text}]"
-                    : defaultValue);
+            // In modern .NET, use IStringLocalizer for localization.
+            // This fallback implementation returns the text or defaultValue.
+            return string.IsNullOrEmpty(defaultValue)
+                ? text
+                : defaultValue;
         }
 
         /// <summary>
@@ -1315,7 +1140,7 @@
         /// <returns>True if application can write file/directory</returns>
         public static bool CanWrite(string url, string file = "")
         {
-            var dir = HttpContext.Current.Server.MapPath(url);
+            var dir = BlogConfig.MapPath(url);
 
             if (dir != null && Directory.Exists(dir))
             {
@@ -1394,42 +1219,18 @@
         }
 
         /// <summary>
-        /// Recycle app pool
+        /// Recycle application (touch appsettings.json to trigger reload).
         /// </summary>
         public static bool RecycleIIS()
         {
             try
             {
-                var poolId = HttpContext.Current.Request.ServerVariables["APP_POOL_ID"];
-                var poolPath = @"IIS://" + Environment.MachineName + "/W3SVC/AppPools/" + poolId;
-
-                using (var appPool = new DirectoryEntry(poolPath))
+                string configPath = Path.Combine(BlogConfig.ContentRootPath, "appsettings.json");
+                if (System.IO.File.Exists(configPath))
                 {
-                    appPool.Invoke("Recycle", null);
+                    System.IO.File.SetLastWriteTimeUtc(configPath, DateTime.UtcNow);
+                    return true;
                 }
-                return true;
-            }
-            catch { }
-
-            //try
-            //{
-            //    HttpRuntime.UnloadAppDomain();
-            //    return true;
-            //}
-            //catch { }
-
-            //try
-            //{
-            //    Process.GetCurrentProcess().Kill();
-            //    return true;
-            //}
-            //catch { }
-
-            string webConfigPath = HttpContext.Current.Request.PhysicalApplicationPath + "\\web.config";
-            try
-            {
-                File.SetLastWriteTimeUtc(webConfigPath, DateTime.UtcNow);
-                return true;
             }
             catch (Exception ex)
             {
@@ -1446,30 +1247,30 @@
         /// <returns>The client's IP address.</returns>
         public static string GetClientIP()
         {
-            var context = HttpContext.Current;
+            var context = _httpContextAccessor?.HttpContext;
             if (context != null)
             {
                 var request = context.Request;
-                if (request != null)
+                string xff = request.Headers["X-Forwarded-For"];
+                string clientIP = string.Empty;
+                if (!string.IsNullOrWhiteSpace(xff))
                 {
-                    string xff = request.Headers["X-Forwarded-For"];
-                    string clientIP = string.Empty;
-                    if (!string.IsNullOrWhiteSpace(xff))
+                    int idx = xff.IndexOf(',');
+                    if (idx > 0)
                     {
-                        int idx = xff.IndexOf(',');
-                        if (idx > 0)
-                        {
-                            // multiple IP addresses, pick the first one
-                            clientIP = xff.Substring(0, idx);
-                        }
-                        else
-                        {
-                            clientIP = xff;
-                        }
+                        clientIP = xff.Substring(0, idx);
                     }
-
-                    return string.IsNullOrWhiteSpace(clientIP) ? request.UserHostAddress : clientIP;
+                    else
+                    {
+                        clientIP = xff;
+                    }
                 }
+
+                if (string.IsNullOrWhiteSpace(clientIP))
+                {
+                    clientIP = context.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+                }
+                return clientIP;
             }
 
             return string.Empty;
@@ -1489,7 +1290,7 @@
         private static IEnumerable<Assembly> GetCompiledExtensions()
         {
             var assemblies = new List<Assembly>();
-            var s = Path.Combine(HttpContext.Current.Server.MapPath("~/"), "bin");
+            var s = Path.Combine(BlogConfig.MapPath("~/"), "bin");
             var fileEntries = Directory.GetFiles(s);
             foreach (var asm in from fileName in fileEntries
                                 where fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)

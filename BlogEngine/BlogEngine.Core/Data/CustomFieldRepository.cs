@@ -1,3 +1,4 @@
+using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Data.Services;

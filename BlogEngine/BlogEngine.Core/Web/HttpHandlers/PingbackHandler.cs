@@ -2,18 +2,22 @@
 {
     using System;
     using System.ComponentModel;
+    using System.IO;
     using System.Linq;
     using System.Net;
     using System.Text;
     using System.Text.RegularExpressions;
-    using System.Web;
+    using System.Threading.Tasks;
     using System.Xml;
 
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
+
     /// <summary>
-    /// Recieves pingbacks from other blogs and websites, and 
-    ///     registers them as a comment.
+    /// Receives pingbacks from other blogs and websites, and registers them as a comment.
     /// </summary>
-    public class PingbackHandler : IHttpHandler
+    public static class PingbackEndpoint
     {
         #region Constants and Fields
 
@@ -28,7 +32,7 @@
         /// </summary>
         private static readonly Regex RegexHtml =
             new Regex(
-                @"</?\w+((\s+\w+(\s*=\s*(?:"".*?""|'.*?'|[^'"">\s]+))?)+\s*|\s*)/?>",
+                @"</?\\w+((\\s+\\w+(\\s*=\\s*(?:"".*?""|'.*?'|[^'"">\s]+))?)+\\s*|\\s*)/?>",
                 RegexOptions.Singleline | RegexOptions.Compiled);
 
         /// <summary>
@@ -36,21 +40,6 @@
         /// </summary>
         private static readonly Regex RegexTitle = new Regex(
             @"(?<=<title.*>)([\s\S]*)(?=</title>)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        /// <summary>
-        /// Whether contains html.
-        /// </summary>
-        private bool containsHtml;
-
-        /// <summary>
-        /// Whether source has link.
-        /// </summary>
-        private bool sourceHasLink;
-
-        /// <summary>
-        /// The title.
-        /// </summary>
-        private string title;
 
         #endregion
 
@@ -79,68 +68,41 @@
 
         #endregion
 
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the pingback handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapPingbackHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return true;
-            }
+            endpoints.MapPost("/pingback.axd", HandleAsync);
+            return endpoints;
         }
-
-        #endregion
-
-        #region Public Methods
 
         /// <summary>
         /// Called when [spammed].
         /// </summary>
-        /// <param name="url">The URL string.</param>
         public static void OnSpammed(string url)
         {
-            if (Spammed != null)
-            {
-                Spammed(url, EventArgs.Empty);
-            }
+            Spammed?.Invoke(url, EventArgs.Empty);
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> 
-        ///     object that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             if (!BlogSettings.Instance.IsCommentsEnabled || !BlogSettings.Instance.EnablePingBackReceive)
             {
                 context.Response.StatusCode = 404;
-                context.Response.End();
+                return;
             }
 
             var e = new CancelEventArgs();
-            this.OnReceived(e);
+            OnReceived(e);
             if (e.Cancel)
             {
                 return;
             }
 
-            var doc = RetrieveXmlDocument(context);
+            var doc = await RetrieveXmlDocumentAsync(context);
+            if (doc == null) return;
+
             var list = doc.SelectNodes("methodCall/params/param/value/string") ??
                        doc.SelectNodes("methodCall/params/param/value");
 
@@ -152,7 +114,7 @@
             var sourceUrl = list[0].InnerText.Trim();
             var targetUrl = list[1].InnerText.Trim();
 
-            this.ExamineSourcePage(sourceUrl, targetUrl);
+            var (sourceHasLink, containsHtml, title) = ExamineSourcePage(sourceUrl, targetUrl);
             context.Response.ContentType = "text/xml";
 
             var post = GetPostByUrl(targetUrl);
@@ -160,15 +122,15 @@
             {
                 if (IsFirstPingBack(post, sourceUrl))
                 {
-                    if (this.sourceHasLink && !this.containsHtml)
+                    if (sourceHasLink && !containsHtml)
                     {
-                        this.AddComment(sourceUrl, post);
-                        this.OnAccepted(sourceUrl);
-                        context.Response.Write(Success);
+                        AddComment(sourceUrl, post, title);
+                        OnAccepted(sourceUrl);
+                        await context.Response.WriteAsync(Success);
                     }
-                    else if (!this.sourceHasLink)
+                    else if (!sourceHasLink)
                     {
-                        SendError(
+                        await SendErrorAsync(
                             context,
                             17,
                             "The source URI does not contain a link to the target URI, and so cannot be used as a source.");
@@ -183,68 +145,34 @@
                 }
                 else
                 {
-                    this.OnRejected(sourceUrl);
-                    SendError(context, 48, "The pingback has already been registered.");
+                    OnRejected(sourceUrl);
+                    await SendErrorAsync(context, 48, "The pingback has already been registered.");
                 }
             }
             else
             {
-                SendError(context, 32, "The specified target URI does not exist.");
+                await SendErrorAsync(context, 32, "The specified target URI does not exist.");
             }
         }
 
-        #endregion
-
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Called when [accepted].
-        /// </summary>
-        /// <param name="url">The URL string.</param>
-        protected virtual void OnAccepted(string url)
+        private static void OnAccepted(string url)
         {
-            if (Accepted != null)
-            {
-                Accepted(url, EventArgs.Empty);
-            }
+            Accepted?.Invoke(url, EventArgs.Empty);
         }
 
-        /// <summary>
-        /// Raises the <see cref="Received"/> event.
-        /// </summary>
-        /// <param name="e">The <see cref="System.ComponentModel.CancelEventArgs"/> instance containing the event data.</param>
-        protected virtual void OnReceived(CancelEventArgs e)
+        private static void OnReceived(CancelEventArgs e)
         {
-            if (Received != null)
-            {
-                Received(null, e);
-            }
+            Received?.Invoke(null, e);
         }
 
-        /// <summary>
-        /// Called when [rejected].
-        /// </summary>
-        /// <param name="url">The URL string.</param>
-        protected virtual void OnRejected(string url)
+        private static void OnRejected(string url)
         {
-            if (Rejected != null)
-            {
-                Rejected(url, EventArgs.Empty);
-            }
+            Rejected?.Invoke(url, EventArgs.Empty);
         }
 
         /// <summary>
         /// Parse the source URL to get the domain.
-        ///     It is used to fill the Author property of the comment.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <returns>
-        /// The get domain.
-        /// </returns>
         private static string GetDomain(string sourceUrl)
         {
             var start = sourceUrl.IndexOf("://") + 3;
@@ -255,12 +183,11 @@
         /// <summary>
         /// Retrieve the post that belongs to the target URL.
         /// </summary>
-        /// <param name="url">The url string.</param>
-        /// <returns>The post from the url.</returns>
         private static Post GetPostByUrl(string url)
         {
             var start = url.LastIndexOf("/") + 1;
             var stop = url.ToUpperInvariant().IndexOf(".ASPX");
+            if (stop < 0) stop = url.Length;
             var name = url.Substring(start, stop - start).ToLowerInvariant();
 
             return (from post in Post.Posts
@@ -271,17 +198,7 @@
 
         /// <summary>
         /// Checks to see if the source has already pinged the target.
-        ///     If it has, there is no reason to add it again.
         /// </summary>
-        /// <param name="post">
-        /// The post to check.
-        /// </param>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <returns>
-        /// The is first ping back.
-        /// </returns>
         private static bool IsFirstPingBack(Post post, string sourceUrl)
         {
             foreach (var comment in post.Comments)
@@ -302,59 +219,29 @@
         }
 
         /// <summary>
-        /// Retrieves the content of the input stream
-        ///     and return it as plain text.
+        /// Retrieves the content of the input stream and returns it as an XmlDocument.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        /// <returns>
-        /// The parse request.
-        /// </returns>
-        private static string ParseRequest(HttpContext context)
+        private static async Task<XmlDocument> RetrieveXmlDocumentAsync(HttpContext context)
         {
-            var buffer = new byte[context.Request.InputStream.Length];
-            context.Request.InputStream.Read(buffer, 0, buffer.Length);
-
-            return Encoding.Default.GetString(buffer);
-        }
-
-        /// <summary>
-        /// The retrieve xml document.
-        /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        /// <returns>
-        /// An Xml Document.
-        /// </returns>
-        private static XmlDocument RetrieveXmlDocument(HttpContext context)
-        {
-            var xml = ParseRequest(context);
-            if (!xml.Contains("<methodName>pingback.ping</methodName>"))
+            using (var reader = new StreamReader(context.Request.Body, Encoding.UTF8))
             {
-                context.Response.StatusCode = 404;
-                context.Response.End();
-            }
+                var xml = await reader.ReadToEndAsync();
+                if (!xml.Contains("<methodName>pingback.ping</methodName>"))
+                {
+                    context.Response.StatusCode = 404;
+                    return null;
+                }
 
-            var doc = new XmlDocument() { XmlResolver = null };
-            doc.LoadXml(xml);
-            return doc;
+                var doc = new XmlDocument() { XmlResolver = null };
+                doc.LoadXml(xml);
+                return doc;
+            }
         }
 
         /// <summary>
         /// The send error.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        /// <param name="code">
-        /// The code number.
-        /// </param>
-        /// <param name="message">
-        /// The message.
-        /// </param>
-        private static void SendError(HttpContext context, int code, string message)
+        private static async Task SendErrorAsync(HttpContext context, int code, string message)
         {
             var sb = new StringBuilder();
             sb.Append("<?xml version=\"1.0\"?>");
@@ -375,19 +262,13 @@
             sb.Append("</fault>");
             sb.Append("</methodResponse>");
 
-            context.Response.Write(sb.ToString());
+            await context.Response.WriteAsync(sb.ToString());
         }
 
         /// <summary>
         /// Insert the pingback as a comment on the post.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="post">
-        /// The post to add the comment to.
-        /// </param>
-        private void AddComment(string sourceUrl, Post post)
+        private static void AddComment(string sourceUrl, Post post, string title)
         {
             var comment = new Comment
                 {
@@ -400,36 +281,28 @@
             comment.Email = "pingback";
             comment.IP = Utils.GetClientIP();
             comment.Parent = post;
-            comment.IsApproved = true; // NOTE: Pingback comments are approved by default.
+            comment.IsApproved = true;
             post.AddComment(comment);
         }
 
         /// <summary>
         /// Parse the HTML of the source page.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="targetUrl">
-        /// The target Url.
-        /// </param>
-        private void ExamineSourcePage(string sourceUrl, string targetUrl)
+        private static (bool sourceHasLink, bool containsHtml, string title) ExamineSourcePage(string sourceUrl, string targetUrl)
         {
             try
             {
-
                 var remoteFile = new RemoteFile(new Uri(sourceUrl), true);
                 var html = remoteFile.GetFileAsString();
-                this.title = RegexTitle.Match(html).Value.Trim();
-                this.containsHtml = RegexHtml.IsMatch(this.title);
-                this.sourceHasLink = html.ToUpperInvariant().Contains(targetUrl.ToUpperInvariant());
+                var title = RegexTitle.Match(html).Value.Trim();
+                var containsHtml = RegexHtml.IsMatch(title);
+                var sourceHasLink = html.ToUpperInvariant().Contains(targetUrl.ToUpperInvariant());
+                return (sourceHasLink, containsHtml, title);
             }
             catch (WebException)
             {
-                this.sourceHasLink = false;
+                return (false, false, string.Empty);
             }
         }
-
-        #endregion
     }
 }

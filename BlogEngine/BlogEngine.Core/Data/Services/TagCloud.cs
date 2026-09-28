@@ -1,7 +1,7 @@
+using System.Net;
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
 
 namespace BlogEngine.Core.Data.Services
 {
@@ -34,7 +34,7 @@ namespace BlogEngine.Core.Data.Services
             {
                 var link = string.Format(
                     Link,
-                    $"{Utils.AbsoluteWebRoot}?tag={HttpUtility.UrlEncode(key)}",
+                    $"{Utils.AbsoluteWebRoot}?tag={WebUtility.UrlEncode(key)}",
                     WeightedList[key], $"Tag: {key}", key);
                 links.Add(link);  
             }

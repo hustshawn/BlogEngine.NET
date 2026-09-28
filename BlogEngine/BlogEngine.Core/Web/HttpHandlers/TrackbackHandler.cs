@@ -5,12 +5,16 @@
     using System.Linq;
     using System.Net;
     using System.Text.RegularExpressions;
-    using System.Web;
+    using System.Threading.Tasks;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
-    /// Trackback Handler
+    /// Trackback Handler Endpoint
     /// </summary>
-    public class TrackbackHandler : IHttpHandler
+    public static class TrackbackEndpoint
     {
         #region Constants and Fields
 
@@ -19,13 +23,8 @@
         /// </summary>
         private static readonly Regex RegexHtml =
             new Regex(
-                @"</?\w+((\s+\w+(\s*=\s*(?:"".*?""|'.*?'|[^'"">\s]+))?)+\s*|\s*)/?>",
+                @"</?\\w+((\\s+\\w+(\\s*=\\s*(?:"".*?""|'.*?'|[^'"">\s]+))?)+\\s*|\\s*)/?>",
                 RegexOptions.Singleline | RegexOptions.Compiled);
-
-        /// <summary>
-        /// Whether the source has link.
-        /// </summary>
-        private bool sourceHasLink;
 
         #endregion
 
@@ -54,77 +53,63 @@
 
         #endregion
 
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the trackback handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapTrackbackHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return true;
-            }
+            endpoints.MapPost("/trackback.axd", HandleAsync);
+            return endpoints;
         }
-
-        #endregion
-
-        #region Public Methods
 
         /// <summary>
         /// Called when [spammed].
         /// </summary>
-        /// <param name="url">The URL string.</param>
         public static void OnSpammed(string url)
         {
-            if (Spammed != null)
-            {
-                Spammed(url, EventArgs.Empty);
-            }
+            Spammed?.Invoke(url, EventArgs.Empty);
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> 
-        ///     object that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             if (!BlogSettings.Instance.IsCommentsEnabled || !BlogSettings.Instance.EnableTrackBackReceive)
             {
                 context.Response.StatusCode = 404;
-                context.Response.End();
+                return;
             }
 
             var e = new CancelEventArgs();
-            this.OnReceived(e);
+            OnReceived(e);
             if (e.Cancel)
             {
                 return;
             }
 
-            var postId = context.Request.Params["id"];
+            var form = await context.Request.ReadFormAsync();
+            var postId = form["id"].ToString();
+            if (string.IsNullOrEmpty(postId))
+                postId = context.Request.Query["id"].ToString();
 
-            var title = context.Request.Params["title"];
-            var excerpt = context.Request.Params["excerpt"];
-            var blogName = context.Request.Params["blog_name"];
+            var title = form["title"].ToString();
+            if (string.IsNullOrEmpty(title))
+                title = context.Request.Query["title"].ToString();
+
+            var excerpt = form["excerpt"].ToString();
+            if (string.IsNullOrEmpty(excerpt))
+                excerpt = context.Request.Query["excerpt"].ToString();
+
+            var blogName = form["blog_name"].ToString();
+            if (string.IsNullOrEmpty(blogName))
+                blogName = context.Request.Query["blog_name"].ToString();
+
             var url = string.Empty;
+            var urlParam = form["url"].ToString();
+            if (string.IsNullOrEmpty(urlParam))
+                urlParam = context.Request.Query["url"].ToString();
 
-            if (context.Request.Params["url"] != null)
+            if (!string.IsNullOrEmpty(urlParam))
             {
-                url = context.Request.Params["url"].Split(',')[0];
+                url = urlParam.Split(',')[0];
             }
 
             Post post;
@@ -133,32 +118,32 @@
                 postId.Length == 36)
             {
                 post = Post.GetPost(new Guid(postId));
-                this.ExamineSourcePage(url, post.AbsoluteLink.AbsoluteUri);
+                var sourceHasLink = ExamineSourcePage(url, post.AbsoluteLink.AbsoluteUri);
                 var containsHtml = !string.IsNullOrEmpty(excerpt) &&
                                    (RegexHtml.IsMatch(excerpt) || RegexHtml.IsMatch(title) ||
                                     RegexHtml.IsMatch(blogName));
 
-                if (IsFirstPingBack(post, url) && this.sourceHasLink && !containsHtml)
+                if (IsFirstPingBack(post, url) && sourceHasLink && !containsHtml)
                 {
                     AddComment(url, post, blogName, title, excerpt);
-                    this.OnAccepted(url);
-                    context.Response.Write(
+                    OnAccepted(url);
+                    await context.Response.WriteAsync(
                         "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?><response><error>0</error></response>");
-                    context.Response.End();
+                    return;
                 }
                 else if (!IsFirstPingBack(post, url))
                 {
-                    this.OnRejected(url);
-                    context.Response.Write(
+                    OnRejected(url);
+                    await context.Response.WriteAsync(
                         "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?><response><error>Trackback already registered</error></response>");
-                    context.Response.End();
+                    return;
                 }
-                else if (!this.sourceHasLink || containsHtml)
+                else if (!sourceHasLink || containsHtml)
                 {
                     OnSpammed(url);
-                    context.Response.Write(
+                    await context.Response.WriteAsync(
                         "<?xml version=\"1.0\" encoding=\"iso-8859-1\"?><response><error>The source page does not link</error></response>");
-                    context.Response.End();
+                    return;
                 }
             }
             else
@@ -167,66 +152,24 @@
             }
         }
 
-        #endregion
-
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Called when [accepted].
-        /// </summary>
-        /// <param name="url">The URL string.</param>
-        protected virtual void OnAccepted(string url)
+        private static void OnAccepted(string url)
         {
-            if (Accepted != null)
-            {
-                Accepted(url, EventArgs.Empty);
-            }
+            Accepted?.Invoke(url, EventArgs.Empty);
+        }
+
+        private static void OnReceived(CancelEventArgs e)
+        {
+            Received?.Invoke(null, e);
+        }
+
+        private static void OnRejected(string url)
+        {
+            Rejected?.Invoke(url, EventArgs.Empty);
         }
 
         /// <summary>
-        /// Raises the <see cref="Received"/> event.
+        /// Insert the trackback as a comment on the post.
         /// </summary>
-        /// <param name="e">The <see cref="System.ComponentModel.CancelEventArgs"/> instance containing the event data.</param>
-        protected virtual void OnReceived(CancelEventArgs e)
-        {
-            if (Received != null)
-            {
-                Received(null, e);
-            }
-        }
-
-        /// <summary>
-        /// Called when [rejected].
-        /// </summary>
-        /// <param name="url">The URL string.</param>
-        protected virtual void OnRejected(string url)
-        {
-            if (Rejected != null)
-            {
-                Rejected(url, EventArgs.Empty);
-            }
-        }
-
-        /// <summary>
-        /// Insert the pingback as a comment on the post.
-        /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="post">
-        /// The post to comment on.
-        /// </param>
-        /// <param name="blogName">
-        /// The blog Name.
-        /// </param>
-        /// <param name="title">
-        /// The title.
-        /// </param>
-        /// <param name="excerpt">
-        /// The excerpt.
-        /// </param>
         private static void AddComment(string sourceUrl, Post post, string blogName, string title, string excerpt)
         {
             var comment = new Comment
@@ -246,17 +189,7 @@
 
         /// <summary>
         /// Checks to see if the source has already pinged the target.
-        ///     If it has, there is no reason to add it again.
         /// </summary>
-        /// <param name="post">
-        /// The post to check.
-        /// </param>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <returns>
-        /// Whether is first ping back.
-        /// </returns>
         private static bool IsFirstPingBack(Post post, string sourceUrl)
         {
             return
@@ -273,29 +206,18 @@
         /// <summary>
         /// Parse the HTML of the source page.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="targetUrl">
-        /// The target Url.
-        /// </param>
-        private void ExamineSourcePage(string sourceUrl, string targetUrl)
+        private static bool ExamineSourcePage(string sourceUrl, string targetUrl)
         {
             try
             {
                 var remoteFile = new RemoteFile(new Uri(sourceUrl), true);
                 var html = remoteFile.GetFileAsString();
-                this.sourceHasLink = html.ToUpperInvariant().Contains(targetUrl.ToUpperInvariant());
-                
+                return html.ToUpperInvariant().Contains(targetUrl.ToUpperInvariant());
             }
             catch (WebException)
             {
-                this.sourceHasLink = false;
-
-                // throw new ArgumentException("Trackback sender does not exists: " + sourceUrl, ex);
+                return false;
             }
         }
-
-        #endregion
     }
 }

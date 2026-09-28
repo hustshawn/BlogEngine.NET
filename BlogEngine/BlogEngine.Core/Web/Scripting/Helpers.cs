@@ -1,111 +1,77 @@
 ﻿using System;
 using System.Text;
 using System.Globalization;
-using System.Web.UI;
 
 namespace BlogEngine.Core.Web.Scripting
 {
     /// <summary>
-    /// Helper methods for script manipulations
+    /// Helper methods for script manipulations.
+    /// In modern .NET, these return HTML strings instead of manipulating WebForms controls.
     /// </summary>
     public class Helpers
     {
         /// <summary>
-        /// Add stylesheet to page header
+        /// Returns a stylesheet link tag as HTML string.
         /// </summary>
-        /// <param name="page">Page</param>
-        /// <param name="lnk">Href link</param>
-        public static void AddStyle(System.Web.UI.Page page, string lnk)
+        public static string AddStyle(string lnk)
         {
-            // global styles on top, before theme specific styles
-            if(lnk.Contains("Global.css") || lnk.Contains("Styles/css"))
-                page.Header.Controls.AddAt(0, new LiteralControl($"\n<link href=\"{lnk}\" rel=\"stylesheet\" type=\"text/css\" />"));
-            else
-                page.Header.Controls.Add(new LiteralControl($"\n<link href=\"{lnk}\" rel=\"stylesheet\" type=\"text/css\" />"));
+            return $"\n<link href=\"{lnk}\" rel=\"stylesheet\" type=\"text/css\" />";
         }
+
         /// <summary>
-        /// Add generic lit to the page
+        /// Returns a generic link tag as HTML string.
         /// </summary>
-        /// <param name="page">Page</param>
-        /// <param name="type">Type</param>
-        /// <param name="relation">Relation</param>
-        /// <param name="title">Title</param>
-        /// <param name="href">Url</param>
-        public static void AddGenericLink(System.Web.UI.Page page, string type, string relation, string title, string href)
+        public static string AddGenericLink(string type, string relation, string title, string href)
         {
             var tp = string.IsNullOrEmpty(type) ? "" : $"type=\"{type}\" ";
-            const string tag = "\n<link {0}rel=\"{1}\" title=\"{2}\" href=\"{3}\" />";
-            page.Header.Controls.Add(new LiteralControl(string.Format(tag, tp, relation, title, href)));
+            return $"\n<link {tp}rel=\"{relation}\" title=\"{title}\" href=\"{href}\" />";
         }
+
         /// <summary>
-        /// Add javascript to page
+        /// Returns a script tag as HTML string.
         /// </summary>
-        /// <param name="page">Page</param>
-        /// <param name="src">Source</param>
-        /// <param name="top">If add to page header</param>
-        /// <param name="defer">Defer</param>
-        /// <param name="asnc">Async</param>
-        /// <param name="indx">Index to insert script at</param>
-        public static void AddScript(System.Web.UI.Page page, string src, bool top = true, bool defer = false, bool asnc = false, int indx = 0)
+        public static string AddScript(string src, bool defer = false, bool asnc = false)
         {
             var d = defer ? " defer=\"defer\"" : "";
             var a = asnc ? " async=\"async\"" : "";
-            var t = "\n<script type=\"text/javascript\" src=\"{0}\"{1}{2}></script>";
-            t = string.Format(t, src, d, a);
-
-            if (top)
-            {
-                page.Header.Controls.AddAt(indx, new LiteralControl(t));
-            }
-            else
-            {
-                page.ClientScript.RegisterStartupScript(page.GetType(), src.GetHashCode().ToString(), t, false);
-            }
+            return $"\n<script type=\"text/javascript\" src=\"{src}\"{d}{a}></script>";
         }
+
         /// <summary>
-        /// Format inline script
+        /// Format inline script.
         /// </summary>
-        /// <param name="script">JavaScript code</param>
-        /// <returns>Formatted script</returns>
         public static string FormatInlineScript(string script)
         {
             var sb = new StringBuilder();
-
             sb.Append("\n<script type=\"text/javascript\"> \n");
             sb.Append("//<![CDATA[ \n");
             sb.Append(script).Append(" \n");
             sb.Append("//]]> \n");
             sb.Append("</script> \n");
-
             return sb.ToString();
         }
 
         #region BlogBasePage helpers
 
         /// <summary>
-        /// Adds code to the HTML head section.
+        /// Gets custom code for the HTML head section.
         /// </summary>
-        public static void AddCustomCodeToHead(System.Web.UI.Page page)
+        public static string GetCustomCodeForHead()
         {
             if (string.IsNullOrEmpty(BlogSettings.Instance.HtmlHeader))
-                return;
+                return string.Empty;
 
-            var code = string.Format(
+            return string.Format(
                 CultureInfo.InvariantCulture,
                 "{0}<!-- Start custom code -->{0}{1}{0}<!-- End custom code -->{0}",
                 Environment.NewLine,
                 BlogSettings.Instance.HtmlHeader);
-            var control = new LiteralControl(code);
-            page.Header.Controls.Add(control);
         }
 
         /// <summary>
-        /// Adds a JavaScript to the bottom of the page at runtime.
+        /// Gets tracking script HTML for the bottom of the page.
         /// </summary>
-        /// <remarks>
-        /// You must add the script tags to the BlogSettings.Instance.TrackingScript.
-        /// </remarks>
-        public static void AddTrackingScript(System.Web.UI.Page page)
+        public static string GetTrackingScript(string scheme = "https")
         {
             var sb = new StringBuilder();
 
@@ -120,7 +86,7 @@ namespace BlogEngine.Core.Web.Scripting
                 sb.Append("if(links[i].href.indexOf('#comment') >= 0) { ");
                 sb.Append("query += 'url' + i + '=' + encodeURIComponent(links[i].href) + '&'; ");
                 sb.Append("}}");
-                sb.Append("document.write('<script charset=\"utf-8\" type=\"text/javascript\" src=\"" + page.Request.Url.Scheme + "://disqus.com/forums/");
+                sb.Append("document.write('<script charset=\"utf-8\" type=\"text/javascript\" src=\"" + scheme + "://disqus.com/forums/");
                 sb.Append(BlogSettings.Instance.DisqusWebsiteName);
                 sb.Append("/get_num_replies.js' + query + '\"></' + 'script>'); ");
                 sb.Append("})(); \n");
@@ -133,11 +99,7 @@ namespace BlogEngine.Core.Web.Scripting
                 sb.Append(BlogSettings.Instance.TrackingScript);
             }
 
-            var s = sb.ToString();
-            if (!string.IsNullOrEmpty(s))
-            {
-                page.ClientScript.RegisterStartupScript(page.GetType(), "tracking", $"\n{s}", false);
-            }
+            return sb.ToString();
         }
 
         #endregion

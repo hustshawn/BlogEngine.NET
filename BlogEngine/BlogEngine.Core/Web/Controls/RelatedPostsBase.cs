@@ -1,18 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Web.Caching;
-using System.Web.UI;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace BlogEngine.Core.Web.Controls
 {
     /// <summary>
-    /// Base class for related posts control
+    /// POCO/service class for related posts logic.
+    /// Converted from UserControl inheritance to a plain class.
+    /// Uses IMemoryCache instead of System.Web.Caching.Cache.
     /// </summary>
-    public class RelatedPostsBase : UserControl
+    public class RelatedPostsBase
     {
         readonly string _cacheKey = "RELATED_POSTS_FOR_";
         int _postCount = 3;
         int _descLength = 100;
+
+        private readonly IMemoryCache _cache;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RelatedPostsBase"/> class.
+        /// </summary>
+        /// <param name="cache">The memory cache instance. If null, caching is bypassed.</param>
+        public RelatedPostsBase(IMemoryCache cache = null)
+        {
+            _cache = cache;
+        }
 
         /// <summary>
         /// Number of posts to display in the list
@@ -30,7 +42,7 @@ namespace BlogEngine.Core.Web.Controls
         {
             get { return _descLength; }
             set { _descLength = value; }
-        }    
+        }
 
         /// <summary>
         /// Current post to find related for
@@ -46,19 +58,24 @@ namespace BlogEngine.Core.Web.Controls
             {
                 try
                 {
-                    var CacheKey = _cacheKey + PostItem.Id.ToString();
-                    if (Blog.CurrentInstance.Cache[CacheKey] == null)
+                    var cacheKey = _cacheKey + PostItem.Id.ToString();
+
+                    if (_cache != null)
                     {
-                        Blog.CurrentInstance.Cache.Add(
-                            CacheKey,
-                            FindRelated(),
-                            null,
-                            Cache.NoAbsoluteExpiration,
-                            new TimeSpan(0, 15, 0),
-                            CacheItemPriority.Low,
-                            null);
+                        if (_cache.TryGetValue(cacheKey, out List<RelatedPost> cached))
+                        {
+                            return cached;
+                        }
+
+                        var result = FindRelated();
+                        var cacheOptions = new MemoryCacheEntryOptions()
+                            .SetSlidingExpiration(TimeSpan.FromMinutes(15))
+                            .SetPriority(CacheItemPriority.Low);
+                        _cache.Set(cacheKey, result, cacheOptions);
+                        return result;
                     }
-                    return (List<RelatedPost>)Blog.CurrentInstance.Cache[CacheKey];
+
+                    return FindRelated();
                 }
                 catch (Exception ex)
                 {

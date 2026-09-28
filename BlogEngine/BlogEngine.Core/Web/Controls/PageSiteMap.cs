@@ -1,26 +1,20 @@
 ﻿namespace BlogEngine.Core.Web.Controls
 {
     using System;
+    using System.Collections.Generic;
     using System.Linq;
-    using System.Web;
+    using BlogEngine.Core.Services.Security;
 
     /// <summary>
-    /// A site map provider for the Pages in BlogEngine.
+    /// A site map service for the Pages in BlogEngine.
+    /// Replaces the legacy PageSiteMap (SiteMapProvider).
     /// </summary>
-    public class PageSiteMap : SiteMapProvider
+    public class PageSiteMap : ISiteMapService
     {
-        #region Public Methods
-
         /// <summary>
-        /// When overridden in a derived class, retrieves a <see cref="T:System.Web.SiteMapNode"></see> object that represents the page at the specified URL.
+        /// Finds a navigation node by raw URL.
         /// </summary>
-        /// <param name="rawUrl">
-        /// A URL that identifies the page for which to retrieve a <see cref="T:System.Web.SiteMapNode"></see>.
-        /// </param>
-        /// <returns>
-        /// A <see cref="T:System.Web.SiteMapNode"></see> that represents the page identified by rawURL; otherwise, null, if no corresponding <see cref="T:System.Web.SiteMapNode"></see> is found or if security trimming is enabled and the <see cref="T:System.Web.SiteMapNode"></see> cannot be returned for the current user.
-        /// </returns>
-        public override SiteMapNode FindSiteMapNode(string rawUrl)
+        public NavigationNode FindNode(string rawUrl)
         {
             var i = rawUrl.IndexOf('?');
             var url = rawUrl;
@@ -35,40 +29,28 @@
 
             return Page.Pages
                 .Where(page => page.IsVisible && url.Equals(Utils.RemoveIllegalCharacters(page.Title), StringComparison.OrdinalIgnoreCase))
-                .Select(page => new SiteMapNode(this, page.Id.ToString(), page.RelativeLink, page.Title, page.Description)).FirstOrDefault();
+                .Select(page => new NavigationNode(page.Id.ToString(), page.RelativeLink, page.Title, page.Description)).FirstOrDefault();
         }
 
         /// <summary>
-        /// When overridden in a derived class, retrieves the child nodes of a specific <see cref="T:System.Web.SiteMapNode"></see>.
+        /// Gets the child nodes of a specific node.
         /// </summary>
-        /// <param name="node">
-        /// The <see cref="T:System.Web.SiteMapNode"></see> for which to retrieve all child nodes.
-        /// </param>
-        /// <returns>
-        /// A read-only <see cref="T:System.Web.SiteMapNodeCollection"></see> that contains the immediate child nodes of the specified <see cref="T:System.Web.SiteMapNode"></see>; otherwise, null or an empty collection, if no child nodes exist.
-        /// </returns>
-        public override SiteMapNodeCollection GetChildNodes(SiteMapNode node)
+        public IList<NavigationNode> GetChildNodes(NavigationNode node)
         {
-            var col = new SiteMapNodeCollection();
+            var col = new List<NavigationNode>();
             var id = new Guid(node.Key);
             foreach (var page in Page.Pages.Where(page => page.IsVisible && page.Parent == id && page.ShowInList))
             {
-                col.Add(new SiteMapNode(this, page.Id.ToString(), page.RelativeLink, page.Title, page.Description));
+                col.Add(new NavigationNode(page.Id.ToString(), page.RelativeLink, page.Title, page.Description));
             }
 
             return col;
         }
 
         /// <summary>
-        /// When overridden in a derived class, retrieves the parent node of a specific <see cref="T:System.Web.SiteMapNode"></see> object.
+        /// Gets the parent node of a specific node.
         /// </summary>
-        /// <param name="node">
-        /// The <see cref="T:System.Web.SiteMapNode"></see> for which to retrieve the parent node.
-        /// </param>
-        /// <returns>
-        /// A <see cref="T:System.Web.SiteMapNode"></see> that represents the parent of node; otherwise, null, if the <see cref="T:System.Web.SiteMapNode"></see> has no parent or security trimming is enabled and the parent node is not accessible to the current user.
-        /// </returns>
-        public override SiteMapNode GetParentNode(SiteMapNode node)
+        public NavigationNode GetParentNode(NavigationNode node)
         {
             var id = new Guid(node.Key);
             var parentId = Page.GetPage(id).Parent;
@@ -77,30 +59,31 @@
                 var parent = Page.GetPage(parentId);
                 if (parent.IsVisible)
                 {
-                    return new SiteMapNode(
-                        this, parent.Id.ToString(), parent.RelativeLink, parent.Title, parent.Description);
+                    return new NavigationNode(parent.Id.ToString(), parent.RelativeLink, parent.Title, parent.Description);
                 }
             }
 
             return null;
         }
 
-        #endregion
-
-        #region Methods
-
         /// <summary>
-        /// When overidden in a derived class, retrieves the root node of all the nodes that are currently managed by the current provider.
+        /// Gets the root node.
         /// </summary>
-        /// <returns>
-        /// A <see cref="T:System.Web.SiteMapNode"></see> that represents the root node of the set of nodes that the current provider manages.
-        /// </returns>
-        protected override SiteMapNode GetRootNodeCore()
+        public NavigationNode GetRootNode()
         {
             var page = Page.GetFrontPage();
-            return page != null ? new SiteMapNode(this, page.Id.ToString(), page.RelativeLink, page.Title) : new SiteMapNode(this, Guid.Empty.ToString(), "~/", "Home");
+            return page != null
+                ? new NavigationNode(page.Id.ToString(), page.RelativeLink, page.Title)
+                : new NavigationNode(Guid.Empty.ToString(), "~/", "Home");
         }
 
-        #endregion
+        /// <summary>
+        /// Returns whether the given node is accessible to the current user.
+        /// For PageSiteMap, all visible pages are accessible.
+        /// </summary>
+        public bool IsAccessibleToUser(NavigationNode node)
+        {
+            return true;
+        }
     }
 }

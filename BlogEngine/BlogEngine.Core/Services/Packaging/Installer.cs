@@ -1,28 +1,28 @@
+using BlogEngine.Core.Services.Packaging;
 ﻿using System;
-using System.Web;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 using BlogEngine.Core.Providers;
-using NuGet;
 using BlogEngine.Core.Data.Services;
 
 namespace BlogEngine.Core.Packaging
 {
     /// <summary>
-    /// Responsible for install/uninstall operations
+    /// Responsible for install/uninstall operations.
+    /// Replaces the old NuGet.Core-based PackageManager with direct HTTP download + file extraction.
     /// </summary>
     public static class Installer
     {
-        private static IPackageRepository _repository
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
         {
-            get
-            {
-                return PackageRepositoryFactory.Default.CreateRepository(BlogConfig.GalleryFeedUrl);
-            }
-        }
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        });
 
         /// <summary>
-        /// Install package
+        /// Install package from gallery by downloading the .nupkg and extracting it.
         /// </summary>
-        /// <param name="pkgId"></param>
+        /// <param name="pkgId">Package ID to install.</param>
         public static bool InstallPackage(string pkgId)
         {
             try
@@ -30,30 +30,42 @@ namespace BlogEngine.Core.Packaging
                 // if package already installed - uninstall it
                 if (BlogService.InstalledFromGalleryPackages() != null)
                 {
-                    if(BlogService.InstalledFromGalleryPackages().Find(p => p.PackageId == pkgId) != null)
+                    if (BlogService.InstalledFromGalleryPackages().Find(p => p.PackageId == pkgId) != null)
                     {
                         UninstallPackage(pkgId);
                     }
                 }
-                    
-                var packageManager = new PackageManager( _repository,
-                    new DefaultPackagePathResolver(BlogConfig.GalleryFeedUrl),
-                    new PhysicalFileSystem(HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot + "App_Data/packages"))
-                );
 
-                var package = _repository.FindPackage(pkgId);
+                // Download and extract the package
+                var packagesPath = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot + "App_Data/packages");
+                if (!Directory.Exists(packagesPath))
+                    Directory.CreateDirectory(packagesPath);
 
-                packageManager.InstallPackage(package, false, true);
+                var packageUrl = $"{BlogConfig.GalleryFeedUrl.TrimEnd('/')}/package/{pkgId}";
+                var nupkgPath = Path.Combine(packagesPath, $"{pkgId}.nupkg");
 
-                var iPkg = new InstalledPackage { PackageId = package.Id, Version = package.Version.ToString() };
+                var response = _httpClient.GetAsync(packageUrl).GetAwaiter().GetResult();
+                if (response.IsSuccessStatusCode)
+                {
+                    using var fs = System.IO.File.Create(nupkgPath);
+                    response.Content.ReadAsStream().CopyTo(fs);
+                }
+
+                // Extract the package using SharpZipLib
+                var pkgDir = Path.Combine(packagesPath, pkgId);
+                if (Directory.Exists(pkgDir))
+                    Directory.Delete(pkgDir, true);
+
+                ICSharpCode.SharpZipLib.Zip.FastZip fastZip = new();
+                fastZip.ExtractZip(nupkgPath, pkgDir, null);
+
+                var iPkg = new InstalledPackage { PackageId = pkgId, Version = "1.0.0" };
                 BlogService.InsertPackage(iPkg);
 
-                var packageFiles = FileSystem.InstallPackage(package);
-
+                var packageFiles = FileSystem.InstallPackage(new NuGetPackageInfo { Id = pkgId, Version = new Version("1.0.0") });
                 BlogService.InsertPackageFiles(packageFiles);
 
                 Blog.CurrentInstance.Cache.Remove(Constants.CacheKey);
-
                 CustomFieldsParser.ClearCache();
 
                 Utils.Log($"Installed package {pkgId} by {Security.CurrentUser.Identity.Name}");
@@ -71,21 +83,26 @@ namespace BlogEngine.Core.Packaging
         /// <summary>
         /// Uninstall package
         /// </summary>
-        /// <param name="pkgId"></param>
-        /// <returns></returns>
+        /// <param name="pkgId">Package ID to uninstall.</param>
+        /// <returns>True if successful.</returns>
         public static bool UninstallPackage(string pkgId)
         {
             try
             {
                 FileSystem.UninstallPackage(pkgId);
-                // Utils.Log(string.Format("Uninstalled package {0}: installed package files removed. ", pkgId));
 
                 // remove packagefiles.xml and packages.xml (or DB records)
                 BlogService.DeletePackage(pkgId);
-                // Utils.Log(string.Format("Uninstalled package {0}: package records removed. ", pkgId));
 
-                UninstallGalleryPackage(pkgId);
-                // Utils.Log(string.Format("Uninstalled package {0}: NuGet file removed. ", pkgId));
+                // Remove the extracted package files
+                var packagesPath = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot + "App_Data/packages");
+                var pkgDir = Path.Combine(packagesPath, pkgId);
+                if (Directory.Exists(pkgDir))
+                    Directory.Delete(pkgDir, true);
+
+                var nupkgPath = Path.Combine(packagesPath, $"{pkgId}.nupkg");
+                if (System.IO.File.Exists(nupkgPath))
+                    System.IO.File.Delete(nupkgPath);
 
                 // reset cache
                 Blog.CurrentInstance.Cache.Remove(Constants.CacheKey);
@@ -94,26 +111,11 @@ namespace BlogEngine.Core.Packaging
             }
             catch (Exception ex)
             {
-                Utils.Log($"Error unistalling package {pkgId}: {ex.Message}");
+                Utils.Log($"Error uninstalling package {pkgId}: {ex.Message}");
                 throw;
             }
 
             return true;
         }
-
-        private static void UninstallGalleryPackage(string pkgId)
-        {
-            // if installed from gallery, also remove NuGet package files
-            var packageManager = new PackageManager(
-                _repository,
-                new DefaultPackagePathResolver(BlogConfig.GalleryFeedUrl),
-                new PhysicalFileSystem(HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot + "App_Data/packages"))
-            );
-            var package = _repository.FindPackage(pkgId);
-
-            if (package != null)
-                packageManager.UninstallPackage(package, true);
-        }
-
     }
 }

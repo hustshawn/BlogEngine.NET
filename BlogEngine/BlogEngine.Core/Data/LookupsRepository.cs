@@ -5,9 +5,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Web;
-using System.Web.Hosting;
-using System.Web.Security;
 
 namespace BlogEngine.Core.Data
 {
@@ -51,9 +48,9 @@ namespace BlogEngine.Core.Data
             items.Add(new SelectOption { OptionName = "Auto", OptionValue = "Auto" });
             items.Add(new SelectOption { OptionName = "English", OptionValue = "en" });
 
-            if (File.Exists(Path.Combine(HttpRuntime.AppDomainAppPath, "PrecompiledApp.config")))
+            if (File.Exists(Path.Combine(BlogConfig.ContentRootPath, "PrecompiledApp.config")))
             {
-                var precompiledDir = HttpRuntime.BinDirectory;
+                var precompiledDir = System.AppDomain.CurrentDomain.BaseDirectory;
                 var translations = Directory.GetFiles(
                     precompiledDir, "App_GlobalResources.resources.dll", SearchOption.AllDirectories);
                 foreach (var translation in translations)
@@ -72,7 +69,7 @@ namespace BlogEngine.Core.Data
             }
             else
             {
-                var path = HostingEnvironment.MapPath($"{Utils.ApplicationRelativeWebRoot}App_GlobalResources/");
+                var path = BlogConfig.MapPath($"{Utils.ApplicationRelativeWebRoot}App_GlobalResources/");
                 foreach (var file in Directory.GetFiles(path, "labels.*.resx"))
                 {
                     var index = file.LastIndexOf(Path.DirectorySeparatorChar) + 1;

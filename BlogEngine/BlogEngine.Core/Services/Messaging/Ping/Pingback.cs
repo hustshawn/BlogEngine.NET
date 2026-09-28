@@ -1,15 +1,23 @@
 ﻿namespace BlogEngine.Core.Ping
 {
     using System;
-    using System.Net;
+    using System.IO;
+    using System.Linq;
+    using System.Net.Http;
     using System.Text;
     using System.Xml;
 
     /// <summary>
     /// Sends pingbacks to website that the blog links to.
+    /// Converted from HttpWebRequest to static HttpClient.
     /// </summary>
     public static class Pingback
     {
+        private static readonly HttpClient _httpClient = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10)
+        });
+
         #region Events
 
         /// <summary>
@@ -29,12 +37,8 @@
         /// <summary>
         /// Sends pingbacks to the targetUrl.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="targetUrl">
-        /// The target Url.
-        /// </param>
+        /// <param name="sourceUrl">The source Url.</param>
+        /// <param name="targetUrl">The target Url.</param>
         public static void Send(Uri sourceUrl, Uri targetUrl)
         {
             if (!BlogSettings.Instance.EnablePingBackSend)
@@ -49,45 +53,40 @@
 
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create(targetUrl);
-                request.Credentials = CredentialCache.DefaultNetworkCredentials;
-                var response = (HttpWebResponse)request.GetResponse();
+                var response = _httpClient.GetAsync(targetUrl).GetAwaiter().GetResult();
+                response.EnsureSuccessStatusCode();
+
                 string pingUrl = null;
 
-                var pingUrlKeyIndex = Array.FindIndex(
-                    response.Headers.AllKeys, 
-                    delegate(string k)
-                        {
-                            return k.Equals("x-pingback", StringComparison.OrdinalIgnoreCase) ||
-                                   k.Equals("pingback", StringComparison.OrdinalIgnoreCase);
-                        });
-
-                if (pingUrlKeyIndex != -1)
+                // Look for X-Pingback or Pingback header
+                if (response.Headers.TryGetValues("X-Pingback", out var xpingValues))
                 {
-                    pingUrl = response.Headers[pingUrlKeyIndex];
+                    pingUrl = xpingValues.FirstOrDefault();
+                }
+                else if (response.Headers.TryGetValues("Pingback", out var pingValues))
+                {
+                    pingUrl = pingValues.FirstOrDefault();
                 }
 
                 Uri url;
                 if (!string.IsNullOrEmpty(pingUrl) && Uri.TryCreate(pingUrl, UriKind.Absolute, out url))
                 {
                     OnSending(url);
-                    request = (HttpWebRequest)WebRequest.Create(url);
-                    request.Method = "POST";
 
-                    // request.Timeout = 10000;
-                    request.ContentType = "text/xml";
-                    request.ProtocolVersion = HttpVersion.Version11;
-                    request.Headers["Accept-Language"] = "en-us";
-                    AddXmlToRequest(sourceUrl, targetUrl, request);
-                    var response2 = (HttpWebResponse)request.GetResponse();
-                    response2.Close();
+                    var xmlContent = BuildXmlContent(sourceUrl, targetUrl);
+                    var content = new StringContent(xmlContent, Encoding.ASCII, "text/xml");
+                    
+                    var request = new HttpRequestMessage(HttpMethod.Post, url);
+                    request.Content = content;
+                    request.Headers.Add("Accept-Language", "en-us");
+
+                    var response2 = _httpClient.SendAsync(request).GetAwaiter().GetResult();
                     OnSent(url);
                 }
             }
             catch (Exception ex)
             {
                 ex = new Exception();
-
                 // Stops unhandled exceptions that can cause the app pool to recycle
             }
         }
@@ -97,22 +96,15 @@
         #region Methods
 
         /// <summary>
-        /// Adds the XML to web request. The XML is the standard
-        ///     XML used by RPC-XML requests.
+        /// Builds the XML-RPC content for the pingback request.
         /// </summary>
-        /// <param name="sourceUrl">
-        /// The source Url.
-        /// </param>
-        /// <param name="targetUrl">
-        /// The target Url.
-        /// </param>
-        /// <param name="webreqPing">
-        /// The webreq Ping.
-        /// </param>
-        private static void AddXmlToRequest(Uri sourceUrl, Uri targetUrl, HttpWebRequest webreqPing)
+        /// <param name="sourceUrl">The source Url.</param>
+        /// <param name="targetUrl">The target Url.</param>
+        /// <returns>The XML content as a string.</returns>
+        private static string BuildXmlContent(Uri sourceUrl, Uri targetUrl)
         {
-            var stream = webreqPing.GetRequestStream();
-            using (var writer = new XmlTextWriter(stream, Encoding.ASCII))
+            using var sw = new StringWriter();
+            using (var writer = new XmlTextWriter(sw))
             {
                 writer.WriteStartDocument(true);
                 writer.WriteStartElement("methodCall");
@@ -134,6 +126,7 @@
                 writer.WriteEndElement();
                 writer.WriteEndElement();
             }
+            return sw.ToString();
         }
 
         /// <summary>
@@ -142,10 +135,7 @@
         /// <param name="url">The URL Uri.</param>
         private static void OnSending(Uri url)
         {
-            if (Sending != null)
-            {
-                Sending(url, EventArgs.Empty);
-            }
+            Sending?.Invoke(url, EventArgs.Empty);
         }
 
         /// <summary>
@@ -154,10 +144,7 @@
         /// <param name="url">The URL Uri.</param>
         private static void OnSent(Uri url)
         {
-            if (Sent != null)
-            {
-                Sent(url, EventArgs.Empty);
-            }
+            Sent?.Invoke(url, EventArgs.Empty);
         }
 
         #endregion

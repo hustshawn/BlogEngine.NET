@@ -1,6 +1,5 @@
 ﻿using System.Security.Cryptography;
 using System.Text;
-using System.Web;
 
 namespace BlogEngine.Core.Data.Services
 {
@@ -50,7 +49,7 @@ namespace BlogEngine.Core.Data.Services
             var themeAvatar =
                 $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/{BlogSettings.Instance.Theme}/noavatar.jpg";
 
-            if (System.IO.File.Exists(HttpContext.Current.Server.MapPath(themeAvatar)))
+            if (System.IO.File.Exists(BlogConfig.MapPath(themeAvatar)))
                 return themeAvatar;
 
             return "";

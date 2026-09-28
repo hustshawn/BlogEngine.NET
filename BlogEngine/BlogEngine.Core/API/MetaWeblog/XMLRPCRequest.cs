@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 ﻿namespace BlogEngine.Core.API.MetaWeblog
 {
     using System;
@@ -6,7 +7,6 @@
     using System.Globalization;
     using System.Linq;
     using System.Text;
-    using System.Web;
     using System.Xml;
 
     /// <summary>
@@ -462,7 +462,7 @@
                 /// </param>
                 private void LogMetaWeblogCall(string message)
                 {
-                    var saveFolder = HttpContext.Current.Server.MapPath(BlogSettings.Instance.StorageLocation);
+                    var saveFolder = BlogConfig.MapPath(BlogSettings.Instance.StorageLocation);
                     var saveFile = Path.Combine(saveFolder, "lastmetaweblogcall.txt");
 
                     try
@@ -495,10 +495,10 @@
         /// </returns>
         private static string ParseRequest(HttpContext context)
         {
-            var buffer = new byte[context.Request.InputStream.Length];
+            var buffer = new byte[context.Request.Body.Length];
 
-            context.Request.InputStream.Position = 0;
-            context.Request.InputStream.Read(buffer, 0, buffer.Length);
+            context.Request.Body.Position = 0;
+            context.Request.Body.Read(buffer, 0, buffer.Length);
 
             return Encoding.UTF8.GetString(buffer);
         }

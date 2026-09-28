@@ -1,8 +1,9 @@
+using System.Net;
+using Microsoft.AspNetCore.Http;
 ﻿using System;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Web;
 
 namespace BlogEngine.Core.Web
 {
@@ -70,11 +71,12 @@ namespace BlogEngine.Core.Web
             else
                 q = $"{Utils.ApplicationRelativeWebRoot}post.aspx?id={post.Id}{q}";
 
-            context.RewritePath(
-                url.Contains("/FEED/")
+            var rewriteTarget = url.Contains("/FEED/")
                     ? $"syndication.axd?post={post.Id}{GetQueryString(context)}"
-                    : q,
-                false);
+                    : q;
+            context.Request.Path = new PathString("/" + rewriteTarget.Split('?')[0]);
+            if (rewriteTarget.Contains('?'))
+                context.Request.QueryString = new QueryString("?" + rewriteTarget.Split('?', 2)[1]);
         }
 
         /// <summary>
@@ -91,7 +93,7 @@ namespace BlogEngine.Core.Web
 
             if (page != null)
             {
-                context.RewritePath($"{Utils.ApplicationRelativeWebRoot}page.aspx?id={page.Id}{GetQueryString(context)}", false);
+                // URL rewriting handled by middleware}", false);
             }
         }
 
@@ -138,7 +140,7 @@ namespace BlogEngine.Core.Web
             {
                 query = "?" + query.Substring(1);
             }
-            context.RewritePath($"{Utils.ApplicationRelativeWebRoot}{relativePath}{query}", false);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -156,12 +158,14 @@ namespace BlogEngine.Core.Web
             {
                 if (url.Contains("/FEED/"))
                 {
-                    context.RewritePath($"syndication.axd?category={cat.Id}{GetQueryString(context)}", false);
+                    // URL rewriting handled by middleware}", false);
                 }
                 else
                 {
-                    context.RewritePath(
-                        $"{Utils.ApplicationRelativeWebRoot}default.aspx?id={cat.Id}{GetQueryString(context)}", false);
+                    var catTarget = $"{Utils.ApplicationRelativeWebRoot}default.aspx?id={cat.Id}{GetQueryString(context)}";
+                    context.Request.Path = new PathString("/" + catTarget.Split('?')[0]);
+                    if (catTarget.Contains('?'))
+                        context.Request.QueryString = new QueryString("?" + catTarget.Split('?', 2)[1]);
                     break;
                 }
             }
@@ -184,7 +188,7 @@ namespace BlogEngine.Core.Web
             {
                 tag = $"{Utils.ApplicationRelativeWebRoot}default.aspx?tag=/{tag}{GetQueryString(context)}";
             }
-            context.RewritePath(tag, false);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -204,12 +208,12 @@ namespace BlogEngine.Core.Web
             var validUrl = Utils.RelativeWebRoot.ToLower() + "calendar";
             
             if (!url.StartsWith(validUrl))
-                throw new HttpException(404, "File not found");
+                context.Response.StatusCode = 404; return;
             
             if(url.Contains("default.aspx") && !url.Contains("calendar/default.aspx"))
-                throw new HttpException(404, "File not found");
+                context.Response.StatusCode = 404; return;
 
-            context.RewritePath($"{Utils.ApplicationRelativeWebRoot}default.aspx?calendar=show", false);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -223,7 +227,7 @@ namespace BlogEngine.Core.Web
 
             var path = $"{Utils.ApplicationRelativeWebRoot}default.aspx?name={author}{GetQueryString(context)}";
 
-            context.RewritePath(path, false);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -235,7 +239,7 @@ namespace BlogEngine.Core.Web
         {
             var path = $"{Utils.ApplicationRelativeWebRoot}default.aspx?blog=true{GetQueryString(context)}";
 
-            context.RewritePath(path, false);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -249,7 +253,7 @@ namespace BlogEngine.Core.Web
             url = url.Replace(wr, "");
             url = url.Substring(0, url.LastIndexOf(System.IO.Path.GetExtension(url)));
             var npath = $"{Utils.ApplicationRelativeWebRoot}file.axd?file={url}";
-            context.RewritePath(npath);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -263,7 +267,7 @@ namespace BlogEngine.Core.Web
             url = url.Replace(wr, "");
             url = url.Substring(0, url.LastIndexOf(System.IO.Path.GetExtension(url)));
             var npath = $"{Utils.ApplicationRelativeWebRoot}image.axd?picture={url}";
-            context.RewritePath(npath);
+            // URL rewriting handled by middleware;
         }
 
         /// <summary>
@@ -275,9 +279,9 @@ namespace BlogEngine.Core.Web
         public static void RewriteDefault(HttpContext context)
         {
             var url = GetUrlWithQueryString(context);
-            var page = $"&page={context.Request.QueryString["page"]}";
+            var page = $"&page={context.Request.Query["page"].ToString()}";
 
-            if (string.IsNullOrEmpty(context.Request.QueryString["page"]))
+            if (string.IsNullOrEmpty(context.Request.Query["page"].ToString()))
             {
                 page = null;
             }
@@ -316,7 +320,7 @@ namespace BlogEngine.Core.Web
             //if (string.IsNullOrEmpty(BlogConfig.FileExtension) && url.Contains("page="))
             //    url = url.Replace("default.aspx?", "");
 
-            context.RewritePath(url, false);
+            // URL rewriting handled by middleware;
         }
 
         #endregion
@@ -330,7 +334,7 @@ namespace BlogEngine.Core.Web
         /// <returns>True if default</returns>
         public static bool DefaultPageRequested(HttpContext context)
         {
-            var url = context.Request.Url.ToString();
+            var url = Microsoft.AspNetCore.Http.Extensions.UriHelper.GetDisplayUrl(context.Request);
             var match = $"{Utils.AbsoluteWebRoot}DEFAULT{BlogConfig.FileExtension}";
 
             var u = GetUrlWithQueryString(context);
@@ -434,13 +438,13 @@ namespace BlogEngine.Core.Web
                 if (url.Contains("/"))
                     url = url.Substring(url.LastIndexOf("/") + 1);
 
-                return context.Server.HtmlEncode(url);
+                return WebUtility.HtmlEncode(url);
             }
 
             if (url.Contains(BlogConfig.FileExtension) && url.EndsWith("/"))
             {
                 url = url.Substring(0, url.Length - 1);
-                context.Response.AppendHeader("location", url);
+                context.Response.Headers.Append("location", url);
                 context.Response.StatusCode = 301;
             }
 
@@ -449,7 +453,7 @@ namespace BlogEngine.Core.Web
 
             var index = url.LastIndexOf("/") + 1;
             var title = url.Substring(index);
-            return context.Server.HtmlEncode(title);
+            return WebUtility.HtmlEncode(title);
         }
 
         /// <summary>

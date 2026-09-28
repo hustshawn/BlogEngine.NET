@@ -4,7 +4,6 @@
     using System.Collections.Generic;
     using System.IO;
     using System.Xml;
-    using System.Security.Permissions;
 
     /// <summary>
     /// A storage provider for BlogEngine that uses XML files.
@@ -23,21 +22,10 @@
         {
             var fullyQualifiedPath = $"{Folder}rights.xml";
 
-            //var fullyQualifiedPath =
-            //    VirtualPathUtility.Combine(
-            //        VirtualPathUtility.AppendTrailingSlash(HttpRuntime.AppDomainAppVirtualPath), path);
-
-            //fullyQualifiedPath = HostingEnvironment.MapPath(fullyQualifiedPath);
-
             var rightsDict = new Dictionary<string, IEnumerable<string>>();
 
             if (File.Exists(fullyQualifiedPath))
             {
-                // Make sure we have permission to read the XML data source and
-                // throw an exception if we don't
-                var permission = new FileIOPermission(FileIOPermissionAccess.Write, fullyQualifiedPath);
-                permission.Demand();
-
                 var doc = new XmlDocument();
                 doc.Load(fullyQualifiedPath);
 

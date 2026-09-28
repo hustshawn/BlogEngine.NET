@@ -4,17 +4,22 @@
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
+    using System.Net;
     using System.Security.Cryptography;
     using System.Text;
     using System.Text.RegularExpressions;
-    using System.Web;
-    using System.Web.Security;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// Based on John Dyer's (http://johndyer.name/) extension.
+    /// Serves SIOC RDF XML.
     /// </summary>
-    public class Sioc : IHttpHandler
+    public static class SiocEndpoint
     {
         #region Constants and Fields
 
@@ -24,21 +29,6 @@
         private static Dictionary<string, string> xmlNamespaces;
 
         #endregion
-
-        #region Properties
-
-        /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
-        /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
-        {
-            get
-            {
-                return false;
-            }
-        }
 
         /// <summary>
         ///     Gets SupportedNamespaces.
@@ -64,33 +54,28 @@
             }
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
         /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
+        /// Maps the SIOC handler endpoint.
         /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides references to the intrinsic server objects (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        public static IEndpointRouteBuilder MapSiocHandler(this IEndpointRouteBuilder endpoints)
+        {
+            endpoints.MapGet("/sioc.axd", HandleAsync);
+            return endpoints;
+        }
+
+        private static async Task HandleAsync(HttpContext context)
         {
             context.Response.ContentType = "application/rdf+xml";
-            var siocType = context.Request["sioc_type"] + string.Empty;
-            var siocId = context.Request["sioc_id"] + string.Empty;
+            var siocType = context.Request.Query["sioc_type"].ToString();
+            var siocId = context.Request.Query["sioc_id"].ToString();
 
             switch (siocType)
             {
                 default:
-
-                    // case "site":
                     var list = Post.Posts.ConvertAll(ConvertToIPublishable);
                     var max = Math.Min(BlogSettings.Instance.PostsPerFeed, list.Count);
                     list = list.GetRange(0, max);
-                    WriteSite(context.Response.OutputStream, list);
+                    WriteSite(context.Response.Body, list);
                     break;
 
                 case "post":
@@ -100,7 +85,7 @@
                         var post = Post.GetPost(postId);
                         if (post != null)
                         {
-                            WritePub(context.Response.OutputStream, post);
+                            WritePub(context.Response.Body, post);
                         }
                     }
 
@@ -110,62 +95,40 @@
                     Guid commentId;
                     if (siocId.TryParse(out commentId))
                     {
-                        // TODO: is it possible to get a single comment?
                         var comment = GetComment(commentId);
 
                         if (comment != null)
                         {
-                            WritePub(context.Response.OutputStream, comment);
+                            WritePub(context.Response.Body, comment);
                         }
                     }
 
                     break;
 
                 case "user":
-                    WriteAuthor(context.Response.OutputStream, siocId);
+                    WriteAuthor(context.Response.Body, siocId);
                     break;
-
-                    /*
-            case "post":
-                generator.WriteSite(context.Response.OutputStream);
-                break;
-            */
             }
+
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// Calculates the SHA1.
         /// </summary>
-        /// <param name="text">
-        /// The text string.
-        /// </param>
-        /// <param name="enc">
-        /// The encoding.
-        /// </param>
-        /// <returns>
-        /// The hash string.
-        /// </returns>
         private static string CalculateSha1(string text, Encoding enc)
         {
             var buffer = enc.GetBytes(text);
-            var cryptoTransformSha1 = new SHA1CryptoServiceProvider();
-            var hash = BitConverter.ToString(cryptoTransformSha1.ComputeHash(buffer)).Replace("-", string.Empty);
-
-            return hash.ToLower();
+            using (var sha1 = SHA1.Create())
+            {
+                var hash = BitConverter.ToString(sha1.ComputeHash(buffer)).Replace("-", string.Empty);
+                return hash.ToLower();
+            }
         }
 
         /// <summary>
         /// Closes the writer.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The XML writer.
-        /// </param>
         private static void CloseWriter(XmlWriter xmlWriter)
         {
             xmlWriter.WriteEndElement(); // rdf:RDF
@@ -176,12 +139,6 @@
         /// <summary>
         /// Converts to publishable interface.
         /// </summary>
-        /// <param name="item">
-        /// The publishable item.
-        /// </param>
-        /// <returns>
-        /// The publishable interface.
-        /// </returns>
         private static IPublishable ConvertToIPublishable(IPublishable item)
         {
             return item;
@@ -190,26 +147,14 @@
         /// <summary>
         /// Gets the blog author URL.
         /// </summary>
-        /// <param name="username">
-        /// The username.
-        /// </param>
-        /// <returns>
-        /// Blog author url.
-        /// </returns>
         private static string GetBlogAuthorUrl(string username)
         {
-            return $"{Utils.AbsoluteWebRoot}author/{HttpUtility.UrlEncode(username)}{BlogConfig.FileExtension}";
+            return $"{Utils.AbsoluteWebRoot}author/{WebUtility.UrlEncode(username)}{BlogConfig.FileExtension}";
         }
 
         /// <summary>
         /// Gets the comment.
         /// </summary>
-        /// <param name="commentId">
-        /// The comment id.
-        /// </param>
-        /// <returns>
-        /// The comment.
-        /// </returns>
         private static Comment GetComment(Guid commentId)
         {
             var posts = Post.Posts;
@@ -219,23 +164,14 @@
         /// <summary>
         /// Gets the sioc author URL.
         /// </summary>
-        /// <param name="username">
-        /// The username.
-        /// </param>
-        /// <returns>
-        /// The SIOC Author Url.
-        /// </returns>
         private static string GetSiocAuthorUrl(string username)
         {
-            return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=user&sioc_id={HttpUtility.UrlEncode(username)}";
+            return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=user&sioc_id={WebUtility.UrlEncode(username)}";
         }
 
         /// <summary>
         /// Gets the sioc authors URL.
         /// </summary>
-        /// <returns>
-        /// The SIOC Author Url.
-        /// </returns>
         private static string GetSiocAuthorsUrl()
         {
             return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=site#authors";
@@ -244,9 +180,6 @@
         /// <summary>
         /// Gets the sioc blog URL.
         /// </summary>
-        /// <returns>
-        /// The SIOC Blog Url.
-        /// </returns>
         private static string GetSiocBlogUrl()
         {
             return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=site#webblog";
@@ -255,12 +188,6 @@
         /// <summary>
         /// Gets the sioc comment URL.
         /// </summary>
-        /// <param name="id">
-        /// The comment id.
-        /// </param>
-        /// <returns>
-        /// The SIOC Comment Url.
-        /// </returns>
         private static string GetSiocCommentUrl(string id)
         {
             return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=comment&sioc_id={id}";
@@ -269,39 +196,14 @@
         /// <summary>
         /// Gets the sioc post URL.
         /// </summary>
-        /// <param name="id">
-        /// The SIOC post id.
-        /// </param>
-        /// <returns>
-        /// The SIOC Post Url.
-        /// </returns>
         private static string GetSiocPostUrl(string id)
         {
             return $"{Utils.AbsoluteWebRoot}sioc.axd?sioc_type=post&sioc_id={id}";
         }
 
-        /*
-                /// <summary>
-                /// Gets the sioc site URL.
-                /// </summary>
-                /// <returns>
-                /// The SIOC Site Url.
-                /// </returns>
-                private static string GetSiocSiteUrl()
-                {
-                    return string.Format("{0}sioc.axd?sioc_type=site", Utils.AbsoluteWebRoot);
-                }
-        */
-
         /// <summary>
         /// Gets the writer.
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
-        /// <returns>
-        /// The Xml Writer.
-        /// </returns>
         private static XmlWriter GetWriter(Stream stream)
         {
             var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
@@ -310,7 +212,6 @@
             xmlWriter.WriteStartDocument();
             xmlWriter.WriteStartElement("rdf", "RDF", "http://www.w3.org/1999/02/22-rdf-syntax-ns#");
 
-            // "http://xmlns.com/foaf/0.1/");
             foreach (var prefix in SupportedNamespaces.Keys)
             {
                 xmlWriter.WriteAttributeString("xmlns", prefix, null, SupportedNamespaces[prefix]);
@@ -322,19 +223,12 @@
         /// <summary>
         /// Writes the author.
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
-        /// <param name="authorName">
-        /// Name of the author.
-        /// </param>
         private static void WriteAuthor(Stream stream, string authorName)
         {
             var xmlWriter = GetWriter(stream);
 
             WriteFoafDocument(xmlWriter, "user", GetSiocAuthorUrl(authorName));
 
-            var user = Membership.GetUser(authorName);
             var ap = AuthorProfile.GetProfile(authorName);
 
             // FOAF:Person
@@ -352,15 +246,17 @@
                 xmlWriter.WriteElementString("foaf", "surname", null, ap.LastName);
             }
 
+            // REVIEW: Membership.GetUser replaced with profile-based email lookup — verify after auth migration
+            var email = ap?.EmailAddress ?? string.Empty;
             xmlWriter.WriteElementString(
-                "foaf", "mbox_sha1sum", null, (user != null) ? CalculateSha1(user.Email, Encoding.UTF8) : string.Empty);
+                "foaf", "mbox_sha1sum", null, !string.IsNullOrEmpty(email) ? CalculateSha1(email, Encoding.UTF8) : string.Empty);
             xmlWriter.WriteStartElement("foaf", "homepage", null);
             xmlWriter.WriteAttributeString("rdf", "resource", null, Utils.AbsoluteWebRoot.ToString());
-            xmlWriter.WriteEndElement(); // foaf:homepage 
+            xmlWriter.WriteEndElement(); // foaf:homepage
 
             xmlWriter.WriteStartElement("foaf", "holdsAccount", null);
             xmlWriter.WriteAttributeString("rdf", "resource", null, GetBlogAuthorUrl(authorName));
-            xmlWriter.WriteEndElement(); // foaf:holdsAccount  
+            xmlWriter.WriteEndElement(); // foaf:holdsAccount
 
             xmlWriter.WriteEndElement(); // foaf:Person
 
@@ -370,7 +266,6 @@
             xmlWriter.WriteElementString("foaf", "accountName", null, authorName);
             xmlWriter.WriteElementString("sioc", "name", null, authorName);
 
-            // xmlWriter.WriteElementString("dcterms", "created", null, "TODO:" + authorName);
             xmlWriter.WriteEndElement(); // sioc:User
 
             CloseWriter(xmlWriter);
@@ -379,15 +274,6 @@
         /// <summary>
         /// Writes the foaf document.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The XML writer.
-        /// </param>
-        /// <param name="siocType">
-        /// Type of the sioc.
-        /// </param>
-        /// <param name="url">
-        /// The URL string.
-        /// </param>
         private static void WriteFoafDocument(XmlWriter xmlWriter, string siocType, string url)
         {
             var title = $"SIOC {siocType} profile for \"{BlogSettings.Instance.Name}\"";
@@ -409,12 +295,6 @@
         /// <summary>
         /// Writes the forum.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The xml writer.
-        /// </param>
-        /// <param name="list">
-        /// The enumerable of publishable interface.
-        /// </param>
         private static void WriteForum(XmlWriter xmlWriter, IEnumerable<IPublishable> list)
         {
             xmlWriter.WriteStartElement("sioc", "Forum", null);
@@ -446,12 +326,6 @@
         /// <summary>
         /// Writes an IPublishable to a stream.
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
-        /// <param name="pub">
-        /// The publishable interface.
-        /// </param>
         private static void WritePub(Stream stream, IPublishable pub)
         {
             var xmlWriter = GetWriter(stream);
@@ -472,12 +346,6 @@
         /// <summary>
         /// Writes SIOC post.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The xml writer.
-        /// </param>
-        /// <param name="pub">
-        /// The publishable interface.
-        /// </param>
         private static void WriteSiocPost(XmlWriter xmlWriter, IPublishable pub)
         {
             xmlWriter.WriteStartElement("sioc", "Post", null);
@@ -518,12 +386,14 @@
 
             if (pub is Post)
             {
-                var user = Membership.GetUser(pub.Author);
+                // REVIEW: Membership.GetUser replaced with profile-based email lookup — verify after auth migration
+                var ap = AuthorProfile.GetProfile(pub.Author);
+                var email = ap?.EmailAddress ?? string.Empty;
                 xmlWriter.WriteElementString(
-                    "foaf", 
-                    "mbox_sha1sum", 
-                    null, 
-                    (user != null) ? CalculateSha1(user.Email, Encoding.UTF8) : string.Empty);
+                    "foaf",
+                    "mbox_sha1sum",
+                    null,
+                    !string.IsNullOrEmpty(email) ? CalculateSha1(email, Encoding.UTF8) : string.Empty);
             }
             else
             {
@@ -554,7 +424,6 @@
             xmlWriter.WriteEndElement(); // foaf:maker
 
             // CONTENT
-            // xmlWriter.WriteElementString("dcterms", "created", null, DpUtility.ToW3cDateTime(pub.DateCreated));
             xmlWriter.WriteElementString("sioc", "content", null, Utils.StripHtml(pub.Content));
             xmlWriter.WriteElementString("content", "encoded", null, pub.Content);
 
@@ -570,7 +439,7 @@
                     xmlWriter.WriteEndElement(); // sioc:topic
                 }
 
-                // tags are also supposed to be treated as sioc:topic 
+                // tags are also supposed to be treated as sioc:topic
                 foreach (var tag in ((Post)pub).Tags)
                 {
                     xmlWriter.WriteStartElement("sioc", "topic", null);
@@ -594,7 +463,7 @@
                     xmlWriter.WriteEndElement(); // sioc:has_reply
                 }
 
-                // TODO: LINKS
+                // LINKS
                 var linkMatches = Regex.Matches(pub.Content, @"<a[^(href)]?href=""([^""]+)""[^>]?>([^<]+)</a>");
                 var linkPairs = new List<string>();
 
@@ -629,9 +498,6 @@
         /// <summary>
         /// Writes sioc site.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The xml writer.
-        /// </param>
         private static void WriteSiocSite(XmlWriter xmlWriter)
         {
             xmlWriter.WriteStartElement("sioc", "Site", null);
@@ -649,12 +515,6 @@
         /// <summary>
         /// Writes site.
         /// </summary>
-        /// <param name="stream">
-        /// The stream.
-        /// </param>
-        /// <param name="list">
-        /// The enumerable of IPublishable.
-        /// </param>
         private static void WriteSite(Stream stream, IEnumerable<IPublishable> list)
         {
             var xmlWriter = GetWriter(stream);
@@ -670,9 +530,6 @@
         /// <summary>
         /// Writes the user group.
         /// </summary>
-        /// <param name="xmlWriter">
-        /// The XML writer.
-        /// </param>
         private static void WriteUserGroup(XmlWriter xmlWriter)
         {
             xmlWriter.WriteStartElement("sioc", "Usergroup", null);
@@ -680,27 +537,26 @@
             xmlWriter.WriteAttributeString("rdf", "about", null, GetSiocAuthorsUrl());
             xmlWriter.WriteElementString("dc", "title", null, "Authors at \"" + BlogSettings.Instance.Name + "\"");
 
-            int count;
-            var members = Membership.Provider.GetAllUsers(0, 999, out count);
-
-            foreach (MembershipUser user in members)
+            var userNames = Providers.BlogService.GetUserNames();
+            if (userNames != null)
             {
-                xmlWriter.WriteStartElement("sioc", "has_member", null);
-                xmlWriter.WriteStartElement("sioc", "User", null);
-                xmlWriter.WriteAttributeString("rdf", "about", null, GetBlogAuthorUrl(user.UserName));
-                xmlWriter.WriteAttributeString("rdfs", "label", null, user.UserName);
+                foreach (var userName in userNames)
+                {
+                    xmlWriter.WriteStartElement("sioc", "has_member", null);
+                    xmlWriter.WriteStartElement("sioc", "User", null);
+                    xmlWriter.WriteAttributeString("rdf", "about", null, GetBlogAuthorUrl(userName));
+                    xmlWriter.WriteAttributeString("rdfs", "label", null, userName);
 
-                xmlWriter.WriteStartElement("sioc", "see_also", null);
-                xmlWriter.WriteAttributeString("rdf", "resource", null, GetSiocAuthorUrl(user.UserName));
-                xmlWriter.WriteEndElement(); // sioc:see_also
+                    xmlWriter.WriteStartElement("sioc", "see_also", null);
+                    xmlWriter.WriteAttributeString("rdf", "resource", null, GetSiocAuthorUrl(userName));
+                    xmlWriter.WriteEndElement(); // sioc:see_also
 
-                xmlWriter.WriteEndElement(); // sioc:User
-                xmlWriter.WriteEndElement(); // sioc:has_member
+                    xmlWriter.WriteEndElement(); // sioc:User
+                    xmlWriter.WriteEndElement(); // sioc:has_member
+                }
             }
 
-            xmlWriter.WriteEndElement(); // foaf:Document
+            xmlWriter.WriteEndElement(); // sioc:Usergroup
         }
-
-        #endregion
     }
 }

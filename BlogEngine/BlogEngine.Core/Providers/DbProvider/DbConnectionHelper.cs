@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Configuration;
 using System.Data;
 using System.Data.Common;
 
@@ -9,24 +8,14 @@ namespace BlogEngine.Core.Providers
     /// Helper class for working with DbConnections.
     /// </summary>
     /// <remarks>
-    /// 
-    /// This class is meant to reduce the amount of repeated code in database provider classes by pulling all the common actions
-    /// into one spot. This should remove the many repetitive null checks on connections/parameters.
-    /// 
     /// This class handles the creation of DbConnection, setting its connection string, and opening the connection if possible.
     /// 
-    /// Usage is simple:
-    /// using(var helper = new ConnectionHelper(provider)) {
+    /// Usage:
+    /// using(var helper = new DbConnectionHelper(providerName, connectionString)) {
     ///     if (helper.HasConnection) {
     ///         // do stuff
     ///     }
     /// }
-    /// 
-    /// Note: This class throws a NullReferenceException if its Provider.CreateParameter() method returns a null object.
-    /// All of the methods in the DbBlogProvider class require parameterized queries, and previously each parameter
-    /// created was being checked for null before proceeding. It's better to fail fast in this instance, to help creaters
-    /// of custom implementations figure out what's wrong.
-    /// 
     /// </remarks>
     public sealed class DbConnectionHelper : IDisposable
     {
@@ -34,18 +23,10 @@ namespace BlogEngine.Core.Providers
         #region "Constructors"
 
         /// <summary>
-        /// Creates a new DbConnectionHelper instance from the given ConnectionStringSettings.
+        /// Creates a new DbConnectionHelper instance from the given provider name and database connection string.
         /// </summary>
-        /// <param name="settings"></param>
-        public DbConnectionHelper(ConnectionStringSettings settings) : this(settings.ProviderName, settings.ConnectionString)
-        {
-        }
-
-        /// <summary>
-        /// Creates a new DbConnectionHelper instance from the given provider name and database connection string..
-        /// </summary>
-        /// <param name="providerName"></param>
-        /// <param name="connectionString"></param>
+        /// <param name="providerName">The ADO.NET provider name (e.g. "Microsoft.Data.SqlClient").</param>
+        /// <param name="connectionString">The database connection string.</param>
         public DbConnectionHelper(string providerName, string connectionString)
         {
             this._dbProvFactory = DbProviderFactories.GetFactory(providerName);
@@ -106,7 +87,6 @@ namespace BlogEngine.Core.Providers
         /// <summary>
         /// Uses this ConnectionHelper instance's connection to create and return a new DbCommand instance.
         /// </summary>
-        /// <returns></returns>
         public DbCommand CreateCommand()
         {
             this.CheckDisposed();
@@ -114,10 +94,8 @@ namespace BlogEngine.Core.Providers
         }
 
         /// <summary>
-        /// Users this ConnectionHelper instance's connection to create and return a new DbCommand with the given command text. CommandType is automatically set to CommandType.Text.
+        /// Creates a new DbCommand with the given command text. CommandType is automatically set to CommandType.Text.
         /// </summary>
-        /// <param name="commandText"></param>
-        /// <returns></returns>
         public DbCommand CreateTextCommand(string commandText)
         {
             var command = this.CreateCommand();
@@ -127,38 +105,25 @@ namespace BlogEngine.Core.Providers
             return command;
         }
 
-
         /// <summary>
-        /// Uses this ConnectionHelper's Provider to create a DbParameter instance with the given parameter name and value.
+        /// Creates a DbParameter instance with the given parameter name and value.
         /// </summary>
-        /// <param name="parameterName">The name of the parameter.</param>
-        /// <param name="value">The value of the parameter.</param>
-        /// <returns></returns>
         public DbParameter CreateParameter(string parameterName, object value)
         {
             return CreateParameter(parameterName, value, null, null);
         }
 
         /// <summary>
-        /// Uses this ConnectionHelper's Provider to create a DbParameter instance with the given parameter name and value.
+        /// Creates a DbParameter instance with the given parameter name, value, and DB type.
         /// </summary>
-        /// <param name="parameterName">The name of the parameter.</param>
-        /// <param name="value">The value of the parameter.</param>
-        /// <param name="dbType">The DB type.</param>
-        /// <returns></returns>
         public DbParameter CreateParameter(string parameterName, object value, DbType dbType)
         {
             return CreateParameter(parameterName, value, dbType, null);
         }
 
         /// <summary>
-        /// Uses this ConnectionHelper's Provider to create a DbParameter instance with the given parameter name and value.
+        /// Creates a DbParameter instance with the given parameter name, value, DB type, and size.
         /// </summary>
-        /// <param name="parameterName">The name of the parameter.</param>
-        /// <param name="value">The value of the parameter.</param>
-        /// <param name="dbType">The DB type.</param>
-        /// <param name="size">The size/length of the parameter.</param>
-        /// <returns></returns>
         public DbParameter CreateParameter(string parameterName, object value, DbType? dbType, int? size)
         {
             this.CheckDisposed();

@@ -1,10 +1,10 @@
+using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Data.Services;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Linq.Dynamic;
-using System.Web.Hosting;
 
 namespace BlogEngine.Core.Data.ViewModels
 {
@@ -153,7 +153,7 @@ namespace BlogEngine.Core.Data.ViewModels
                     _trash.Add(new TrashItem
                         {
                             Id = p.Id,
-                            Title = System.Web.HttpContext.Current.Server.HtmlEncode(p.Title),
+                            Title = System.Net.WebUtility.HtmlEncode(p.Title),
                             RelativeUrl = p.RelativeLink,
                             ObjectType = "Post",
                             DateCreated = p.DateCreated.ToString("MM/dd/yyyy HH:mm")
@@ -169,7 +169,7 @@ namespace BlogEngine.Core.Data.ViewModels
                     _trash.Add(new TrashItem
                         {
                             Id = page.Id,
-                            Title = System.Web.HttpContext.Current.Server.HtmlEncode(page.Title),
+                            Title = System.Net.WebUtility.HtmlEncode(page.Title),
                             RelativeUrl = page.RelativeLink,
                             ObjectType = "Page",
                             DateCreated = page.DateCreated.ToString("MM/dd/yyyy HH:mm")
@@ -207,7 +207,7 @@ namespace BlogEngine.Core.Data.ViewModels
 
         IEnumerable<SelectOption> GetLogs()
         {
-            string fileLocation = HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
+            string fileLocation = BlogConfig.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
             var items = new List<SelectOption>();
 
             if (File.Exists(fileLocation))
@@ -250,7 +250,7 @@ namespace BlogEngine.Core.Data.ViewModels
 
         string GetLogFile()
         {
-            string fileLocation = HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
+            string fileLocation = BlogConfig.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
             var items = new List<SelectOption>();
 
             if (File.Exists(fileLocation))

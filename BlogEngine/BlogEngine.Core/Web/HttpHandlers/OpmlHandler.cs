@@ -1,51 +1,34 @@
 ﻿namespace BlogEngine.Core.Web.HttpHandlers
 {
     using System.Text;
-    using System.Web;
+    using System.Threading.Tasks;
     using System.Xml;
 
-    /// <summary>
-    /// The opml handler.
-    /// </summary>
-    public class OpmlHandler : IHttpHandler
-    {
-        #region Properties
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
+    /// <summary>
+    /// The OPML handler endpoint.
+    /// </summary>
+    public static class OpmlEndpoint
+    {
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the OPML handler endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapOpmlHandler(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/opml.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that 
-        ///     implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> 
-        ///     object that provides references to the intrinsic server objects 
-        ///     (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             context.Response.ContentType = "text/xml";
 
             var writerSettings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
 
-            using (var writer = XmlWriter.Create(context.Response.OutputStream, writerSettings))
+            using (var writer = XmlWriter.Create(context.Response.Body, writerSettings))
             {
                 // open OPML
                 writer.WriteStartElement("opml");
@@ -83,10 +66,8 @@
                 // close OPML
                 writer.WriteEndElement();
             }
+
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
     }
 }

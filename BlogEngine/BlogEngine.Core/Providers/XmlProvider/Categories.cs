@@ -5,7 +5,6 @@
     using System.IO;
     using System.Linq;
     using System.Text;
-    using System.Web.Hosting;
     using System.Xml;
 
     /// <summary>
@@ -46,7 +45,7 @@
         /// </returns>
         public override List<Category> FillCategories(Blog blog)
         {
-            var fileName = HostingEnvironment.MapPath(blog.StorageLocation + "categories.xml");
+            var fileName = BlogConfig.MapPath(blog.StorageLocation + "categories.xml");
             if (!File.Exists(fileName))
             {
                 return null;

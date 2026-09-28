@@ -1,55 +1,59 @@
 ﻿using System;
-using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
-using BlogEngine.Core.Providers;
-using System.Drawing.Imaging;
 using System.Reflection;
+using BlogEngine.Core.Providers;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Formats.Bmp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Tiff;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace BlogEngine.Core.FileSystem
 {
     /// <summary>
-    /// image specific class, will contain the extra methods and properties of an image
+    /// Image specific class, will contain the extra methods and properties of an image.
+    /// Uses SixLabors.ImageSharp for cross-platform image processing.
     /// </summary>
     public partial class Image : File
     {
-        #region Fields , Constants & Enums
-        /// <summary>
-        /// the current image bitmap. call the accessor directly
-        /// </summary>
-        private Bitmap bitmap;
+        #region Fields, Constants & Enums
 
         /// <summary>
-        /// enum for the file modification methods
+        /// The current image. Call the accessor directly.
+        /// </summary>
+        private Image<Rgba32> _image;
+
+        /// <summary>
+        /// The detected format of the current image.
+        /// </summary>
+        private IImageFormat _detectedFormat;
+
+        /// <summary>
+        /// Enum for the file modification methods.
         /// </summary>
         public enum ModificationType
         {
-            /// <summary>
-            /// Flip the image horizontally
-            /// </summary>
+            /// <summary>Flip the image horizontally</summary>
             FlipHorizontal,
-
-            /// <summary>
-            /// Flip the image vertically
-            /// </summary>
+            /// <summary>Flip the image vertically</summary>
             FlipVertical,
-
-            /// <summary>
-            /// 270 degree clockwise rotation without flipping
-            /// </summary>
+            /// <summary>270 degree clockwise rotation without flipping</summary>
             RotateLeft,
-
-            /// <summary>
-            /// 90 degree clockwise rotation without flipping
-            /// </summary>
+            /// <summary>90 degree clockwise rotation without flipping</summary>
             RotateRight
         }
+
         #endregion
 
         #region Ctor
+
         /// <summary>
-        /// ctor, copys all the properties from the file object into the new object.
+        /// Ctor, copies all the properties from the file object into the new object.
         /// </summary>
         public Image(File obj)
         {
@@ -61,11 +65,10 @@ namespace BlogEngine.Core.FileSystem
             }
             if (!this.IsImage)
                 throw new Exception("File not of an image type");
-            
         }
 
         /// <summary>
-        /// ctor, property free constructor, initiates the this.Image(file) passing in a null file reference
+        /// Ctor, property free constructor.
         /// </summary>
         public Image()
             : this(null) { }
@@ -73,28 +76,26 @@ namespace BlogEngine.Core.FileSystem
         #endregion
 
         #region Properties
+
         /// <summary>
-        /// gets the bitmap of the current image Item
+        /// Gets the ImageSharp image of the current image item.
         /// </summary>
-        /// <remarks>
-        /// set accessor set to internal
-        /// </remarks>
-        public Bitmap bitMap
+        public Image<Rgba32> ImageData
         {
             get
             {
-                if (this.bitmap == null)
-                    bitMap = ArrayToBmp(this.FileContents);
-                return this.bitmap;
+                if (_image == null)
+                    LoadImageFromContents();
+                return _image;
             }
             internal set
             {
-                this.bitmap = value;
+                _image = value;
             }
         }
 
         /// <summary>
-        /// gets the full download path to the file, using the file handler
+        /// Gets the full download path to the file, using the file handler.
         /// </summary>
         public string ImageUrl
         {
@@ -107,18 +108,62 @@ namespace BlogEngine.Core.FileSystem
         #endregion
 
         #region Methods
+
         /// <summary>
-        /// resizes the image to a new size. The image will be replaced
+        /// Loads the image and detected format from FileContents.
         /// </summary>
-        /// <param name="newSize">the new Size for the image</param>
-        /// <returns>the new image</returns>
+        private void LoadImageFromContents()
+        {
+            _detectedFormat = SixLabors.ImageSharp.Image.DetectFormat(this.FileContents);
+            _image = SixLabors.ImageSharp.Image.Load<Rgba32>(this.FileContents);
+        }
+
+        /// <summary>
+        /// Gets an appropriate encoder for the detected format.
+        /// </summary>
+        private IImageEncoder GetEncoder()
+        {
+            if (_detectedFormat == null)
+                return new PngEncoder();
+
+            var name = _detectedFormat.Name;
+            return name switch
+            {
+                "JPEG" => new JpegEncoder { Quality = 90 },
+                "BMP" => new BmpEncoder(),
+                "GIF" => new GifEncoder(),
+                "TIFF" => new TiffEncoder(),
+                _ => new PngEncoder()
+            };
+        }
+
+        /// <summary>
+        /// Converts the current ImageSharp image to a byte array using the detected format.
+        /// </summary>
+        private byte[] ImageToArray(Image<Rgba32> img)
+        {
+            using var ms = new MemoryStream();
+            img.Save(ms, GetEncoder());
+            return ms.ToArray();
+        }
+
+        /// <summary>
+        /// Resizes the image to a new size. The image will be replaced.
+        /// </summary>
+        /// <param name="newSize">The new size for the image.</param>
+        /// <returns>The resized image.</returns>
         public Image ResizeImage(Size newSize)
         {
-            ImageFormat imgFormat = GetImageFormat(this.bitMap);  // get original ImageFormat before this.bitMap is modified.
-            this.bitMap = (Bitmap)resizeImage((System.Drawing.Image)this.bitMap, newSize);
-            var nfile = BlogService.UploadFile(BmpToArray(this.bitMap, imgFormat), this.Name, this.ParentDirectory, true);
+            var img = ImageData;
+            img.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = newSize,
+                Mode = ResizeMode.Max
+            }));
+            var nfile = BlogService.UploadFile(ImageToArray(img), this.Name, this.ParentDirectory, true);
             this.FileContents = nfile.FileContents;
             nfile.Dispose();
+            _image = null; // force reload
             return this;
         }
 
@@ -130,100 +175,92 @@ namespace BlogEngine.Core.FileSystem
         /// <returns>Byte array containing the newly generated thumbnail image.</returns>
         public static byte[] ResizeImageThumbnail(int MaxSize, byte[] originalContents)
         {
-            var bmp = ArrayToBmp(originalContents);
-            ImageFormat imgFormat = GetImageFormat(bmp);  // get original ImageFormat before bmp is modified.
-            bmp = (Bitmap)resizeImage((System.Drawing.Image)bmp, new Size(MaxSize, MaxSize));
-            originalContents = BmpToArray(bmp, imgFormat);
-            bmp.Dispose();
-            return originalContents;
+            IImageFormat detectedFormat = SixLabors.ImageSharp.Image.DetectFormat(originalContents); using var img = SixLabors.ImageSharp.Image.Load<Rgba32>(originalContents);
+            img.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = new Size(MaxSize, MaxSize),
+                Mode = ResizeMode.Max
+            }));
+
+            var encoder = GetEncoderForFormat(detectedFormat);
+            using var ms = new MemoryStream();
+            img.Save(ms, encoder);
+            return ms.ToArray();
         }
 
         /// <summary>
-        /// resizes the image to a new size based on a percentage
+        /// Resizes the image to a new size based on a percentage.
         /// </summary>
-        /// <param name="Percent">the percentage to resize</param>
-        /// <returns>the new image</returns>
-        /// <remarks>
-        /// This may not be exactly to the percent as we must maintain aspect ratios.
-        /// </remarks>
+        /// <param name="Percent">The percentage to resize.</param>
+        /// <returns>The resized image.</returns>
         public Image ResizeImage(decimal Percent)
         {
-            int sizeX = (int)Math.Ceiling((decimal)this.bitMap.Width * (decimal)((decimal)Percent / 100));
-            int sizeY = (int)Math.Ceiling((decimal)this.bitMap.Height * (decimal)((decimal)Percent / 100));
-            var newSize = new Size(sizeX, sizeY);
-            ImageFormat imgFormat = GetImageFormat(this.bitMap);  // get original ImageFormat before this.bitMap is modified.
-            this.bitMap = (Bitmap)resizeImage((System.Drawing.Image)this.bitMap, newSize);
-            var nfile = BlogService.UploadFile(BmpToArray(this.bitMap, imgFormat), this.Name, this.ParentDirectory, true);
+            var img = ImageData;
+            int sizeX = (int)Math.Ceiling(img.Width * (Percent / 100));
+            int sizeY = (int)Math.Ceiling(img.Height * (Percent / 100));
+            img.Mutate(x => x.Resize(new ResizeOptions
+            {
+                Size = new Size(sizeX, sizeY),
+                Mode = ResizeMode.Max
+            }));
+            var nfile = BlogService.UploadFile(ImageToArray(img), this.Name, this.ParentDirectory, true);
             this.FileContents = nfile.FileContents;
             nfile.Dispose();
+            _image = null;
             return this;
         }
 
         /// <summary>
-        /// accepts change requests for an image for rotate &amp; flip
+        /// Accepts change requests for an image for rotate &amp; flip.
         /// </summary>
-        /// <param name="modifications">a list of changes, will be executed in the order recieved</param>
-        /// <returns>the original image</returns>
+        /// <param name="modifications">A list of changes, will be executed in the order received.</param>
+        /// <returns>The original image.</returns>
         public Image ModifyImage(params ModificationType[] modifications)
         {
-            ImageFormat imgFormat = GetImageFormat(this.bitMap);  // get original ImageFormat before this.bitMap is modified.
+            var img = ImageData;
             foreach (var change in modifications)
             {
                 switch (change)
                 {
                     case ModificationType.RotateLeft:
-                        this.bitMap.RotateFlip(RotateFlipType.Rotate270FlipNone);
+                        img.Mutate(x => x.Rotate(RotateMode.Rotate270));
                         break;
                     case ModificationType.RotateRight:
-                        this.bitMap.RotateFlip(RotateFlipType.Rotate90FlipNone);
+                        img.Mutate(x => x.Rotate(RotateMode.Rotate90));
                         break;
                     case ModificationType.FlipHorizontal:
-                        this.bitMap.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                        img.Mutate(x => x.Flip(FlipMode.Horizontal));
                         break;
                     case ModificationType.FlipVertical:
-                        this.bitMap.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                        img.Mutate(x => x.Flip(FlipMode.Vertical));
                         break;
                 }
             }
-            var nfile = BlogService.UploadFile(BmpToArray(this.bitMap, imgFormat), this.Name, this.ParentDirectory, true);
+            var nfile = BlogService.UploadFile(ImageToArray(img), this.Name, this.ParentDirectory, true);
             this.FileContents = nfile.FileContents;
             nfile.Dispose();
+            _image = null;
             return this;
         }
 
         /// <summary>
-        /// Crops an image by giving the crop start x &amp; y co-ordinates and then the height &amp; width to crop to. Making a perfect rectangle of the crop area.
+        /// Crops an image by giving the crop start x &amp; y co-ordinates and then the height &amp; width to crop to.
         /// </summary>
-        /// <param name="x">the x co-ordinate</param>
-        /// <param name="y">the y co-ordinate</param>
-        /// <param name="width">the width to crop</param>
-        /// <param name="height">the height to crop</param>
-        /// <returns>the new object, on exception the image will not be modified.</returns>
+        /// <param name="x">The x co-ordinate.</param>
+        /// <param name="y">The y co-ordinate.</param>
+        /// <param name="width">The width to crop.</param>
+        /// <param name="height">The height to crop.</param>
+        /// <returns>The cropped image, on exception the image will not be modified.</returns>
         public Image CropImage(int x, int y, int width, int height)
         {
             try
             {
-                ImageFormat imgFormat = GetImageFormat(this.bitMap);  // get original ImageFormat now.
-                Rectangle cropArea = new Rectangle(x, y, width, height);
-                Bitmap target = new Bitmap(cropArea.Width, cropArea.Height);
-
-                using (Graphics g = Graphics.FromImage(target))
-                {
-                    g.DrawImage(this.bitMap, new Rectangle(0, 0, width, height),
-                                     new Rectangle(x, y, target.Width, target.Height),
-                                     GraphicsUnit.Pixel);
-
-                }
-                //Bitmap bmpCrop = this.bitMap.Clone(cropArea, PixelFormat.DontCare);
-                //this.bitMap = bmpCrop;
-                //var nfile = BlogService.UploadFile(BmpToArray(this.bitMap), this.Name, this.ParentDirectory, true);
-                //this.FileContents = nfile.FileContents;
-                //nfile.Dispose();
-
-                var nfile = BlogService.UploadFile(BmpToArray(target, imgFormat), this.Name, this.ParentDirectory, true);
+                var img = ImageData;
+                img.Mutate(ctx => ctx.Crop(new Rectangle(x, y, width, height)));
+                var nfile = BlogService.UploadFile(ImageToArray(img), this.Name, this.ParentDirectory, true);
                 this.FileContents = nfile.FileContents;
-                this.bitMap.Dispose();
-                this.bitMap = null;
+                _image?.Dispose();
+                _image = null;
                 return this;
             }
             catch
@@ -233,106 +270,23 @@ namespace BlogEngine.Core.FileSystem
         }
 
         /// <summary>
-        /// converts a byte array to a bitmap
+        /// Gets an appropriate encoder for the given format.
         /// </summary>
-        /// <param name="inArray">the in array</param>
-        /// <returns>the new bitmap</returns>
-        private static Bitmap ArrayToBmp(byte[] inArray)
+        private static IImageEncoder GetEncoderForFormat(IImageFormat format)
         {
-            using (MemoryStream ms = new MemoryStream(inArray))
+            if (format == null)
+                return new PngEncoder();
+
+            return format.Name switch
             {
-                Bitmap bmp = (Bitmap)System.Drawing.Image.FromStream(ms);
-                return bmp;
-            }
+                "JPEG" => new JpegEncoder { Quality = 90 },
+                "BMP" => new BmpEncoder(),
+                "GIF" => new GifEncoder(),
+                "TIFF" => new TiffEncoder(),
+                _ => new PngEncoder()
+            };
         }
 
-        /// <summary>
-        /// converts a bitmap to an array
-        /// </summary>
-        /// <param name="bmp">the bitmap to convert</param>
-        /// <param name="imgFormat">The format of the image to save to.</param>
-        /// <returns>the byte array object</returns>
-        private static byte[] BmpToArray(Bitmap bmp, ImageFormat imgFormat)
-        {
-            MemoryStream ms = new MemoryStream();
-            if (imgFormat == ImageFormat.MemoryBmp)  // getting an error when trying to save as MemoryBmp.  if MemoryBmp, switch to Png.
-                imgFormat = ImageFormat.Png;
-            bmp.Save(ms, imgFormat);
-            byte[] bmpBytes = ms.GetBuffer();
-            bmp.Dispose();
-            ms.Close();
-            return bmpBytes;
-        }
-
-        /// <summary>
-        /// Determines the image format of the image.
-        /// </summary>
-        /// <param name="image">The image to check.</param>
-        /// <returns>The image format</returns>
-        public static ImageFormat GetImageFormat(System.Drawing.Image image)
-        {
-            // note, when checking RawFormat, need to check via Equals() and not ==.
-            // == may be incorrect, where Equals() is correct.
-
-            if (image.RawFormat.Equals(ImageFormat.Jpeg))
-                return ImageFormat.Jpeg;
-            if (image.RawFormat.Equals(ImageFormat.Bmp))
-                return ImageFormat.Bmp;
-            if (image.RawFormat.Equals(ImageFormat.Png))
-                return ImageFormat.Png;
-            if (image.RawFormat.Equals(ImageFormat.Emf))
-                return ImageFormat.Emf;
-            if (image.RawFormat.Equals(ImageFormat.Exif))
-                return ImageFormat.Exif;
-            if (image.RawFormat.Equals(ImageFormat.Gif))
-                return ImageFormat.Gif;
-            if (image.RawFormat.Equals(ImageFormat.Icon))
-                return ImageFormat.Icon;
-            if (image.RawFormat.Equals(ImageFormat.MemoryBmp))
-                return ImageFormat.MemoryBmp;
-            if (image.RawFormat.Equals(ImageFormat.Tiff))
-                return ImageFormat.Tiff;
-            if (image.RawFormat.Equals(ImageFormat.Wmf))
-                return ImageFormat.Wmf;
-            else
-                return ImageFormat.Png;
-        }
-
-        /// <summary>
-        /// resizes an image to  specific size
-        /// </summary>
-        /// <param name="imgToResize">the image to resize</param>
-        /// <param name="size">the new size</param>
-        /// <returns>new resized image</returns>
-        private static System.Drawing.Image resizeImage(System.Drawing.Image imgToResize, Size size)
-        {
-            int sourceWidth = imgToResize.Width;
-            int sourceHeight = imgToResize.Height;
-
-            float nPercent = 0;
-            float nPercentW = 0;
-            float nPercentH = 0;
-
-            nPercentW = ((float)size.Width / (float)sourceWidth);
-            nPercentH = ((float)size.Height / (float)sourceHeight);
-
-            if (nPercentH < nPercentW)
-                nPercent = nPercentH;
-            else
-                nPercent = nPercentW;
-
-            int destWidth = (int)(sourceWidth * nPercent);
-            int destHeight = (int)(sourceHeight * nPercent);
-
-            Bitmap b = new Bitmap(destWidth, destHeight);
-            Graphics g = Graphics.FromImage((System.Drawing.Image)b);
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-
-            g.DrawImage(imgToResize, 0, 0, destWidth, destHeight);
-            g.Dispose();
-
-            return (System.Drawing.Image)b;
-        }
         #endregion
     }
 }

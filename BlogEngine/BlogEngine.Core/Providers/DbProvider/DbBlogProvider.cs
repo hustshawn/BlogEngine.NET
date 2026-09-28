@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Configuration;
-using System.Configuration.Provider;
+using Microsoft.Extensions.Configuration;
 using System.Data.Common;
 using System.IO;
 using System.Linq;
@@ -37,75 +36,44 @@ namespace BlogEngine.Core.Providers
         /// </summary>
         private string tablePrefix;
 
+        /// <summary>
+        /// The provider name for the database connection.
+        /// </summary>
+        private string providerName;
+
+        /// <summary>
+        /// The connection string.
+        /// </summary>
+        private string connectionString;
+
         #endregion
 
         /// <summary>
-        /// Initializes the provider
+        /// Default constructor for DI.
         /// </summary>
-        /// <param name="name">
-        /// Configuration name
-        /// </param>
-        /// <param name="config">
-        /// Configuration settings
-        /// </param>
-        public override void Initialize(string name, NameValueCollection config)
+        public DbBlogProvider()
         {
-            if (config == null)
-            {
-                throw new ArgumentNullException(nameof(config));
-            }
-
-            if (String.IsNullOrEmpty(name))
-            {
-                name = "DbBlogProvider";
-            }
-
-            if (String.IsNullOrEmpty(config["description"]))
-            {
-                config.Remove("description");
-                config.Add("description", "Generic Database Blog Provider");
-            }
-
-            base.Initialize(name, config);
-
-            if (config["connectionStringName"] == null)
-            {
-                // default to BlogEngine
-                config["connectionStringName"] = "BlogEngine";
-            }
-
-            this.connStringName = config["connectionStringName"];
-            config.Remove("connectionStringName");
-
-            if (config["tablePrefix"] == null)
-            {
-                // default
-                config["tablePrefix"] = "be_";
-            }
-
-            this.tablePrefix = config["tablePrefix"];
-            config.Remove("tablePrefix");
-
-            if (config["parmPrefix"] == null)
-            {
-                // default
-                config["parmPrefix"] = "@";
-            }
-
-            this.parmPrefix = config["parmPrefix"];
-            config.Remove("parmPrefix");
-
-            // Throw an exception if unrecognized attributes remain
-            if (config.Count > 0)
-            {
-                var attr = config.GetKey(0);
-                if (!String.IsNullOrEmpty(attr))
-                {
-                    throw new ProviderException($"Unrecognized attribute: {attr}");
-                }
-            }
         }
 
+        /// <summary>
+        /// Constructor accepting IConfiguration for connection string resolution.
+        /// </summary>
+        /// <param name="configuration">The application configuration.</param>
+        /// <param name="connectionStringName">Name of the connection string in configuration. Defaults to "BlogEngine".</param>
+        /// <param name="tablePrefix">Table prefix. Defaults to "be_".</param>
+        /// <param name="parmPrefix">Parameter prefix. Defaults to "@".</param>
+        public DbBlogProvider(IConfiguration configuration, string connectionStringName = "BlogEngine", string tablePrefix = "be_", string parmPrefix = "@")
+        {
+            this.connStringName = connectionStringName;
+            this.tablePrefix = tablePrefix;
+            this.parmPrefix = parmPrefix;
+
+            var connSection = configuration.GetSection($"ConnectionStrings:{connectionStringName}");
+            this.connectionString = configuration.GetConnectionString(connectionStringName);
+            // Try to get provider name from configuration; default to Microsoft.Data.SqlClient
+            this.providerName = configuration[$"ConnectionStrings:{connectionStringName}_ProviderName"]
+                ?? "Microsoft.Data.SqlClient";
+        }
         #region Public Methods
 
         #region Blogs
@@ -798,7 +766,7 @@ namespace BlogEngine.Core.Providers
                     post.Author = userName;
                     string content = BlogGeneratorConfig.PostContent.Replace("&lt;", "<").Replace("&gt;", ">");
                     post.Content = content.Contains("{1}") ?
-                        string.Format(content, userName, Utils.RelativeWebRoot + newBlog.Name + "/Account/login.aspx") : content;
+                        string.Format(content, userName, Utils.RelativeWebRoot + newBlog.Name + "/Account/login") : content;
                     InsertPost(post);
 
                     // be_posttags
@@ -2834,7 +2802,7 @@ namespace BlogEngine.Core.Providers
             {
                 if (conn.HasConnection)
                 {
-                    string conPrv = System.Web.Configuration.WebConfigurationManager.ConnectionStrings["BlogEngine"].ProviderName;
+                    string conPrv = this.providerName;
                     var q1 = "select count(*) from {0}CustomFields where CustomType = {1}customtype and BlogId = {1}blogid and ObjectId = {1}objectid and [Key] = {1}key";
                     var q2 = "insert into {0}CustomFields (CustomType, BlogId, ObjectId, [Key], [Value], [Attribute]) values ({1}customtype, {1}blogid, {1}objectid, {1}key, {1}value, {1}attribute)";
                     var q3 = "update {0}CustomFields set Value = {1}value, Attribute = {1}attribute where CustomType = {1}customtype and BlogId = {1}blogid and ObjectId = {1}objectid and [Key] = {1}key";
@@ -2884,7 +2852,7 @@ namespace BlogEngine.Core.Providers
         public override List<CustomField> FillCustomFields()
         {
             var items = new List<CustomField>();
-            string conPrv = System.Web.Configuration.WebConfigurationManager.ConnectionStrings["BlogEngine"].ProviderName;
+            string conPrv = this.providerName;
             var q = "SELECT CustomType, BlogId, ObjectId, [Key], [Value], [Attribute] FROM {0}CustomFields where BlogId = '{1}'";
             if (conPrv == "MySql.Data.MySqlClient")
             {
@@ -2927,7 +2895,7 @@ namespace BlogEngine.Core.Providers
             {
                 if (conn.HasConnection)
                 {
-                    string conPrv = System.Web.Configuration.WebConfigurationManager.ConnectionStrings["BlogEngine"].ProviderName;
+                    string conPrv = this.providerName;
                     var sqlQuery = "delete from {0}CustomFields where CustomType = {1}customtype and BlogId = {1}blogid and ObjectId = {1}objectid and [Key] = {1}key";
                     if (conPrv == "MySql.Data.MySqlClient")
                     {
@@ -2958,7 +2926,7 @@ namespace BlogEngine.Core.Providers
             {
                 if (conn.HasConnection)
                 {
-                    string conPrv = System.Web.Configuration.WebConfigurationManager.ConnectionStrings["BlogEngine"].ProviderName;
+                    string conPrv = this.providerName;
                     var sqlQuery = "delete from {0}CustomFields where CustomType = {1}customtype and BlogId = {1}blogid and ObjectId = {1}objectid";
                     if (conPrv == "MySql.Data.MySqlClient")
                     {
@@ -3024,8 +2992,7 @@ namespace BlogEngine.Core.Providers
         /// <returns></returns>
         private DbConnectionHelper CreateConnection()
         {
-            ConnectionStringSettings settings = ConfigurationManager.ConnectionStrings[this.connStringName];
-            return new DbConnectionHelper(settings);
+            return new DbConnectionHelper(this.providerName, this.connectionString);
         }
 
         /// <summary>

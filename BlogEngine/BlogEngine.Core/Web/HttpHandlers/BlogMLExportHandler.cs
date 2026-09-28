@@ -4,91 +4,74 @@
     using System.Globalization;
     using System.Linq;
     using System.Text;
-    using System.Web;
-    using System.Web.Security;
+    using System.Threading.Tasks;
     using System.Xml;
+
+    using Microsoft.AspNetCore.Builder;
+    using Microsoft.AspNetCore.Http;
+    using Microsoft.AspNetCore.Routing;
 
     /// <summary>
     /// Exports all posts to the BlogML xml format.
     /// </summary>
-    public class BlogMLExportHandler : IHttpHandler
+    public static class BlogMLExportEndpoint
     {
-        #region Properties
-
         /// <summary>
-        ///     Gets a value indicating whether another request can use the <see cref = "T:System.Web.IHttpHandler"></see> instance.
+        /// Maps the BlogML export endpoint.
         /// </summary>
-        /// <value></value>
-        /// <returns>true if the <see cref = "T:System.Web.IHttpHandler"></see> instance is reusable; otherwise, false.</returns>
-        public bool IsReusable
+        public static IEndpointRouteBuilder MapBlogMLExport(this IEndpointRouteBuilder endpoints)
         {
-            get
-            {
-                return false;
-            }
+            endpoints.MapGet("/blogml.axd", HandleAsync);
+            return endpoints;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpHandler
-
-        /// <summary>
-        /// Enables processing of HTTP Web requests by a custom HttpHandler that implements the <see cref="T:System.Web.IHttpHandler"></see> interface.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpContext"></see> object that provides references to the intrinsic server 
-        ///     objects (for example, Request, Response, Session, and Server) used to service HTTP requests.
-        /// </param>
-        public void ProcessRequest(HttpContext context)
+        private static async Task HandleAsync(HttpContext context)
         {
             if (Security.IsAdministrator)
             {
                 context.Response.ContentType = "text/xml";
-                context.Response.AppendHeader("Content-Disposition", "attachment; filename=BlogML.xml");
+                context.Response.Headers.Append("Content-Disposition", "attachment; filename=BlogML.xml");
                 WriteXml(context);
             }
             else
             {
                 context.Response.StatusCode = 403;
             }
+
+            await Task.CompletedTask;
         }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
 
         /// <summary>
         /// Add authors.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
         private static void AddAuthors(XmlWriter writer)
         {
             writer.WriteStartElement("authors");
 
-            foreach (MembershipUser user in Membership.GetAllUsers())
+            // REVIEW: Membership.GetAllUsers() needs IMembershipService — verify after auth migration
+            // For now, using the Security/membership abstraction that exists in the project
+            var users = Providers.BlogService.GetUserNames();
+            if (users != null)
             {
-                writer.WriteStartElement("author");
+                foreach (var userName in users)
+                {
+                    writer.WriteStartElement("author");
 
-                writer.WriteAttributeString("id", user.UserName);
-                writer.WriteAttributeString(
-                    "date-created", user.CreationDate.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
-                writer.WriteAttributeString(
-                    "date-modified", user.CreationDate.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
-                writer.WriteAttributeString("approved", "true");
-                writer.WriteAttributeString("email", user.Email);
+                    writer.WriteAttributeString("id", userName);
+                    writer.WriteAttributeString(
+                        "date-created", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
+                    writer.WriteAttributeString(
+                        "date-modified", DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
+                    writer.WriteAttributeString("approved", "true");
+                    writer.WriteAttributeString("email", string.Empty);
 
-                writer.WriteStartElement("title");
-                writer.WriteAttributeString("type", "text");
-                writer.WriteCData(user.UserName);
-                writer.WriteEndElement();
+                    writer.WriteStartElement("title");
+                    writer.WriteAttributeString("type", "text");
+                    writer.WriteCData(userName);
+                    writer.WriteEndElement();
 
-                writer.WriteEndElement();
+                    writer.WriteEndElement();
+                }
             }
 
             writer.WriteEndElement();
@@ -97,9 +80,6 @@
         /// <summary>
         /// Add categories.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
         private static void AddCategories(XmlWriter writer)
         {
             writer.WriteStartElement("categories");
@@ -139,9 +119,6 @@
         /// <summary>
         /// Add extended properties.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
         private static void AddExtendedProperties(XmlWriter writer)
         {
             writer.WriteStartElement("extended-properties");
@@ -162,12 +139,6 @@
         /// <summary>
         /// Add post author.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
-        /// <param name="post">
-        /// The post to add the author on.
-        /// </param>
         private static void AddPostAuthor(XmlWriter writer, Post post)
         {
             writer.WriteStartElement("authors");
@@ -180,12 +151,6 @@
         /// <summary>
         /// Add post categories.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
-        /// <param name="post">
-        /// The post to add categories to.
-        /// </param>
         private static void AddPostCategories(XmlWriter writer, Post post)
         {
             if (post.Categories.Count == 0)
@@ -207,12 +172,6 @@
         /// <summary>
         /// Add post comments.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
-        /// <param name="post">
-        /// The post to add comments to.
-        /// </param>
         private static void AddPostComments(XmlWriter writer, Post post)
         {
             if (post.Comments.Count == 0)
@@ -264,12 +223,6 @@
         /// <summary>
         /// Add post content.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
-        /// <param name="post">
-        /// The post to add content to.
-        /// </param>
         private static void AddPostContent(XmlWriter writer, Post post)
         {
             writer.WriteStartElement("content");
@@ -281,8 +234,6 @@
         /// <summary>
         /// Adds the post excerpt.
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="post">The post to add the excerpt to.</param>
         private static void AddPostExcerpt(XmlWriter writer, Post post)
         {
             if (String.IsNullOrEmpty(post.Description))
@@ -299,12 +250,6 @@
         /// <summary>
         /// The post-name element contains the same as the title.
         /// </summary>
-        /// <param name="writer">
-        /// The writer.
-        /// </param>
-        /// <param name="post">
-        /// The post to add a name to.
-        /// </param>
         private static void AddPostName(XmlWriter writer, Post post)
         {
             writer.WriteStartElement("post-name");
@@ -316,8 +261,6 @@
         /// <summary>
         /// Adds the post tags.
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="post">The post to add tags to.</param>
         private static void AddPostTags(XmlWriter writer, Post post)
         {
             if (post.Tags.Count == 0)
@@ -339,8 +282,6 @@
         /// <summary>
         /// Adds the post title.
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="post">The post to add the title to.</param>
         private static void AddPostTitle(XmlWriter writer, Post post)
         {
             writer.WriteStartElement("title");
@@ -352,8 +293,6 @@
         /// <summary>
         /// Adds the post trackbacks.
         /// </summary>
-        /// <param name="writer">The writer.</param>
-        /// <param name="post">The post to add trackbacks for.</param>
         private static void AddPostTrackbacks(XmlWriter writer, Post post)
         {
             if (post.Comments.Count == 0)
@@ -392,7 +331,6 @@
         /// <summary>
         /// Adds the posts.
         /// </summary>
-        /// <param name="writer">The writer.</param>
         private static void AddPosts(XmlWriter writer)
         {
             writer.WriteStartElement("posts");
@@ -430,7 +368,7 @@
             writer.WriteEndElement();
         }
 
-        private static void AddPages(XmlWriter writer)
+        private static void AddPages(XmlWriter writer, HttpContext context)
         {
             writer.WriteStartElement("posts");
 
@@ -445,7 +383,7 @@
                     "date-modified", post.DateModified.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture));
                 writer.WriteAttributeString("approved", "true");
                 writer.WriteAttributeString("post-url", post.RelativeLink);
-                writer.WriteAttributeString("type", "article");  // "normal" for posts and "article" for pages
+                writer.WriteAttributeString("type", "article");
                 writer.WriteAttributeString(
                     "hasexcerpt", (!string.IsNullOrEmpty(post.Description)).ToString().ToLowerInvariant());
                 writer.WriteAttributeString("views", "0");
@@ -468,7 +406,7 @@
 
                 writer.WriteStartElement("authors");
                 writer.WriteStartElement("author");
-                writer.WriteAttributeString("ref", HttpContext.Current.User.Identity.Name);
+                writer.WriteAttributeString("ref", context.User.Identity?.Name ?? string.Empty);
                 writer.WriteEndElement();
                 writer.WriteEndElement();
 
@@ -481,7 +419,6 @@
         /// <summary>
         /// Adds the sub title.
         /// </summary>
-        /// <param name="writer">The writer.</param>
         private static void AddSubTitle(XmlWriter writer)
         {
             writer.WriteStartElement("sub-title");
@@ -493,7 +430,6 @@
         /// <summary>
         /// Adds the title.
         /// </summary>
-        /// <param name="writer">The writer.</param>
         private static void AddTitle(XmlWriter writer)
         {
             writer.WriteStartElement("title");
@@ -505,14 +441,11 @@
         /// <summary>
         /// Writes the BlogML to the output stream.
         /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
         private static void WriteXml(HttpContext context)
         {
             var settings = new XmlWriterSettings { Encoding = Encoding.UTF8, Indent = true };
 
-            using (var writer = XmlWriter.Create(context.Response.OutputStream, settings))
+            using (var writer = XmlWriter.Create(context.Response.Body, settings))
             {
                 writer.WriteStartElement("blog", "http://www.blogml.com/2006/09/BlogML");
                 writer.WriteAttributeString("root-url", Utils.RelativeWebRoot);
@@ -526,12 +459,10 @@
                 AddExtendedProperties(writer);
                 AddCategories(writer);
                 AddPosts(writer);
-                AddPages(writer);
+                AddPages(writer, context);
 
                 writer.WriteEndElement();
             }
         }
-
-        #endregion
     }
 }

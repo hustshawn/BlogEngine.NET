@@ -1,10 +1,11 @@
+using BlogEngine.Core.Providers;
+using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Dynamic;
-using System.Web.Security;
 
 namespace BlogEngine.Core.Data
 {
@@ -28,17 +29,17 @@ namespace BlogEngine.Core.Data
 
             var users = new List<BlogUser>();
             int count;
-            var userCollection = Membership.Provider.GetAllUsers(0, 999, out count);
-            var members = userCollection.Cast<MembershipUser>().ToList();
+            var userCollection = BlogService.GetUserNames();
+            var members = userCollection.ToList();
 
             foreach (var m in members)
             {
                 users.Add(new BlogUser { 
                     IsChecked = false, 
-                    UserName = m.UserName, 
-                    Email = m.Email,
-                    Profile = GetProfile(m.UserName),
-                    Roles = GetRoles(m.UserName)
+                    UserName = m, 
+                    Email = "",
+                    Profile = GetProfile(m),
+                    Roles = GetRoles(m)
                 });
             }
 
@@ -62,18 +63,18 @@ namespace BlogEngine.Core.Data
 
             var users = new List<BlogUser>();
             int count;
-            var userCollection = Membership.Provider.GetAllUsers(0, 999, out count);
-            var members = userCollection.Cast<MembershipUser>().ToList();
+            var userCollection = BlogService.GetUserNames();
+            var members = userCollection.ToList();
 
             foreach (var m in members)
             {
                 users.Add(new BlogUser
                 {
                     IsChecked = false,
-                    UserName = m.UserName,
-                    Email = m.Email,
-                    Profile = GetProfile(m.UserName),
-                    Roles = GetRoles(m.UserName)
+                    UserName = m,
+                    Email = "",
+                    Profile = GetProfile(m),
+                    Roles = GetRoles(m)
                 });
             }
             return users.AsQueryable().Where("UserName.ToLower() == \"" + id.ToLower() + "\"").FirstOrDefault();
@@ -183,8 +184,8 @@ namespace BlogEngine.Core.Data
             // user remains, that user must be the current user, and can not be deleted, as it would lock the user out of the BE environment, left to fix
             // it in XML or SQL files / commands. See issue 11990
             bool adminsExist = false;
-            MembershipUserCollection users = Membership.GetAllUsers();
-            foreach (MembershipUser user in users)
+            var users = BlogService.GetUserNames();
+            foreach (dynamic user in users)
             {
                 string[] roles = Roles.GetRolesForUser(user.UserName);
 
@@ -226,7 +227,7 @@ namespace BlogEngine.Core.Data
 
         #region Private methods
 
-        static Profile GetProfile(string id)
+        static Data.Models.Profile GetProfile(string id)
         {
             if (!String.IsNullOrWhiteSpace(id))
             {
@@ -242,7 +243,7 @@ namespace BlogEngine.Core.Data
                     pf.Save();
                 }
                 
-                return new Profile { 
+                return new Data.Models.Profile { 
                     AboutMe = string.IsNullOrEmpty(pf.AboutMe) ? "" : pf.AboutMe,
                     Birthday = pf.Birthday.ToShortDateString(),
                     CityTown = string.IsNullOrEmpty(pf.CityTown) ? "" : pf.CityTown,
@@ -385,7 +386,7 @@ namespace BlogEngine.Core.Data
             }
         }
 		
-        bool ChangePassword(MembershipUser user, string password, string newPassword)
+        bool ChangePassword(dynamic user, string password, string newPassword)
         {
             return user.ChangePassword(password, newPassword);
         }

@@ -3,15 +3,15 @@
     using System;
     using System.Collections.Generic;
     using System.Collections.Specialized;
-    using System.Configuration.Provider;
 
     using DataStore;
     using Packaging;
 
     /// <summary>
     /// A base class for all custom providers to inherit from.
+    /// Implements IBlogProvider for DI registration.
     /// </summary>
-    public abstract class BlogProvider : ProviderBase
+    public abstract class BlogProvider : IBlogProvider
     {
         // Post
         #region Public Methods

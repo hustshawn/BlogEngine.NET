@@ -1,3 +1,4 @@
+using System.Net;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Data.Services;
@@ -5,8 +6,6 @@ using BlogEngine.Core.Data.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Web;
-using System.Web.Security;
 
 namespace BlogEngine.Core.Data
 {
@@ -86,7 +85,7 @@ namespace BlogEngine.Core.Data
                 c.Id = Guid.NewGuid();
                 c.ParentId = item.ParentId;
                 c.IsApproved = true;
-                c.Content = HttpUtility.HtmlAttributeEncode(item.Content);
+                c.Content = WebUtility.HtmlEncode(item.Content);
 
                 c.Author = Security.CurrentUser.Identity.Name;
                 var profile = AuthorProfile.GetProfile(c.Author);
@@ -95,7 +94,7 @@ namespace BlogEngine.Core.Data
                     c.Author = profile.DisplayName;
                 }
 
-                c.Email = Membership.Provider.GetUser(Security.CurrentUser.Identity.Name, true).Email;
+                c.Email = Membership.GetUser(Security.CurrentUser.Identity.Name).Email;
                 c.IP = Utils.GetClientIP();
                 c.DateCreated = DateTime.Now;
                 c.Parent = post;

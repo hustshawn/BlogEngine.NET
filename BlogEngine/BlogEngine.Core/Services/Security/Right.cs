@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Web;
 
 namespace BlogEngine.Core
 {
@@ -10,23 +9,16 @@ namespace BlogEngine.Core
     /// A wrapper class for Rights enum values that allows for providing more information.
     /// </summary>
     /// <remarks>
-    /// 
     /// This class needs to be kept in sync with Role creation/editing/deleting.
-    /// 
-    /// 
-    /// 
     /// </remarks>
-    public sealed class Right : IHttpModule
+    public sealed class Right
     {
 
         #region "Static"
 
         #region "Fields"
 
-        // These dictionaries would probably be better condensed into something else.
-
         private static readonly object staticLockObj = new Object();
-
 
         private static readonly ReadOnlyCollection<Rights> rightFlagValues;
         private static readonly ReadOnlyCollection<Right> allRightInstances;
@@ -40,44 +32,37 @@ namespace BlogEngine.Core
         private static readonly Dictionary<string, Right> rightsByName = new Dictionary<string, Right>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<Guid, Dictionary<string, HashSet<Right>>> rightsByRole = new Dictionary<Guid, Dictionary<string, HashSet<Right>>>();
 
+        /// <summary>
+        /// Static reference to the role service, set during application startup.
+        /// </summary>
+        private static Services.Security.IRoleService _roleService;
+
+        /// <summary>
+        /// Static reference to the membership service, set during application startup.
+        /// </summary>
+        private static Services.Security.IMembershipService _membershipService;
+
         #endregion
 
-        #region "IHttpModule"
-
         /// <summary>
-        /// Initializes a module and prepares it to handle requests.
+        /// Initializes the Right class with the role and membership services.
+        /// Must be called during application startup.
         /// </summary>
-        /// <param name="context">An <see cref="T:System.Web.HttpApplication"/> that provides access to the methods, properties, and events common to all application objects within an ASP.NET application</param>
-        public void Init(HttpApplication context)
+        public static void Initialize(Services.Security.IRoleService roleService, Services.Security.IMembershipService membershipService)
         {
-            context.BeginRequest += ContextBeginRequest;
-        }
-
-        /// <summary>
-        /// Handles the BeginRequest event of the context control.
-        /// </summary>
-        /// <param name="sender">
-        /// The source of the event.
-        /// </param>
-        /// <param name="e">
-        /// The <see cref="System.EventArgs"/> instance containing the event data.
-        /// </param>
-        private static void ContextBeginRequest(object sender, EventArgs e)
-        {
-            //var context = ((HttpApplication)sender).Context;
-
+            _roleService = roleService;
+            _membershipService = membershipService;
             EnsureBlogInstanceDataLoaded();
         }
 
         /// <summary>
-        /// Disposes of the resources (other than memory) used by the module that implements <see cref="T:System.Web.IHttpModule"/>.
+        /// Ensures blog instance data is loaded. Should be called at the beginning of each request.
+        /// Replaces the IHttpModule.Init/BeginRequest pattern.
         /// </summary>
-        public void Dispose()
+        public static void EnsureInitialized()
         {
-            // Nothing to dispose
+            EnsureBlogInstanceDataLoaded();
         }
-
-        #endregion
 
         static Right()
         {
@@ -107,8 +92,6 @@ namespace BlogEngine.Core
             }
 
             allRightInstances = allRights.AsReadOnly();
-
-            EnsureBlogInstanceDataLoaded();
 
             Blog.Saved += (s, e) =>
             {
@@ -144,14 +127,23 @@ namespace BlogEngine.Core
         /// </summary>
         public static void RefreshAllRights()
         {
-
             var flagType = typeof(Rights);
 
             lock (staticLockObj)
             {
                 RightsByRole.Clear();
 
-                var allRoles = new HashSet<string>(System.Web.Security.Roles.GetAllRoles(), StringComparer.OrdinalIgnoreCase);
+                string[] allRolesArr;
+                if (_roleService != null)
+                {
+                    allRolesArr = _roleService.GetAllRoles();
+                }
+                else
+                {
+                    allRolesArr = Array.Empty<string>();
+                }
+
+                var allRoles = new HashSet<string>(allRolesArr, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var role in allRoles)
                 {
@@ -177,8 +169,7 @@ namespace BlogEngine.Core
 
                 foreach (var pair in BlogEngine.Core.Providers.BlogService.FillRights())
                 {
-                    // Ignore any values that are invalid. This is bound to happen
-                    // during updates if a value gets renamed or removed.
+                    // Ignore any values that are invalid.
                     if (Right.RightExists(pair.Key))
                     {
                         var key = GetRightByName(pair.Key);
@@ -197,14 +188,9 @@ namespace BlogEngine.Core
                     }
                 }
 
-                // Note: To reset right/roles to the defaults, the data store can be
-                // cleared out (delete rights.xml or clear DB table).  Then these
-                // defaults will be setup.
-
                 bool defaultsAdded = false;
 
-                // Check that the anonymous role is set up properly. If no rights
-                // are found, then the defaults need to be set.
+                // Check that the anonymous role is set up properly.
                 if (!GetRights(anonymousRole).Any())
                 {
                     List<Rights> defaultRoleRights = GetDefaultRights(anonymousRole);
@@ -216,8 +202,7 @@ namespace BlogEngine.Core
                     defaultsAdded = true;
                 }
 
-                // Check that the editor role is set up properly. If no rights
-                // are found, then the defaults need to be set.
+                // Check that the editor role is set up properly.
                 if (!GetRights(editorsRole).Any())
                 {
                     List<Rights> defaultRoleRights = GetDefaultRights(editorsRole);
@@ -235,11 +220,6 @@ namespace BlogEngine.Core
                     if (kvp.Key != Rights.None)
                     {
                         kvp.Value.AddRole(adminRole);
-
-                        // could set defaultsAdded to true if the right doesn't already
-                        // have the adminRole in it.  since the admin always gets all
-                        // rights and they cannot be removed, we simply grant the admin
-                        // all rights without the need to persist that.
                     }
                 }
 
@@ -248,14 +228,11 @@ namespace BlogEngine.Core
                     BlogEngine.Core.Providers.BlogService.SaveRights();
                 }
             }
-
         }
 
         /// <summary>
         /// Gets the list of default rights for the given role name.
         /// </summary>
-        /// <param name="roleName">The role for which we are obtaining rights.</param>
-        /// <returns>If the role is found, a list of the appropriate rights. Otherwise, an empty list of rights.</returns>
         public static List<Rights> GetDefaultRights(string roleName)
         {
             if (string.IsNullOrEmpty(roleName)) { return new List<Rights>(); }
@@ -303,10 +280,8 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
-        /// Handles updating Role name changes, so Role names tied to Rights stay in sync.
+        /// Handles updating Role name changes.
         /// </summary>
-        /// <param name="oldname">The old Role name.</param>
-        /// <param name="newname">The new Role name.</param>
         public static void OnRenamingRole(string oldname, string newname)
         {
             IEnumerable<Right> rightsWithRole = Right.GetRights(oldname);
@@ -325,7 +300,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Handles removing Roles tied to Rights when a Role will be deleted.
         /// </summary>
-        /// <param name="roleName"></param>
         public static void OnRoleDeleting(string roleName)
         {
             IEnumerable<Right> rightsWithRole = Right.GetRights(roleName);
@@ -343,8 +317,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Call this method for verifying role names and then trimming the string.
         /// </summary>
-        /// <param name="roleName"></param>
-        /// <returns></returns>
         private static string PrepareRoleName(string roleName)
         {
             if (String.IsNullOrWhiteSpace(roleName))
@@ -360,7 +332,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns an IEnumerable of all of the Rights that exist on BlogEngine.
         /// </summary>
-        /// <returns></returns>
         public static IEnumerable<Right> GetAllRights()
         {
             return Right.allRightInstances;
@@ -369,8 +340,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns a Right instance based on its name.
         /// </summary>
-        /// <param name="rightName"></param>
-        /// <returns></returns>
         public static Right GetRightByName(string rightName)
         {
             if (String.IsNullOrWhiteSpace(rightName))
@@ -394,11 +363,8 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns a Right instance based on the flag.
         /// </summary>
-        /// <param name="flag"></param>
-        /// <returns></returns>
         public static Right GetRightByFlag(Rights flag)
         {
-
             Right right = null;
             if (rightsByFlag.TryGetValue(flag, out right))
             {
@@ -408,7 +374,6 @@ namespace BlogEngine.Core
             {
                 throw new KeyNotFoundException("Unable to find a corresponding right for the given flag");
             }
-
         }
 
         private static IEnumerable<Right> GetRightsInternal(string roleName)
@@ -423,8 +388,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns an IEnumerable of Rights that are in the given role.
         /// </summary>
-        /// <param name="roleName"></param>
-        /// <returns></returns>
         public static IEnumerable<Right> GetRights(string roleName)
         {
             return GetRightsInternal(roleName).ToList().AsReadOnly();
@@ -433,8 +396,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Returns an IEnumerable of Rights that are in all of the given roles.
         /// </summary>
-        /// <param name="roles"></param>
-        /// <returns></returns>
         public static IEnumerable<Right> GetRights(IEnumerable<string> roles)
         {
             if (roles == null)
@@ -461,14 +422,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets whether or not a Right exists within any of the given roles.
         /// </summary>
-        /// <param name="right"></param>
-        /// <param name="roles"></param>
-        /// <returns>
-        /// 
-        /// Use this method instead of GetRights().Contains() as it'll be
-        /// much faster than having to create a new collection of Right instances each time.
-        /// 
-        /// </returns>
         public static bool HasRight(Rights right, IEnumerable<string> roles)
         {
             if (roles == null)
@@ -484,8 +437,6 @@ namespace BlogEngine.Core
                 var validRoles = GetRightByFlag(right).Roles;
                 if (roles.Count() == 1)
                 {
-                    // This is faster than intersecting, so this is
-                    // special cased.
                     return validRoles.Contains(roles.First(), StringComparer.OrdinalIgnoreCase);
                 }
                 else
@@ -498,8 +449,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Checks to see if a Right exists by the given name.
         /// </summary>
-        /// <param name="rightName"></param>
-        /// <returns></returns>
         public static bool RightExists(string rightName)
         {
             return rightsByName.ContainsKey(rightName);
@@ -518,15 +467,13 @@ namespace BlogEngine.Core
         private readonly Dictionary<Guid, ReadOnlyCollection<string>> _readOnlyRoles;
         private readonly Dictionary<Guid, List<string>> _rolesWithRight;
 
-
         #endregion
 
         #region "Constructor"
+
         /// <summary>
         /// Private constructor for creating a Right instance.
         /// </summary>
-        /// <param name="Right"></param>
-        /// <param name="RightEnumName"></param>
         private Right(Rights Right, string RightEnumName)
         {
             _flag = Right;
@@ -534,9 +481,6 @@ namespace BlogEngine.Core
             _rolesWithRight = new Dictionary<Guid, List<string>>();
             _readOnlyRoles = new Dictionary<Guid, ReadOnlyCollection<string>>();
         }
-
-        // empty constructor so Right can be an HttpModule.
-        private Right() { }
 
         #endregion
 
@@ -547,7 +491,7 @@ namespace BlogEngine.Core
             Blog blog = Blog.CurrentInstance;
 
             // either all the right instances will be setup for the current blog instance, or none
-            // of them will be.  check just the first one to see if it is setup for the current
+            // of them will be. check just the first one to see if it is setup for the current
             // blog instance.
 
             if (!allRightInstances[0]._readOnlyRoles.ContainsKey(blog.Id))
@@ -562,7 +506,6 @@ namespace BlogEngine.Core
             if (!rightsByRole.ContainsKey(blog.Id))
             {
                 // touch RightsByRole to make sure data for current blog instance is loaded
-                // in the static rightsByRole.
                 var rr = RightsByRole;
             }
         }
@@ -608,52 +551,42 @@ namespace BlogEngine.Core
 
         private static void InitRightForBlogInstance()
         {
-            // Make sure the Administrator role exists with the Role provider.
-            if (!System.Web.Security.Roles.RoleExists(BlogConfig.AdministratorRole))
+            if (_roleService != null)
             {
-                System.Web.Security.Roles.CreateRole(BlogConfig.AdministratorRole);
-
-                // if no one is in the admin role, and there is a user named "admin", add that user
-                // to the role.
-                if (System.Web.Security.Roles.GetUsersInRole(BlogConfig.AdministratorRole).Length == 0)
+                // Make sure the Administrator role exists.
+                if (!_roleService.RoleExists(BlogConfig.AdministratorRole))
                 {
-                    System.Web.Security.MembershipUser membershipUser = System.Web.Security.Membership.GetUser("Admin");
-                    if (membershipUser != null)
+                    _roleService.CreateRole(BlogConfig.AdministratorRole);
+
+                    // if no one is in the admin role, and there is a user named "admin", add that user
+                    if (_roleService.GetUsersInRole(BlogConfig.AdministratorRole).Length == 0)
                     {
-                        System.Web.Security.Roles.AddUsersToRoles(new string[] { membershipUser.UserName }, new string[] { BlogConfig.AdministratorRole });
+                        if (_membershipService != null)
+                        {
+                            var membershipUser = _membershipService.GetUser("Admin");
+                            if (membershipUser != null)
+                            {
+                                _roleService.AddUsersToRoles(new string[] { membershipUser.UserName }, new string[] { BlogConfig.AdministratorRole });
+                            }
+                        }
                     }
+                }
+
+                // Make sure the Anonymous role exists.
+                if (!_roleService.RoleExists(BlogConfig.AnonymousRole))
+                {
+                    _roleService.CreateRole(BlogConfig.AnonymousRole);
+                }
+
+                // Make sure the Editors role exists.
+                if (!_roleService.RoleExists(BlogConfig.EditorsRole))
+                {
+                    _roleService.CreateRole(BlogConfig.EditorsRole);
                 }
             }
 
-            // Make sure the Anonymous role exists with the Role provider.
-            if (!System.Web.Security.Roles.RoleExists(BlogConfig.AnonymousRole))
-            {
-                // Users shouldn't actually be in the anonymous role, since the role is specifically for people who aren't users.
-                System.Web.Security.Roles.CreateRole(BlogConfig.AnonymousRole);
-            }
-
-            // Make sure the Editors role exists with the Role provider.
-            if (!System.Web.Security.Roles.RoleExists(BlogConfig.EditorsRole))
-            {
-                System.Web.Security.Roles.CreateRole(BlogConfig.EditorsRole);
-            }
-
-            var adminRole = BlogConfig.AdministratorRole;
-
             RefreshAllRights();
         }
-
-        // These should use attributes to set up the basic part. Perhaps DisplayNameAttribute
-        // for getting a label key that can be translated appropriately. 
-
-        //public string ResourceLabelKey
-        //{
-        //    get
-        //    {
-        //        return _resourceLabelKey;
-        //    }
-        //}
-        //private readonly string _resourceLabelKey;
 
         /// <summary>
         /// Returns a display-friendly version of this Right's name.
@@ -686,14 +619,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets the name of this right.
         /// </summary>
-        /// <remarks>
-        /// 
-        /// This returns the string name of the Flag enum that this instance represents.
-        /// 
-        /// This value should be the one that's serialized to the provider's data store as
-        /// it's far less likely to change than the numerical value.
-        /// 
-        /// </remarks>
         public string Name
         {
             get { return _name; }
@@ -703,15 +628,10 @@ namespace BlogEngine.Core
         /// <summary>
         /// Gets the Roles that currently have this Right.
         /// </summary>
-        /// <remarks>
-        /// This returns a read only wrapper around the internal roles list. The Roles list is not allowed
-        /// to be altered anywhere. Changes to the list need to go through the proper channels.
-        /// </remarks>
         public IEnumerable<string> Roles
         {
             get { return ReadOnlyRoles; }
         }
-
 
         #endregion
 
@@ -720,14 +640,6 @@ namespace BlogEngine.Core
         /// <summary>
         /// Adds a role to the list of roles that have this Right.
         /// </summary>
-        /// <param name="roleName"></param>
-        /// <returns>True if the role doesn't already exist in the list of roles. Otherwise, false.</returns>
-        /// <remarks>
-        /// 
-        /// Use this method specifically to add roles to the internal list. This lets us keep track
-        /// of what's added to it.
-        /// 
-        /// </remarks>
         public bool AddRole(string roleName)
         {
             roleName = PrepareRoleName(roleName);
@@ -749,17 +661,8 @@ namespace BlogEngine.Core
         /// <summary>
         /// Removes a Role from the collection of roles that allow this Right.
         /// </summary>
-        /// <param name="roleName"></param>
-        /// <returns>Returns true if the role was removed, false otherwise.</returns>
-        /// <remarks>
-        /// 
-        /// Use this method specifically to remove roles from the internal list. This lets us keep track
-        /// of what's removed from it.
-        /// 
-        /// </remarks>
         public bool RemoveRole(string roleName)
         {
-
             roleName = PrepareRoleName(roleName);
 
             if (roleName.Equals(BlogConfig.AdministratorRole, StringComparison.OrdinalIgnoreCase))
@@ -776,7 +679,7 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
-        /// Clears all the roles in the roles list. This is only meant to be used during the static RefreshAllRoles method.
+        /// Clears all the roles in the roles list.
         /// </summary>
         private void ClearRoles()
         {
@@ -789,8 +692,5 @@ namespace BlogEngine.Core
         #endregion
 
         #endregion
-
     }
-
-
 }

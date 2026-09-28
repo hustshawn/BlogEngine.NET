@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Web.Hosting;
 
 namespace BlogEngine.Core.Providers
 {
@@ -22,7 +21,7 @@ namespace BlogEngine.Core.Providers
             //VirtualPath = VirtualPath.Trim();
             //var fileContainer = string.Concat(Blog.CurrentInstance.StorageLocation.Trim(), "files/").Trim();
             //VirtualPath = VirtualPath.ToLower().StartsWith(fileContainer.ToLower()) ? VirtualPath : string.Format("{0}{1}", fileContainer, VirtualPath);
-            return HostingEnvironment.MapPath(string.IsNullOrWhiteSpace(VirtualPath) ? "~" : VirtualPath);
+            return BlogConfig.MapPath(string.IsNullOrWhiteSpace(VirtualPath) ? "~" : VirtualPath);
         }
 
         private static string RelativeFilePath(string VirtualPath)
@@ -289,7 +288,7 @@ namespace BlogEngine.Core.Providers
         /// </summary>
         /// <param name="BaseFile">the baseFile object to fill</param>
         /// <returns>the original file object</returns>
-        internal override FileSystem.File GetFileContents(FileSystem.File BaseFile)
+        public override FileSystem.File GetFileContents(FileSystem.File BaseFile)
         {
             var aPath = BlogAbsolutePath(BaseFile.FullPath);
             BaseFile.FileContents = FileToByteArray(aPath);

@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Web;
-using System.Web.Caching;
 
 namespace BlogEngine.Core.Data.Services
 {
@@ -65,14 +63,11 @@ namespace BlogEngine.Core.Data.Services
 
                 if (Blog.CurrentInstance.Cache[_cacheKey] == null)
                 {
-                    Blog.CurrentInstance.Cache.Add(
+                    Blog.CurrentInstance.Cache.Insert(
                         _cacheKey,
                         LoadFields(),
-                        null,
-                        Cache.NoAbsoluteExpiration,
-                        new TimeSpan(0, 15, 0),
-                        CacheItemPriority.Low,
-                        null);
+                        DateTime.MaxValue,
+                        new TimeSpan(0, 15, 0));
                 }
                 return (IEnumerable<CustomField>)Blog.CurrentInstance.Cache[_cacheKey];
             }
@@ -157,7 +152,7 @@ namespace BlogEngine.Core.Data.Services
 
         static List<CustomField> FromThemeTemplates()
         {
-            var dirPath = HttpContext.Current.Server.MapPath(
+            var dirPath = BlogConfig.MapPath(
                 $"{Utils.ApplicationRelativeWebRoot}Custom/Themes");
 
             var items = new List<CustomField>();

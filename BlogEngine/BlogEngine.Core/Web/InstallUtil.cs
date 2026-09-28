@@ -2,7 +2,6 @@
 // http://www.romanclarkson.com  mailto:inspirit@romanclarkson.com
 
 using System;
-using System.Web.Configuration;
 
 namespace BlogEngine.Core.Web
 {
@@ -28,7 +27,7 @@ namespace BlogEngine.Core.Web
         {
             string currentDateTime = DateTime.Now.ToString();
 
-            if (WebConfigurationManager.AppSettings[lastupdated] == null)
+            if (BlogConfig.GetAppSetting("lastupdated") == null)
             {
                 AppConfig.Instance().SetValue(lastupdated, currentDateTime);
             }
@@ -44,10 +43,10 @@ namespace BlogEngine.Core.Web
         /// Todo:  Need to expand this to check the web.config assembly version and compare it with the current assembly in the bin.
         private static void CheckIfUpgrading()
         {
-            string currentAssemblyVersion = WebConfigurationManager.AppSettings[beversion];
+            string currentAssemblyVersion = BlogConfig.GetAppSetting("beversion");
             string assemblyVersion = BlogSettings.Instance.Version();
 
-            if (WebConfigurationManager.AppSettings[beversion] == null)
+            if (BlogConfig.GetAppSetting("beversion") == null)
             {
                 AppConfig.Instance().SetValue(beversion, BlogSettings.Instance.Version());
                 UpdateTheLastUpdatedAppKey();
@@ -62,8 +61,8 @@ namespace BlogEngine.Core.Web
         {
             string currentDateTime = DateTime.Now.ToString();
 
-            if (WebConfigurationManager.AppSettings[installdate] == string.Empty ||
-                WebConfigurationManager.AppSettings[installdate] == null)
+            if (BlogConfig.GetAppSetting("installdate") == string.Empty ||
+                BlogConfig.GetAppSetting("installdate") == null)
             {
                 AppConfig.Instance().SetValue(installdate, currentDateTime);
                 UpdateTheLastUpdatedAppKey();

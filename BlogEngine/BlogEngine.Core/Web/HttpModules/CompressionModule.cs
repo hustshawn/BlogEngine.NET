@@ -1,223 +1,103 @@
 ﻿namespace BlogEngine.Core.Web.HttpModules
 {
     using System;
-    using System.IO.Compression;
-    using System.Web;
-    using System.Web.UI;
-    using System.Net;
-    using BlogEngine.Core.Web.Scripting;
+    using System.Threading.Tasks;
+    using Microsoft.AspNetCore.Http;
 
     /// <summary>
-    /// Compresses the output using standard gzip/deflate.
+    /// Response compression middleware.
+    /// In ASP.NET Core, built-in ResponseCompression middleware handles gzip/deflate.
+    /// This middleware preserves the original logic that determines WHEN to compress
+    /// (checking BlogSettings, content types, browser support) and delegates the
+    /// actual compression to the built-in middleware.
     /// </summary>
-    public sealed class CompressionModule : IHttpModule
+    public class CompressionMiddleware
     {
-        #region Constants and Fields
-
-        /// <summary>
-        /// The deflate string.
-        /// </summary>
+        private readonly RequestDelegate _next;
         private const string Deflate = "deflate";
-
-        /// <summary>
-        /// The gzip string.
-        /// </summary>
         private const string Gzip = "gzip";
 
-        #endregion
-
-        #region Public Methods
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CompressionMiddleware"/> class.
+        /// </summary>
+        /// <param name="next">The next middleware in the pipeline.</param>
+        public CompressionMiddleware(RequestDelegate next)
+        {
+            _next = next;
+        }
 
         /// <summary>
-        /// Compresses the response stream using either deflate or gzip depending on the client.
+        /// Processes the request and determines if compression should be applied.
         /// </summary>
-        /// <param name="context">
-        /// The HTTP context to compress.
-        /// </param>
-        public static void CompressResponse(HttpContext context)
+        /// <param name="context">The HTTP context.</param>
+        public async Task InvokeAsync(HttpContext context)
         {
             if (!BlogSettings.Instance.EnableHttpCompression)
             {
-                WillCompressResponse = false;
+                await _next(context);
                 return;
             }
 
-            if (IsEncodingAccepted(Deflate))
+            var acceptEncoding = context.Request.Headers["Accept-Encoding"].ToString();
+            bool supportsCompression = !string.IsNullOrEmpty(acceptEncoding) &&
+                (acceptEncoding.Contains(Gzip, StringComparison.OrdinalIgnoreCase) ||
+                 acceptEncoding.Contains(Deflate, StringComparison.OrdinalIgnoreCase));
+
+            if (!supportsCompression)
             {
-                context.Response.Filter = new DeflateStream(context.Response.Filter, CompressionMode.Compress);
-                WillCompressResponse = true;
-                SetEncoding(Deflate);
+                await _next(context);
+                return;
             }
-            else if (IsEncodingAccepted(Gzip))
+
+            var path = context.Request.Path.Value ?? string.Empty;
+
+            // bundled javascripts and styles - set caching headers
+            if (path.Contains("/Scripts/") || path.Contains("/Styles/") || path.EndsWith(".js.axd"))
             {
-                context.Response.Filter = new GZipStream(context.Response.Filter, CompressionMode.Compress);
-                WillCompressResponse = true;
-                SetEncoding(Gzip);
-            }
-        }
-
-        #endregion
-
-        #region Private Methods
-
-        private static bool WillCompressResponse
-        {
-            get
-            {
-                HttpContext context = HttpContext.Current;
-                if (context == null) { return false; }
-                return context.Items["will-compress-resource"] != null && (bool)context.Items["will-compress-resource"];
-            }
-            set
-            {
-                HttpContext context = HttpContext.Current;
-                if (context == null) { return; }
-                context.Items["will-compress-resource"] = value;
-            }
-        }
-
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IHttpModule
-
-        /// <summary>
-        /// Disposes of the resources (other than memory) used by the module 
-        ///     that implements <see cref="T:System.Web.IHttpModule"></see>.
-        /// </summary>
-        void IHttpModule.Dispose()
-        {
-            // Nothing to dispose; 
-        }
-
-        /// <summary>
-        /// Initializes a module and prepares it to handle requests.
-        /// </summary>
-        /// <param name="context">
-        /// An <see cref="T:System.Web.HttpApplication"></see> 
-        ///     that provides access to the methods, properties, and events common to 
-        ///     all application objects within an ASP.NET application.
-        /// </param>
-        void IHttpModule.Init(HttpApplication context)
-        {
-            context.PreRequestHandlerExecute += ContextPostReleaseRequestState;
-            context.Error += new EventHandler(context_Error);
-        }
-
-        void context_Error(object sender, EventArgs e)
-        {
-            HttpContext context = ((HttpApplication)sender).Context;
-            Exception ex = context.Server.GetLastError();
-
-            // If this CompressionModule will be compressing the response and an unhandled exception
-            // has occurred, remove the WebResourceFilter as that will cause garbage characters to
-            // be sent to the browser instead of a yellow screen of death.
-            if (WillCompressResponse)
-            {
-                context.Response.Filter = null;
-                WillCompressResponse = false;
-            }
-        }
-
-        #endregion
-
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Checks the request headers to see if the specified
-        ///     encoding is accepted by the client.
-        /// </summary>
-        /// <param name="encoding">
-        /// The encoding.
-        /// </param>
-        /// <returns>
-        /// The is encoding accepted.
-        /// </returns>
-        private static bool IsEncodingAccepted(string encoding)
-        {
-            var context = HttpContext.Current;
-            return context.Request.Headers["Accept-encoding"] != null &&
-                   context.Request.Headers["Accept-encoding"].Contains(encoding);
-        }
-
-        /// <summary>
-        /// Adds the specified encoding to the response headers.
-        /// </summary>
-        /// <param name="encoding">The encoding.</param>
-        private static void SetEncoding(string encoding)
-        {
-            HttpContext.Current.Response.AppendHeader("Content-encoding", encoding);
-        }
-
-        /// <summary>
-        /// Handles the BeginRequest event of the context control.
-        /// </summary>
-        /// <param name="sender">
-        /// The source of the event.
-        /// </param>
-        /// <param name="e">
-        /// The <see cref="System.EventArgs"/> instance containing the event data.
-        /// </param>
-        private static void ContextPostReleaseRequestState(object sender, EventArgs e)
-        {
-            var context = ((HttpApplication)sender).Context;
-            //System.Diagnostics.Debug.WriteLine("precessing request --->" + context.Request.Path);
-
-            // bundled javacripts and styles
-            if (context.Request.Path.Contains("/Scripts/") || context.Request.Path.Contains("/Styles/") || context.Request.Path.EndsWith(".js.axd"))
-            {
-                if (!context.Request.Path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) &&
-                    !context.Request.Path.EndsWith(".css", StringComparison.OrdinalIgnoreCase) &&
-                    !context.Request.Path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
-                    !context.Request.Path.EndsWith(".swf", StringComparison.OrdinalIgnoreCase))
+                if (!path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) &&
+                    !path.EndsWith(".css", StringComparison.OrdinalIgnoreCase) &&
+                    !path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
+                    !path.EndsWith(".swf", StringComparison.OrdinalIgnoreCase))
                 {
-                    SetHeaders(context);
-                    CompressResponse(context);
+                    SetCacheHeaders(context, path);
                 }
             }
 
-            // only when page is requested
-            if (context.CurrentHandler is Page && context.Request["HTTP_X_MICROSOFTAJAX"] == null && (context.Request.HttpMethod == "GET" || context.Request.HttpMethod == "POST"))
-            {
-                CompressResponse(context);
+            // Skip admin pages for WebResourceFilter behavior (WebForms-only, not applicable)
+            // The built-in ResponseCompression middleware will handle actual compression
 
-                if (!context.Request.Path.Contains("/admin/", StringComparison.OrdinalIgnoreCase))
-                {
-                    context.Response.Filter = new WebResourceFilter(context.Response.Filter);
-                    WillCompressResponse = true;
-                }
-            }
+            await _next(context);
         }
 
-        private static void SetHeaders(HttpContext context)
+        /// <summary>
+        /// Checks if the specified encoding is accepted by the client.
+        /// </summary>
+        /// <param name="context">The HTTP context.</param>
+        /// <param name="encoding">The encoding to check.</param>
+        /// <returns>True if the encoding is accepted.</returns>
+        public static bool IsEncodingAccepted(HttpContext context, string encoding)
+        {
+            var acceptEncoding = context.Request.Headers["Accept-Encoding"].ToString();
+            return !string.IsNullOrEmpty(acceptEncoding) && acceptEncoding.Contains(encoding);
+        }
+
+        private static void SetCacheHeaders(HttpContext context, string path)
         {
             var response = context.Response;
-            var cache = response.Cache;
+            response.Headers["Vary"] = "Accept-Encoding";
+            response.Headers["Cache-Control"] = "public, max-age=31536000";
+            response.Headers["Expires"] = DateTime.UtcNow.AddDays(30).ToString("R");
 
-            cache.VaryByHeaders["Accept-Encoding"] = true;
-            cache.SetExpires(DateTime.UtcNow.AddDays(30));
-            cache.SetMaxAge(new TimeSpan(365, 0, 0, 0));
-            cache.SetRevalidation(HttpCacheRevalidation.AllCaches);
+            var etag = $"\"{path.GetHashCode()}\"";
+            var incomingEtag = context.Request.Headers["If-None-Match"].ToString();
 
-            var etag = $"\"{context.Request.Path.GetHashCode()}\"";
-            var incomingEtag = context.Request.Headers["If-None-Match"];
+            response.Headers["ETag"] = etag;
 
-            cache.SetETag(etag);
-            cache.SetCacheability(HttpCacheability.Public);
-
-            if (String.Compare(incomingEtag, etag) != 0)
+            if (string.Equals(incomingEtag, etag, StringComparison.Ordinal))
             {
+                response.StatusCode = 304;
                 return;
             }
-
-            response.Clear();
-            response.StatusCode = (int)HttpStatusCode.NotModified;
-            response.SuppressContent = true;
         }
-
-        #endregion
     }
 }

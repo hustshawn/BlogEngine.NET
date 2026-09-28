@@ -1,3 +1,4 @@
+using BlogEngine.Core.Services.Packaging;
 ﻿using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Providers;
 using BlogEngine.Core.Web.Extensions;
@@ -7,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Web;
 using System.Xml;
 
 namespace BlogEngine.Core.Packaging
@@ -100,16 +100,16 @@ namespace BlogEngine.Core.Packaging
         /// to application directories
         /// </summary>
         /// <param name="package">Package</param>
-        public static List<PackageFile> InstallPackage(NuGet.IPackage package)
+        public static List<PackageFile> InstallPackage(NuGetPackageInfo package)
         {
             var packageFiles = new List<PackageFile>();
 
-            var content = HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot + $"App_Data/packages/{package.Id}.{package.Version}/content");
+            var content = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot + $"App_Data/packages/{package.Id}.{package.Version}/content");
 
-            var lib = HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot + $"App_Data/packages/{package.Id}.{package.Version}/lib");
+            var lib = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot + $"App_Data/packages/{package.Id}.{package.Version}/lib");
 
-            var root = HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot);
-            var bin = HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot + "bin");
+            var root = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot);
+            var bin = BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot + "bin");
 
             // copy content files
             var source = new DirectoryInfo(content);
@@ -162,7 +162,7 @@ namespace BlogEngine.Core.Packaging
             
             foreach (var file in installedFiles.OrderByDescending(f => f.FileOrder))
             {
-                var fullPath = HttpContext.Current.Server.MapPath(Path.Combine(Utils.RelativeWebRoot, file.FilePath));
+                var fullPath = BlogConfig.MapPath(Path.Combine(Utils.RelativeWebRoot, file.FilePath));
 
                 if(file.IsDirectory)
                 {
@@ -200,7 +200,7 @@ namespace BlogEngine.Core.Packaging
                 var pkgDir = $"{pkgId}.{pkg.OnlineVersion}";
 
                 // clean up removing installed version
-                pkgDir = HttpContext.Current.Server.MapPath($"{Utils.ApplicationRelativeWebRoot}App_Data/packages/{pkgDir}");
+                pkgDir = BlogConfig.MapPath($"{Utils.ApplicationRelativeWebRoot}App_Data/packages/{pkgDir}");
                 if (Directory.Exists(pkgDir))
                 {
                     ForceDeleteDirectory(pkgDir);
@@ -213,7 +213,7 @@ namespace BlogEngine.Core.Packaging
         static List<Package> GetThemes()
         {
             var installedThemes = new List<Package>();
-            var path = HttpContext.Current.Server.MapPath($"{Utils.ApplicationRelativeWebRoot}Custom/Themes/");
+            var path = BlogConfig.MapPath($"{Utils.ApplicationRelativeWebRoot}Custom/Themes/");
 
             foreach (var p in from d in Directory.GetDirectories(path)
                 let index = d.LastIndexOf(Path.DirectorySeparatorChar) + 1
@@ -248,7 +248,7 @@ namespace BlogEngine.Core.Packaging
         static List<Package> GetWidgets()
         {
             var installedWidgets = new List<Package>();
-            var path = HttpContext.Current.Server.MapPath($"{Utils.ApplicationRelativeWebRoot}Custom/Widgets/");
+            var path = BlogConfig.MapPath($"{Utils.ApplicationRelativeWebRoot}Custom/Widgets/");
 
             foreach (var p in from d in Directory.GetDirectories(path)
                 let index = d.LastIndexOf(Path.DirectorySeparatorChar) + 1
@@ -282,7 +282,7 @@ namespace BlogEngine.Core.Packaging
 
         static void CopyDirectory(DirectoryInfo source, DirectoryInfo target, string pkgId, List<PackageFile> installedFiles)
         {
-            var rootPath = HttpContext.Current.Server.MapPath(Utils.RelativeWebRoot);
+            var rootPath = BlogConfig.MapPath(Utils.RelativeWebRoot);
 
             foreach (var dir in source.GetDirectories())
             {
@@ -396,7 +396,7 @@ namespace BlogEngine.Core.Packaging
                 url = url.Replace("/themes", "/Custom/Themes");
                 url = url.Replace("/widgets", "/Custom/Widgets");
 
-                var path = HttpContext.Current.Server.MapPath(url);
+                var path = BlogConfig.MapPath(url);
 
                 if (File.Exists(path)) return url;
             }
@@ -460,7 +460,7 @@ namespace BlogEngine.Core.Packaging
                 $"{Utils.ApplicationRelativeWebRoot}Custom/Themes/{id}/theme.xml"
                 : $"{Utils.ApplicationRelativeWebRoot}Custom/Widgets/{id}/widget.xml";
 
-            var pkgPath = HttpContext.Current.Server.MapPath(pkgUrl);
+            var pkgPath = BlogConfig.MapPath(pkgUrl);
             try
             {
                 if (File.Exists(pkgPath))
@@ -505,7 +505,7 @@ namespace BlogEngine.Core.Packaging
         /// </summary>
         /// <param name="package">Package</param>
         /// <param name="packageFiles">Installed files</param>
-        public static void CreateManifestIfNotExists(NuGet.IPackage package, List<PackageFile> packageFiles)
+        public static void CreateManifestIfNotExists(NuGetPackageInfo package, List<PackageFile> packageFiles)
         {
             var shortPath = "";
             var type = PackageType(packageFiles);
@@ -519,7 +519,7 @@ namespace BlogEngine.Core.Packaging
             if (string.IsNullOrEmpty(shortPath))
                 return;
 
-            var path = Path.Combine(HttpContext.Current.Server.MapPath(Utils.ApplicationRelativeWebRoot), shortPath);
+            var path = Path.Combine(BlogConfig.MapPath(Utils.ApplicationRelativeWebRoot), shortPath);
 
             if (File.Exists(path))
                 return;
