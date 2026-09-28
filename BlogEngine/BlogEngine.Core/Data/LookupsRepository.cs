@@ -67,16 +67,25 @@ namespace BlogEngine.Core.Data
                     items.Add(new SelectOption { OptionName = info.NativeName, OptionValue = resourceDir, IsSelected = false });
                 }
             }
-            else
+            else if (Utils.LabelResources != null)
             {
-                var path = BlogConfig.MapPath($"{Utils.ApplicationRelativeWebRoot}App_GlobalResources/");
-                foreach (var file in Directory.GetFiles(path, "labels.*.resx"))
+                // translations of the labels resources are compiled into satellite assemblies ({culture}/*.resources.dll)
+                foreach (var dir in Directory.GetDirectories(System.AppContext.BaseDirectory).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
                 {
-                    var index = file.LastIndexOf(Path.DirectorySeparatorChar) + 1;
-                    var filename = file.Substring(index);
-                    filename = filename.Replace("labels.", string.Empty).Replace(".resx", string.Empty);
-                    var info = CultureInfo.GetCultureInfoByIetfLanguageTag(filename);
-                    items.Add(new SelectOption { OptionName = info.NativeName, OptionValue = filename, IsSelected = false });
+                    CultureInfo info;
+                    try
+                    {
+                        info = CultureInfo.GetCultureInfo(Path.GetFileName(dir));
+                    }
+                    catch (CultureNotFoundException)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(info.Name) || Utils.LabelResources.GetResourceSet(info, true, false) == null)
+                        continue;
+
+                    items.Add(new SelectOption { OptionName = info.NativeName, OptionValue = info.Name, IsSelected = false });
                 }
             }
             lookups.Cultures = items;

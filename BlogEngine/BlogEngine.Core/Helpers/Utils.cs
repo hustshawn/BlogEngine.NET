@@ -1125,12 +1125,27 @@
         /// </returns>
         public static string Translate(string text, string defaultValue, CultureInfo culture)
         {
-            // In modern .NET, use IStringLocalizer for localization.
-            // This fallback implementation returns the text or defaultValue.
-            return string.IsNullOrEmpty(defaultValue)
-                ? text
-                : defaultValue;
+            // Replaces HttpContext.GetGlobalResourceObject("labels", ...) from System.Web
+            string resource = null;
+            if (LabelResources != null && !string.IsNullOrEmpty(text))
+            {
+                try
+                {
+                    resource = LabelResources.GetString(text, culture ?? CultureInfo.CurrentUICulture);
+                }
+                catch (System.Resources.MissingManifestResourceException)
+                {
+                }
+            }
+
+            return resource ?? (string.IsNullOrEmpty(defaultValue) ? text : defaultValue);
         }
+
+        /// <summary>
+        /// Resource manager for the "labels" resources (the former App_GlobalResources/labels.resx)
+        /// used by <see cref="Translate(string, string, CultureInfo)"/>. Set by the web application at startup.
+        /// </summary>
+        public static System.Resources.ResourceManager LabelResources { get; set; }
 
         /// <summary>
         /// Helper method to quickly check if directory or file is writable
