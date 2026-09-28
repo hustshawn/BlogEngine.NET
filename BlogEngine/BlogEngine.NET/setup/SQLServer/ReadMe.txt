@@ -6,15 +6,17 @@ They could be modified to be used with earlier or later versions if needed.
 
 Instructions for new setup:
 
-1. Open SQL Server Management Studio and connect to your SQL Server.
+1. Connect to your SQL Server (SQL Server Management Studio, Azure Data Studio or sqlcmd).
 2. Create a new database if desired.
 3. Execute the Setup script against the database you want to add the BlogEngine data to.
-4. Rename DbWeb.Config to Web.config and copy it to your blog folder.  (This will
-overwrite your existing web.config file.  If this is not a new installation, make sure 
-you have a backup).
-5. Update the BlogEngine connection string in the web.config.
-6. Surf out to your Blog and see the welcome post.
-7. Login with the username admin and password admin.  Change the password.
+4. In appsettings.json set "BlogEngine:DefaultProvider" to "DbBlogProvider" and add the
+   connection string, for example:
+
+     "BlogEngine": { "DefaultProvider": "DbBlogProvider", "FileSystemProvider": "XmlBlogProvider" },
+     "ConnectionStrings": { "BlogEngine": "Server=.;Database=BlogEngine;Trusted_Connection=True;TrustServerCertificate=True" }
+
+5. Start the blog and see the welcome post.
+6. Login with the username admin and password admin.  Change the password.
 
 Upgrading from previous version
 

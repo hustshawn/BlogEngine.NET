@@ -55,7 +55,10 @@ namespace BlogEngine.Core
         {
             if (Configuration != null)
             {
-                var value = Configuration[$"BlogEngine:{key}"] ?? Configuration[key];
+                // legacy web.config keys "BlogEngine.X" live in appsettings.json as "BlogEngine": { "X": ... }
+                const string legacyPrefix = "BlogEngine.";
+                var name = key.StartsWith(legacyPrefix, StringComparison.Ordinal) ? key.Substring(legacyPrefix.Length) : key;
+                var value = Configuration[$"BlogEngine:{name}"] ?? Configuration[key];
                 if (!string.IsNullOrEmpty(value))
                     return value;
             }

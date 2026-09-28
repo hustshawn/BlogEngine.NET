@@ -1,4 +1,4 @@
-using BlogEngine.Core.Providers;
+﻿using BlogEngine.Core.Providers;
 using System.Linq.Dynamic.Core;
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
@@ -27,21 +27,7 @@ namespace BlogEngine.Core.Data
             if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
                 throw new UnauthorizedAccessException();
 
-            var users = new List<BlogUser>();
-            int count;
-            var userCollection = BlogService.GetUserNames();
-            var members = userCollection.ToList();
-
-            foreach (var m in members)
-            {
-                users.Add(new BlogUser { 
-                    IsChecked = false, 
-                    UserName = m, 
-                    Email = "",
-                    Profile = GetProfile(m),
-                    Roles = GetRoles(m)
-                });
-            }
+            var users = GetAllUsers();
 
             var query = users.AsQueryable().Where(filter);
 
@@ -61,23 +47,7 @@ namespace BlogEngine.Core.Data
             if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
                 throw new UnauthorizedAccessException();
 
-            var users = new List<BlogUser>();
-            int count;
-            var userCollection = BlogService.GetUserNames();
-            var members = userCollection.ToList();
-
-            foreach (var m in members)
-            {
-                users.Add(new BlogUser
-                {
-                    IsChecked = false,
-                    UserName = m,
-                    Email = "",
-                    Profile = GetProfile(m),
-                    Roles = GetRoles(m)
-                });
-            }
-            return users.AsQueryable().Where("UserName.ToLower() == \"" + id.ToLower() + "\"").FirstOrDefault();
+            return GetAllUsers().FirstOrDefault(u => string.Equals(u.UserName, id, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -389,6 +359,21 @@ namespace BlogEngine.Core.Data
         bool ChangePassword(dynamic user, string password, string newPassword)
         {
             return user.ChangePassword(password, newPassword);
+        }
+
+        /// <summary>
+        /// All members with profile and roles (users come from the membership service, not from profiles)
+        /// </summary>
+        static List<BlogUser> GetAllUsers()
+        {
+            return Membership.GetAllUsers().Select(m => new BlogUser
+            {
+                IsChecked = false,
+                UserName = m.UserName,
+                Email = m.Email,
+                Profile = GetProfile(m.UserName),
+                Roles = GetRoles(m.UserName)
+            }).ToList();
         }
 
         bool Self(string id)

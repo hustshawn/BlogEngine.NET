@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,11 +32,10 @@ namespace BlogEngine.Core
             // Ensure IHttpContextAccessor is registered
             services.AddHttpContextAccessor();
 
-            // Determine which provider to use from configuration
-            var providerType = configuration["BlogEngine:Provider"] ?? "Xml";
+            // Provider from appsettings.json "BlogEngine:DefaultProvider" (web.config <blogProvider defaultProvider>)
+            var providerType = configuration["BlogEngine:DefaultProvider"] ?? "XmlBlogProvider";
 
-            if (providerType.Equals("Db", System.StringComparison.OrdinalIgnoreCase) ||
-                providerType.Equals("DbBlogProvider", System.StringComparison.OrdinalIgnoreCase))
+            if (providerType.Equals("DbBlogProvider", System.StringComparison.OrdinalIgnoreCase))
             {
                 // Database provider
                 services.AddSingleton<IBlogProvider>(sp =>
@@ -44,14 +43,6 @@ namespace BlogEngine.Core
                     var config = sp.GetRequiredService<IConfiguration>();
                     var provider = new DbBlogProvider(config);
                     BlogService.Initialize(provider);
-                    return provider;
-                });
-
-                services.AddSingleton<IBlogFileSystemProvider>(sp =>
-                {
-                    var config = sp.GetRequiredService<IConfiguration>();
-                    var provider = new DbFileSystemProvider(config);
-                    BlogService.InitializeFileSystem(provider);
                     return provider;
                 });
 
@@ -78,13 +69,6 @@ namespace BlogEngine.Core
                     return provider;
                 });
 
-                services.AddSingleton<IBlogFileSystemProvider>(sp =>
-                {
-                    var provider = new XmlFileSystemProvider();
-                    BlogService.InitializeFileSystem(provider);
-                    return provider;
-                });
-
                 // XML membership and role services
                 services.AddSingleton<IMembershipService>(sp =>
                 {
@@ -95,6 +79,28 @@ namespace BlogEngine.Core
                 {
                     var membershipService = sp.GetRequiredService<IMembershipService>();
                     return new XmlRoleService(membershipService);
+                });
+            }
+
+            // File storage: "BlogEngine:FileSystemProvider" (web.config <blogFileSystemProvider defaultProvider>)
+            var fileSystemType = configuration["BlogEngine:FileSystemProvider"] ?? providerType;
+            if (fileSystemType.Equals("DbBlogProvider", System.StringComparison.OrdinalIgnoreCase) ||
+                fileSystemType.Equals("DbFileSystemProvider", System.StringComparison.OrdinalIgnoreCase))
+            {
+                services.AddSingleton<IBlogFileSystemProvider>(sp =>
+                {
+                    var provider = new DbFileSystemProvider(sp.GetRequiredService<IConfiguration>());
+                    BlogService.InitializeFileSystem(provider);
+                    return provider;
+                });
+            }
+            else
+            {
+                services.AddSingleton<IBlogFileSystemProvider>(sp =>
+                {
+                    var provider = new XmlFileSystemProvider();
+                    BlogService.InitializeFileSystem(provider);
+                    return provider;
                 });
             }
 
