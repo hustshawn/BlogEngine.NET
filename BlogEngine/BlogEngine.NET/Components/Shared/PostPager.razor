@@ -98,7 +98,7 @@
         var fullPath = path + queryString;
 
         if (string.IsNullOrEmpty(BlogConfig.FileExtension))
-            fullPath = fullPath.Replace("/", string.Empty);
+            fullPath = fullPath.Replace("default.aspx", string.Empty);
 
         if (fullPath.Contains("?"))
         {
@@ -118,7 +118,7 @@
             fullPath += "?";
         }
 
-        if (!fullPath.Contains("", StringComparison.OrdinalIgnoreCase))
+        if (!fullPath.Contains(".aspx", StringComparison.OrdinalIgnoreCase))
         {
             if (fullPath.EndsWith("?") && !fullPath.EndsWith("/?"))
                 fullPath = fullPath.Replace("?", "/?");
@@ -137,7 +137,7 @@
         var fullPath = path + queryString;
 
         if (string.IsNullOrEmpty(BlogConfig.FileExtension))
-            fullPath = fullPath.Replace("/", string.Empty);
+            fullPath = fullPath.Replace("default.aspx", string.Empty);
 
         var index = fullPath.IndexOf("?");
         if (index >= 0)

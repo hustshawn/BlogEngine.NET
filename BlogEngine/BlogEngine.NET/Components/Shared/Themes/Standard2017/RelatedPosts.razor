@@ -1,29 +1,15 @@
-@using BlogEngine.Core
-
-@* Standard-2017 theme RelatedPosts *@
+@inherits RelatedPostsTemplate
+@* Port of Custom/Themes/Standard-2017/RelatedPosts.ascx *@
 
 <div id="relatedPosts" class="related-posts well-global">
-    <h3 class="well-global-title">@Labels["relatedPosts"]</h3>
+    <h3 class="well-global-title">@Utils.Translate("relatedPosts")</h3>
     <ul class="list-unstyled">
         @foreach (var item in RelatedPostList)
         {
             <li>
-                <a href="@item.Link">@item.Title</a>
-                <div><small class="text-muted">@item.Description</small></div>
+                <a href="@item.Link">@((MarkupString)item.Title)</a>
+                <div><small class="text-muted">@((MarkupString)item.Description)</small></div>
             </li>
         }
     </ul>
 </div>
-
-@code {
-    [Parameter] public List<RelatedPostItem> RelatedPostList { get; set; } = new();
-    // REVIEW: Labels dictionary should be populated from IStringLocalizer<labels> — verify integration
-    [Parameter] public Dictionary<string, string> Labels { get; set; } = new();
-
-    public class RelatedPostItem
-    {
-        public string Link { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string Description { get; set; } = "";
-    }
-}

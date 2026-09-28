@@ -1,0 +1,85 @@
+@using System.Globalization
+@inject IWebHostEnvironment Environment
+
+@* Port of BlogBasePage.OnLoad + Scripting.PageHeader: head links, global styles/scripts,
+   the theme head (site.master <head>) and the custom header code from the settings. *@
+
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link rel="contents" title="Archive" href="@(relativeWebRoot)archive@(BlogConfig.FileExtension)" />
+<link rel="start" title="@instanceName" href="@relativeWebRoot" />
+<link type="application/rsd+xml" rel="edituri" title="RSD" href="@(absoluteWebRoot)rsd.axd" />
+<link type="application/rdf+xml" rel="meta" title="SIOC" href="@(absoluteWebRoot)sioc.axd" />
+<link type="application/apml+xml" rel="meta" title="APML" href="@(absoluteWebRoot)apml.axd" />
+<link type="application/rdf+xml" rel="meta" title="FOAF" href="@(absoluteWebRoot)foaf.axd" />
+@if (string.IsNullOrEmpty(BlogSettings.Instance.AlternateFeedUrl))
+{
+    <link type="application/rss+xml" rel="alternate" title="@instanceName (RSS)" href="@Utils.FeedUrl" />
+    <link type="application/atom+xml" rel="alternate" title="@instanceName (ATOM)" href="@(Utils.FeedUrl)?format=atom" />
+}
+else
+{
+    <link type="application/rss+xml" rel="alternate" title="@instanceName" href="@Utils.FeedUrl" />
+}
+@if (BlogSettings.Instance.EnableOpenSearch)
+{
+    <link type="application/opensearchdescription+xml" rel="search" title="@instanceName" href="@(absoluteWebRoot)opensearch.axd" />
+}
+@foreach (var style in GetFiles("Content/Auto"))
+{
+    <link href="@style" rel="stylesheet" type="text/css" />
+}
+<script type="text/javascript" src="@resourceScript"></script>
+@foreach (var script in GetFiles("Scripts/Auto"))
+{
+    <script type="text/javascript" src="@script"></script>
+}
+<DynamicComponent Type="@Theme.Template("Head")" />
+@if (!string.IsNullOrEmpty(BlogSettings.Instance.HtmlHeader))
+{
+    @((MarkupString)$"{System.Environment.NewLine}<!-- Start custom code -->{System.Environment.NewLine}{BlogSettings.Instance.HtmlHeader}{System.Environment.NewLine}<!-- End custom code -->{System.Environment.NewLine}")
+}
+
+@code {
+    private string relativeWebRoot;
+    private Uri absoluteWebRoot;
+    private string instanceName;
+    private string resourceScript;
+
+    protected override void OnInitialized()
+    {
+        relativeWebRoot = Utils.RelativeWebRoot;
+        absoluteWebRoot = Utils.AbsoluteWebRoot;
+        instanceName = BlogSettings.Instance.Name;
+
+        var lang = BlogSettings.Instance.Language;
+        if (!string.Equals(BlogSettings.Instance.Culture, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            lang = BlogSettings.Instance.Culture;
+        }
+
+        CultureInfo culture;
+        try
+        {
+            culture = new CultureInfo(lang);
+        }
+        catch (CultureNotFoundException)
+        {
+            culture = CultureInfo.InvariantCulture;
+        }
+
+        resourceScript = BlogEngine.Core.Web.HttpHandlers.ResourceEndpoint.GetScriptPath(culture);
+    }
+
+    private IEnumerable<string> GetFiles(string folder)
+    {
+        var dir = new DirectoryInfo(Path.Combine(Environment.WebRootPath ?? string.Empty, folder));
+        if (!dir.Exists)
+        {
+            return Enumerable.Empty<string>();
+        }
+
+        return dir.GetFiles()
+            .OrderBy(f => f.Name, StringComparer.Ordinal)
+            .Select(f => $"{Utils.ApplicationRelativeWebRoot}{folder}/{f.Name}");
+    }
+}

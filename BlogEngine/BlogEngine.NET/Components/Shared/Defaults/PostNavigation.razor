@@ -1,47 +1,7 @@
-@using BlogEngine.Core
+@inherits PostNavigationTemplate
+@* Port of Custom/Controls/Defaults/PostNavigation.ascx *@
 
 <div id="postnavigation">
-    @if (!string.IsNullOrEmpty(NextPostUrl))
-    {
-        <a href="@NextPostUrl" class="nav-next">@NextPostTitle</a>
-    }
-    @if (!string.IsNullOrEmpty(NextPostUrl) && !string.IsNullOrEmpty(PreviousPostUrl))
-    {
-        <text> | </text>
-    }
-    @if (!string.IsNullOrEmpty(PreviousPostUrl))
-    {
-        <a href="@PreviousPostUrl" class="nav-prev">@PreviousPostTitle</a>
-    }
+    <a href="@View.NextPostUrl" class="nav-next">@View.NextPostTitle</a> |
+    <a href="@View.PreviousPostUrl" class="nav-prev">@View.PreviousPostTitle</a>
 </div>
-
-@code {
-    [Parameter] public Post CurrentPost { get; set; }
-
-    private string NextPostUrl = string.Empty;
-    private string NextPostTitle = string.Empty;
-    private string PreviousPostUrl = string.Empty;
-    private string PreviousPostTitle = string.Empty;
-
-    protected override void OnParametersSet()
-    {
-        if (CurrentPost == null) return;
-
-        var posts = Post.ApplicablePosts;
-        var currentIndex = posts.IndexOf(CurrentPost);
-
-        if (currentIndex > 0)
-        {
-            var nextPost = posts[currentIndex - 1];
-            NextPostUrl = nextPost.RelativeOrAbsoluteLink;
-            NextPostTitle = nextPost.Title;
-        }
-
-        if (currentIndex < posts.Count - 1 && currentIndex >= 0)
-        {
-            var prevPost = posts[currentIndex + 1];
-            PreviousPostUrl = prevPost.RelativeOrAbsoluteLink;
-            PreviousPostTitle = prevPost.Title;
-        }
-    }
-}

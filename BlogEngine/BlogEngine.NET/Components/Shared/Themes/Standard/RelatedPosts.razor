@@ -1,32 +1,15 @@
-@using BlogEngine.Core
-
-@* Standard theme RelatedPosts - shows related posts based on tags *@
+@inherits RelatedPostsTemplate
+@* Port of Custom/Themes/Standard/RelatedPosts.ascx *@
 
 <div id="relatedPosts" class="well-global">
-    <h3 class="well-global-title">@Labels["relatedPosts"]</h3>
+    <h3 class="well-global-title">@Utils.Translate("relatedPosts")</h3>
     <ul class="related-posts">
         @foreach (var item in RelatedPostList)
         {
             <li class="related-posts-item">
-                <a href="@item.Link">@item.Title</a>
-                <p>@item.Description</p>
+                <a href="@item.Link">@((MarkupString)item.Title)</a>
+                <p>@((MarkupString)item.Description)</p>
             </li>
         }
     </ul>
 </div>
-
-@code {
-    [Parameter] public List<RelatedPostItem> RelatedPostList { get; set; } = new();
-    // REVIEW: Labels dictionary should be populated from IStringLocalizer<labels> — verify integration
-    [Parameter] public Dictionary<string, string> Labels { get; set; } = new();
-
-    /// <summary>
-    /// Simple model for related post data
-    /// </summary>
-    public class RelatedPostItem
-    {
-        public string Link { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string Description { get; set; } = "";
-    }
-}

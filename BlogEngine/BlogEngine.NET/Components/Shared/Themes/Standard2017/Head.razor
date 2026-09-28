@@ -1,0 +1,18 @@
+@* <head> content of Custom/Themes/Standard-2017/site.master *@
+<link href="https://fonts.googleapis.com/css?family=Open+Sans:400,700|Kreon:400,700" rel="stylesheet" />
+<link href="@(Theme.Url)src/css/bootstrap.min.css" rel="stylesheet" />
+<link href="@(Theme.Url)src/css/font-awesome.min.css" rel="stylesheet" />
+<link href="@(Theme.Url)src/css/styles.min.css?=v12" rel="stylesheet" />
+<SyntaxHighlighter />
+<link rel="shortcut icon" href="@(Utils.ApplicationRelativeWebRoot)Content/images/blog/blogengine.ico" type="image/x-icon" />
+<style>
+    body {
+        background: @Field("background color left", "#232526");
+        background: -webkit-linear-gradient(to left, @Field("background color right", "#414345"), @Field("background color left", "#232526"));
+        background: linear-gradient(to left, @Field("background color right", "#414345"), @Field("background color left", "#232526"));
+    }
+</style>
+
+@code {
+    private static string Field(string key, string defaultValue) => Theme.Field(key, defaultValue, "Standard-2017");
+}

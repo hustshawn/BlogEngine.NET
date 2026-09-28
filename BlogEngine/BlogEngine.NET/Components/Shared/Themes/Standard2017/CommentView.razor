@@ -1,19 +1,18 @@
-@using BlogEngine.Core
-
-@* Standard-2017 theme CommentView - single comment display (identical to Standard) *@
+@inherits CommentViewTemplate
+@* Port of Custom/Themes/Standard-2017/CommentView.ascx *@
 
 <ul id="id_@Comment.Id">
     <li class="comment-item">
         <div class="comment-content @(Post.Author.Equals(Comment.Author, StringComparison.OrdinalIgnoreCase) ? " self" : "")">
-            @((MarkupString)GravatarHtml)
+            @((MarkupString)View.Gravatar(48))
             <div class="comment-author">
                 @if (Comment.Website != null)
                 {
-                    <a href="@Comment.Website" rel="nofollow" class="url fn">@Comment.Author</a>
+                    <a href="@Comment.Website" rel="nofollow" class="url fn">@((MarkupString)Comment.Author)</a>
                 }
                 else
                 {
-                    <a class="fn">@Comment.Author</a>
+                    <a class="fn">@((MarkupString)Comment.Author)</a>
                 }
             </div>
             <div class="comment-text">
@@ -26,18 +25,8 @@
                 @((MarkupString)(AdminLinks.Length > 2 ? AdminLinks.Substring(2) : AdminLinks))
             </div>
         </div>
-        <div id="replies_@Comment.Id" style="@((Comment.Comments.Count == 0 || Comment.Email == "pingback" || Comment.Email == "trackback") ? "display:none;" : "")">
+        <div id="replies_@Comment.Id" style="@(HideReplies ? "display:none;" : null)">
             @ChildContent
         </div>
     </li>
 </ul>
-
-@code {
-    [Parameter] public Comment Comment { get; set; }
-    [Parameter] public Post Post { get; set; }
-    [Parameter] public string Text { get; set; } = "";
-    [Parameter] public string GravatarHtml { get; set; } = "";
-    [Parameter] public string ReplyToLink { get; set; } = "";
-    [Parameter] public string AdminLinks { get; set; } = "";
-    [Parameter] public RenderFragment ChildContent { get; set; }
-}

@@ -1,22 +1,18 @@
-@using BlogEngine.Core
-@using System.Text
-@inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+@* Port of AppCode/Controls/SearchBox.cs (client-side search through BlogEngine.search in blog.js) *@
 
 <div id="searchbox">
     <label for="searchfield" style="display:none">Search</label>
-    <input type="text" value="@searchText" id="searchfield"
-           @onkeypress="HandleKeyPress"
-           @onfocus="HandleFocus"
-           @onblur="HandleBlur"
-           @oninput="HandleInput" />
+    <input type="text" value="@text" id="searchfield"
+           onkeypress="if(event.keyCode==13) return BlogEngine.search('@Utils.RelativeWebRoot','searchfield')"
+           onfocus="BlogEngine.searchClear('@EscapedText','searchfield')"
+           onblur="BlogEngine.searchClear('@EscapedText','searchfield')" />
     <input type="button" value="@BlogSettings.Instance.SearchButtonText" id="searchbutton"
-           @onclick="DoSearch" />
-
+           onclick="BlogEngine.search('@Utils.RelativeWebRoot','searchfield');"
+           onkeypress="BlogEngine.search('@Utils.RelativeWebRoot','searchfield');" />
     @if (BlogSettings.Instance.EnableCommentSearch && BlogSettings.Instance.ShowIncludeCommentsOption)
     {
         <div id="search-include-comments">
-            <input type="checkbox" id="searchcomments" @bind="includeComments" />
+            <input type="checkbox" id="searchcomments" checked="@IncludeComments" />
             @if (!string.IsNullOrEmpty(BlogSettings.Instance.SearchCommentLabelText))
             {
                 <label for="searchcomments">@BlogSettings.Instance.SearchCommentLabelText</label>
@@ -26,60 +22,17 @@
 </div>
 
 @code {
-    private string searchText = string.Empty;
-    private string defaultText = string.Empty;
-    private bool includeComments = false;
+    [SupplyParameterFromQuery(Name = "q")] public string Query { get; set; }
+    [SupplyParameterFromQuery(Name = "comment")] public string Comment { get; set; }
 
-    protected override void OnInitialized()
+    private string text;
+
+    private string EscapedText => text.Replace("'", "\\'");
+
+    private bool IncludeComments => Comment != null;
+
+    protected override void OnParametersSet()
     {
-        defaultText = BlogSettings.Instance.SearchDefaultText;
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
-        {
-            var q = httpContext.Request.Query["q"].FirstOrDefault();
-            searchText = !string.IsNullOrEmpty(q)
-                ? System.Net.WebUtility.HtmlEncode(q)
-                : defaultText;
-
-            includeComments = httpContext.Request.Query.ContainsKey("comment");
-        }
-        else
-        {
-            searchText = defaultText;
-        }
-    }
-
-    private void HandleInput(ChangeEventArgs e)
-    {
-        searchText = e.Value?.ToString() ?? string.Empty;
-    }
-
-    private void HandleKeyPress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-            DoSearch();
-    }
-
-    private void HandleFocus()
-    {
-        if (searchText == defaultText)
-            searchText = string.Empty;
-    }
-
-    private void HandleBlur()
-    {
-        if (string.IsNullOrWhiteSpace(searchText))
-            searchText = defaultText;
-    }
-
-    private void DoSearch()
-    {
-        if (string.IsNullOrWhiteSpace(searchText) || searchText == defaultText) return;
-
-        var url = $"{Utils.RelativeWebRoot}search?q={Uri.EscapeDataString(searchText)}";
-        if (includeComments)
-            url += "&comment=true";
-
-        Navigation.NavigateTo(url, true);
+        text = Query ?? BlogSettings.Instance.SearchDefaultText ?? string.Empty;
     }
 }

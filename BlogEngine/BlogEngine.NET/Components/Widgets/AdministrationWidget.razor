@@ -1,0 +1,33 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/Administration/widget.cshtml *@
+
+@if (Security.IsAuthenticated)
+{
+    var root = Utils.RelativeWebRoot;
+    <div class="Widget widget administration">
+        <h4 class="WidgetHeader widget-header">@Title</h4>
+        <div class="WidgetContent widget-content">
+            <ul class="toprounded" id="uxMenu_ulMenu">
+                @if (Security.IsAuthorizedTo(Rights.ViewDashboard))
+                {
+                    <li><a href="@(root)admin/index.cshtml"><span>@Utils.Translate("dashboard")</span></a></li>
+                }
+                @if (Security.IsAuthorizedTo(Rights.CreateNewPosts))
+                {
+                    <li><a href="@(root)admin/#/content/posts"><span>@Utils.Translate("content")</span></a></li>
+                }
+                @if (Security.IsAuthorizedTo(Rights.ManageThemes))
+                {
+                    <li><a href="@(root)admin/#/custom/themes"><span>@Utils.Translate("custom")</span></a></li>
+                }
+                @if (Security.IsAuthorizedTo(Rights.AccessAdminSettingsPages))
+                {
+                    <li><a href="@(root)admin/#/settings/basic"><span>@Utils.Translate("settings")</span></a></li>
+                }
+                <li><a href="@(root)admin/#/security/profile"><span>@Utils.Translate("profile")</span></a></li>
+                <li><a href="@(root)Account/change-password"><span>@Utils.Translate("changePassword")</span></a></li>
+                <li><a href="@(Utils.ApplicationRelativeWebRoot)Account/logout"><span>@Utils.Translate("logoff")</span></a></li>
+            </ul>
+        </div>
+    </div>
+}

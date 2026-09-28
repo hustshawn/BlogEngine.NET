@@ -1,73 +1,92 @@
-@using BlogEngine.Core
 @using BlogEngine.Core.Web.Controls
 @using BlogEngine.Core.Web.Extensions
-@using System.Globalization
-@using System.Text
+@using App_Code.Controls
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+
+@* Port of Custom/Controls/CommentList.ascx. Comments are saved by a static SSR form post
+   (the original used an ASP.NET client callback). *@
 
 <div class="well-global">
-    @if (CommentCounter > 0)
+    @if (commentCounter > 0)
     {
         <h3 id="comment" class="well-global-title">
-            @Utils.Translate("comments") (@CommentCounter)
-            <a id="commenttoggle" style="float: right; width: 20px; height: 20px; border: 1px solid #ccc; text-decoration: none; text-align: center"
-               href="javascript:void(0)" @onclick="ToggleComments" @onclick:preventDefault>@toggleChar</a>
+            @Utils.Translate("comments") (@commentCounter)
+            <a id="commenttoggle" style="float: right; width: 20px; height: 20px; border: 1px solid #ccc; text-decoration: none; text-align: center" href="javascript:toggle_visibility('commentlist', 'commenttoggle');">-</a>
         </h3>
     }
 
-    <div id="commentlist" style="display: @(showComments ? "block" : "none")">
-        @if (Post != null)
-        {
-            var isOdd = true;
-            @foreach (var comment in GetDisplayComments())
-            {
-                isOdd = !isOdd;
-                <CommentView Comment="@comment" Post="@Post" IsOdd="@isOdd" />
-            }
-        }
+    <div id="commentlist" style="display: block">
+        @RenderComments(comments)
     </div>
 </div>
 
-@* Pingbacks/Trackbacks *@
-@if (pingbackComments.Count > 0)
+@if (pingbacks.Count > 0)
 {
-    <h3 id="trackbackheader">Pingbacks and trackbacks (@pingbackComments.Count)
-        <a id="trackbacktoggle" style="float:right;width:20px;height:20px;border:1px solid #ccc;text-decoration:none;text-align:center"
-           href="javascript:void(0)" @onclick="ToggleTrackbacks" @onclick:preventDefault>@trackbackToggleChar</a>
+    <h3 id="trackbackheader">
+        Pingbacks and trackbacks (@pingbacks.Count)<a id="trackbacktoggle" style="float:right;width:20px;height:20px;border:1px solid #ccc;text-decoration:none;text-align:center" href="javascript:toggle_visibility('trackbacks','trackbacktoggle');">+</a>
     </h3>
-    <div id="trackbacks" style="display:@(showTrackbacks ? "block" : "none")">
-        @{
-            var tbOdd = true;
-        }
-        @foreach (var tb in pingbackComments)
+    <div id="trackbacks" style="display:none">
+        @foreach (var comment in pingbacks)
         {
-            tbOdd = !tbOdd;
-            <CommentView Comment="@tb" Post="@Post" IsOdd="@tbOdd" />
+            <DynamicComponent Type="@commentViewType" Parameters="@CommentParameters(comment, null)" />
         }
     </div>
 }
 
-@* Comment Form *@
 @if (DisplayCommentForm)
 {
     <div id="comment-form">
-        <span id="status">@statusMessage</span>
-
-        <Defaults.CommentForm PostItem="@Post" OnCommentSubmitted="HandleCommentSubmitted" />
-
-        @if (NestingSupported)
-        {
-            <input type="hidden" @bind="replyToCommentId" />
-            @if (!string.IsNullOrEmpty(replyToCommentId) && replyToCommentId != Guid.Empty.ToString())
+        <form method="post" id="commentform" @formname="@FormName" @onsubmit="SaveComment">
+            <AntiforgeryToken />
+            <img src="@(Utils.RelativeWebRoot)Content/images/blog/ajax-loader.gif" width="24" height="24" alt="Saving the comment" style="display: none" id="ajaxLoader" />
+            <span id="status" class="@statusClass">@statusText</span>
+            <DynamicComponent Type="@Theme.Template("CommentForm")" Parameters="@formParameters" />
+            @if (nestingSupported)
             {
-                <p id="cancelReply">
-                    <a href="javascript:void(0);" @onclick="CancelReply" @onclick:preventDefault>@Utils.Translate("cancelReply")</a>
+                <input type="hidden" name="hiddenReplyTo" id="hiddenReplyTo" value="" />
+                <p id="cancelReply" style="display: none;">
+                    <a href="javascript:void(0);" onclick="BlogEngine.cancelReply();">@Utils.Translate("cancelReply")</a>
                 </p>
             }
-        }
+            @((MarkupString)captchaHtml)
+        </form>
     </div>
+    <script type="text/javascript">
+        BlogEngine.comments.flagImage = BlogEngine.$("imgFlag");
+        BlogEngine.comments.contentBox = BlogEngine.$("txtContent");
+        BlogEngine.comments.moderation = @BlogSettings.Instance.EnableCommentsModeration.ToString().ToLowerInvariant();
+        BlogEngine.comments.checkName = @((!Security.IsAuthenticated).ToString().ToLowerInvariant());
+        BlogEngine.comments.postAuthor = "@Post.Author";
+        BlogEngine.comments.nameBox = BlogEngine.$("txtName");
+        BlogEngine.comments.emailBox = BlogEngine.$("txtEmail");
+        BlogEngine.comments.websiteBox = BlogEngine.$("txtWebsite");
+        BlogEngine.comments.countryDropDown = BlogEngine.$("ddlCountry");
+        BlogEngine.comments.captchaField = { value: "" };
+        BlogEngine.comments.replyToId = BlogEngine.$("hiddenReplyTo");
+        // the comment is posted with the form (validateAndSubmitCommentForm lets the submit proceed)
+        BlogEngine.addComment = function (preview) {
+            if (preview) return;
+            BlogEngine.$("status").className = "";
+            BlogEngine.$("status").innerHTML = BlogEngineRes.i18n.savingTheComment;
+            BlogEngine.$("ajaxLoader").style.display = "inline";
+        };
+    </script>
 }
+
+<script type="text/javascript">
+    function toggle_visibility(id, id2) {
+        var e = document.getElementById(id);
+        var h = document.getElementById(id2);
+        if (e.style.display == 'block') {
+            e.style.display = 'none';
+            h.innerHTML = "+";
+        }
+        else {
+            e.style.display = 'block';
+            h.innerHTML = "-";
+        }
+    }
+</script>
 
 @if (!DisplayCommentForm)
 {
@@ -77,165 +96,199 @@
 }
 
 @code {
-    [Parameter] public Post Post { get; set; }
+    private const string FormName = "comment";
 
-    private int CommentCounter;
-    private bool showComments = true;
-    private string toggleChar = "-";
-    private bool showTrackbacks = false;
-    private string trackbackToggleChar = "+";
-    private string statusMessage = string.Empty;
-    private string replyToCommentId = Guid.Empty.ToString();
-    private List<Comment> pingbackComments = new();
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
+
+    [Parameter, EditorRequired] public Post Post { get; set; }
+
+    [SupplyParameterFromQuery(Name = "deletecomment")] public string DeleteCommentId { get; set; }
+    [SupplyParameterFromQuery(Name = "deletecommentandchildren")] public string DeleteCommentAndChildrenId { get; set; }
+    [SupplyParameterFromQuery(Name = "approvecomment")] public string ApproveCommentId { get; set; }
+    [SupplyParameterFromQuery(Name = "approveallcomments")] public string ApproveAllComments { get; set; }
+
+    [SupplyParameterFromForm(FormName = FormName, Name = "txtName")] public string FormName_ { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "txtEmail")] public string FormEmail { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "txtWebsite")] public string FormWebsite { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "txtContent")] public string FormContent { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "cbNotify")] public string FormNotify { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "hiddenReplyTo")] public string FormReplyTo { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "simpleCaptchaValue")] public string FormSimpleCaptcha { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "recaptcha_response_field")] public string FormRecaptchaResponse { get; set; }
+    [SupplyParameterFromForm(FormName = FormName, Name = "recaptcha_challenge_field")] public string FormRecaptchaChallenge { get; set; }
+
+    private Type commentViewType;
     private bool nestingSupported;
-
-    public bool NestingSupported
-    {
-        get
-        {
-            if (!BlogSettings.Instance.IsCommentNestingEnabled)
-                return false;
-            // In Blazor, nesting is always supported via nested component rendering
-            return true;
-        }
-    }
+    private int commentCounter;
+    private List<Comment> comments = new();
+    private readonly Dictionary<Guid, List<Comment>> replies = new();
+    private List<Comment> pingbacks = new();
+    private bool canViewUnpublished;
+    private Dictionary<string, object> formParameters;
+    private string statusText;
+    private string statusClass;
+    private string captchaHtml = string.Empty;
+    private SimpleCaptchaControl simpleCaptcha;
+    private RecaptchaControl recaptcha;
 
     public bool DisplayCommentForm
     {
         get
         {
-            if (BlogSettings.Instance.IsCommentsEnabled && Security.IsAuthorizedTo(Rights.CreateComments))
+            if (!BlogSettings.Instance.IsCommentsEnabled || !Security.IsAuthorizedTo(Rights.CreateComments))
             {
-                if (Post != null && (!Post.HasCommentsEnabled ||
-                    (BlogSettings.Instance.DaysCommentsAreEnabled > 0 &&
-                     Post.DateCreated.AddDays(BlogSettings.Instance.DaysCommentsAreEnabled) < DateTime.Now.Date)))
-                {
-                    return false;
-                }
-                return true;
+                return false;
             }
-            return false;
+
+            return Post == null || (Post.HasCommentsEnabled && (BlogSettings.Instance.DaysCommentsAreEnabled <= 0 ||
+                Post.DateCreated.AddDays(BlogSettings.Instance.DaysCommentsAreEnabled) >= DateTime.Now.Date));
         }
     }
 
     protected override void OnParametersSet()
     {
-        if (Post == null) return;
+        commentViewType = Theme.Template("CommentView");
+        nestingSupported = BlogSettings.Instance.IsCommentNestingEnabled && commentViewType != typeof(Defaults.CommentView);
+        canViewUnpublished = Security.IsAuthorizedTo(AuthorizationCheck.HasAny, new[] { Rights.ViewUnmoderatedComments, Rights.ModerateComments });
 
-        CommentCounter = 0;
-        pingbackComments.Clear();
-
-        foreach (var comment in Post.Comments)
+        if (HttpMethods.IsGet(HttpContext.Request.Method) && Security.IsAuthorizedTo(Rights.ModerateComments) && Moderate())
         {
-            if (comment.Email == "pingback" || comment.Email == "trackback")
+            return;
+        }
+
+        EnableCaptchas();
+        LoadComments();
+        formParameters = new Dictionary<string, object>
+        {
+            ["View"] = new CommentFormBase { PostItem = Post },
+            ["Values"] = GetCookie()
+        };
+    }
+
+    private void LoadComments()
+    {
+        commentCounter = 0;
+        replies.Clear();
+        comments = nestingSupported
+            ? FilterNested(Post.NestedComments)
+            : Post.Comments.Where(c => c.Email != "pingback" && c.Email != "trackback")
+                .Where(c =>
+                {
+                    if (c.IsApproved)
+                    {
+                        commentCounter++;
+                    }
+                    return c.IsApproved || !BlogSettings.Instance.EnableCommentsModeration;
+                }).ToList();
+
+        if (!nestingSupported && canViewUnpublished)
+        {
+            comments.AddRange(Post.Comments.Where(c => c.Email != "pingback" && c.Email != "trackback" && !c.IsApproved && !comments.Contains(c)));
+        }
+
+        pingbacks = Post.Comments.Where(c => c.Email == "pingback" || c.Email == "trackback").ToList();
+    }
+
+    /// <summary>
+    /// Visible nested comments (AddNestedComments of the original).
+    /// </summary>
+    private List<Comment> FilterNested(IEnumerable<Comment> nested)
+    {
+        var list = new List<Comment>();
+        foreach (var comment in nested)
+        {
+            if (!comment.IsApproved && BlogSettings.Instance.EnableCommentsModeration && !canViewUnpublished)
             {
-                pingbackComments.Add(comment);
                 continue;
             }
-
+            if (comment.IsSpam && !canViewUnpublished)
+            {
+                continue;
+            }
+            if (comment.Email == "pingback" || comment.Email == "trackback")
+            {
+                continue;
+            }
             if (comment.IsApproved)
-                CommentCounter++;
+            {
+                commentCounter++;
+            }
+            list.Add(comment);
+            if (comment.Comments.Count > 0)
+            {
+                replies[comment.Id] = FilterNested(comment.Comments);
+            }
         }
+        return list;
+    }
 
-        // Handle query string actions (moderation)
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null && Security.IsAuthorizedTo(Rights.ModerateComments))
+    private RenderFragment RenderComments(IEnumerable<Comment> list) => builder =>
+    {
+        var seq = 0;
+        foreach (var comment in list)
         {
-            var query = httpContext.Request.Query;
-            if (query.ContainsKey("deletecomment"))
+            RenderFragment childContent = null;
+            if (nestingSupported && replies.TryGetValue(comment.Id, out var children))
             {
-                var commentId = new Guid(query["deletecomment"].ToString());
-                var comment = Post.Comments.FirstOrDefault(c => c.Id == commentId);
-                if (comment != null)
-                {
-                    Post.RemoveComment(comment);
-                    Navigation.NavigateTo(Navigation.Uri.Split('?')[0] + "#comment", true);
-                }
+                childContent = RenderComments(children);
             }
-            else if (query.ContainsKey("approvecomment"))
-            {
-                var commentId = new Guid(query["approvecomment"].ToString());
-                var comment = Post.NotApprovedComments.FirstOrDefault(c => c.Id == commentId);
-                if (comment != null)
-                {
-                    Post.ApproveComment(comment);
-                    Navigation.NavigateTo(Navigation.Uri.Split('?')[0], true);
-                }
-            }
-            else if (query.ContainsKey("approveallcomments"))
-            {
-                Post.ApproveAllComments();
-                Navigation.NavigateTo(Navigation.Uri.Split('?')[0], true);
-            }
-            else if (query.ContainsKey("deletecommentandchildren"))
-            {
-                var commentId = new Guid(query["deletecommentandchildren"].ToString());
-                var comment = Post.Comments.FirstOrDefault(c => c.Id == commentId);
-                if (comment != null)
-                {
-                    var commentsToDelete = new List<Comment>();
-                    CollectCommentToDelete(comment, commentsToDelete);
-                    foreach (var c in commentsToDelete)
-                        Post.RemoveComment(c);
-                    Navigation.NavigateTo(Navigation.Uri.Split('?')[0] + "#comment", true);
-                }
-            }
+
+            builder.OpenComponent<DynamicComponent>(seq++);
+            builder.AddAttribute(seq++, nameof(DynamicComponent.Type), commentViewType);
+            builder.AddAttribute(seq++, nameof(DynamicComponent.Parameters), CommentParameters(comment, childContent));
+            builder.SetKey(comment.Id);
+            builder.CloseComponent();
         }
+    };
+
+    private Dictionary<string, object> CommentParameters(Comment comment, RenderFragment childContent)
+    {
+        var parameters = new Dictionary<string, object>
+        {
+            ["View"] = new CommentViewBase { Comment = comment, Post = Post }
+        };
+        if (childContent != null)
+        {
+            parameters["ChildContent"] = childContent;
+        }
+        return parameters;
     }
 
-    private IEnumerable<Comment> GetDisplayComments()
+    private void SaveComment()
     {
-        if (Post == null) return Enumerable.Empty<Comment>();
-
-        bool canViewUnpublished = Security.IsAuthorizedTo(AuthorizationCheck.HasAny,
-            new[] { Rights.ViewUnmoderatedComments, Rights.ModerateComments });
-
-        var comments = Post.Comments
-            .Where(c => c.Email != "pingback" && c.Email != "trackback")
-            .Where(c => c.IsApproved || canViewUnpublished)
-            .ToList();
-
-        return comments;
-    }
-
-    private void CollectCommentToDelete(Comment comment, List<Comment> commentsToDelete)
-    {
-        commentsToDelete.Add(comment);
-        foreach (var sub in comment.Comments)
-            CollectCommentToDelete(sub, commentsToDelete);
-    }
-
-    private void ToggleComments()
-    {
-        showComments = !showComments;
-        toggleChar = showComments ? "-" : "+";
-    }
-
-    private void ToggleTrackbacks()
-    {
-        showTrackbacks = !showTrackbacks;
-        trackbackToggleChar = showTrackbacks ? "-" : "+";
-    }
-
-    private void CancelReply()
-    {
-        replyToCommentId = Guid.Empty.ToString();
-    }
-
-    private void HandleCommentSubmitted(CommentSubmission submission)
-    {
-        if (!BlogSettings.Instance.IsCommentsEnabled || !Security.IsAuthorizedTo(Rights.CreateComments))
+        if (!DisplayCommentForm)
+        {
             return;
+        }
+
+        var author = (FormName_ ?? string.Empty).Trim();
+        var email = (FormEmail ?? string.Empty).Trim();
+        var content = FormContent ?? string.Empty;
+        var website = FormWebsite ?? string.Empty;
+
+        if (author.Length == 0 || email.Length == 0 || content.Trim().Length == 0)
+        {
+            SetStatus("warning", author.Length == 0 ? "Name is required." : email.Length == 0 ? "Email is required." : "Comment is required.");
+            KeepValues();
+            return;
+        }
+
+        if (!ValidateCaptcha())
+        {
+            SetStatus("warning", "The captcha text was not valid. Please try again.");
+            KeepValues();
+            return;
+        }
 
         var comment = new Comment
         {
             Id = Guid.NewGuid(),
-            ParentId = string.IsNullOrEmpty(replyToCommentId) ? Guid.Empty : new Guid(replyToCommentId),
-            Author = System.Net.WebUtility.HtmlEncode(submission.Author ?? string.Empty),
-            Email = System.Net.WebUtility.HtmlEncode(submission.Email ?? string.Empty),
-            Content = System.Net.WebUtility.HtmlEncode(submission.Content ?? string.Empty),
+            ParentId = Guid.TryParse(FormReplyTo, out var replyTo) ? replyTo : Guid.Empty,
+            Author = System.Web.HttpUtility.HtmlAttributeEncode(author),
+            Email = System.Net.WebUtility.HtmlEncode(email),
+            Content = System.Web.HttpUtility.HtmlAttributeEncode(content),
             IP = Utils.GetClientIP(),
-            Country = System.Net.WebUtility.HtmlEncode(submission.Country ?? string.Empty),
+            Country = string.Empty,
             DateCreated = DateTime.Now,
             Parent = Post,
             IsApproved = !BlogSettings.Instance.EnableCommentsModeration,
@@ -243,39 +296,190 @@
         };
 
         if (Security.IsAuthenticated && BlogSettings.Instance.TrustAuthenticatedUsers)
-            comment.IsApproved = true;
-
-        if (BlogSettings.Instance.EnableWebsiteInComments && !string.IsNullOrWhiteSpace(submission.Website))
         {
-            var website = submission.Website.Trim();
-            if (!website.Contains("://"))
-                website = $"http://{website}";
-            if (Uri.TryCreate(website, UriKind.Absolute, out var url))
-                comment.Website = url;
+            comment.IsApproved = true;
         }
 
-        if (submission.Notify && !Post.NotificationEmails.Contains(submission.Email))
-            Post.NotificationEmails.Add(submission.Email);
-        else if (!submission.Notify && Post.NotificationEmails.Contains(submission.Email))
-            Post.NotificationEmails.Remove(submission.Email);
+        if (BlogSettings.Instance.EnableWebsiteInComments && website.Trim().Length > 0)
+        {
+            if (!website.Contains("://", StringComparison.Ordinal))
+            {
+                website = $"http://{website}";
+            }
+            if (Uri.TryCreate(website, UriKind.Absolute, out var url))
+            {
+                comment.Website = url;
+            }
+        }
+
+        var notify = string.Equals(FormNotify, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(FormNotify, "on", StringComparison.OrdinalIgnoreCase);
+        if (notify && !Post.NotificationEmails.Contains(email))
+        {
+            Post.NotificationEmails.Add(email);
+        }
+        else if (!notify && Post.NotificationEmails.Contains(email))
+        {
+            Post.NotificationEmails.Remove(email);
+        }
 
         Post.AddComment(comment);
-        replyToCommentId = Guid.Empty.ToString();
-        statusMessage = string.Empty;
+        SetCookie(author, email, website);
+        recaptcha?.UpdateLog(comment);
 
-        // Re-count
-        CommentCounter = Post.Comments.Count(c => c.Email != "pingback" && c.Email != "trackback" && c.IsApproved);
-        StateHasChanged();
+        SetStatus("success", Utils.Translate(comment.IsApproved ? "commentWasSaved" : "commentWaitingModeration"));
+        LoadComments();
     }
 
-    /// <summary>DTO for comment form submission</summary>
-    public class CommentSubmission
+    private void SetStatus(string cssClass, string text)
     {
-        public string Author { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Website { get; set; } = string.Empty;
-        public string Country { get; set; } = string.Empty;
-        public string Content { get; set; } = string.Empty;
-        public bool Notify { get; set; }
+        statusClass = cssClass;
+        statusText = text;
+    }
+
+    private void KeepValues()
+    {
+        formParameters["Values"] = new CommentFormValues
+        {
+            Name = FormName_,
+            Email = FormEmail,
+            Website = FormWebsite,
+            Content = FormContent,
+            Notify = FormNotify != null
+        };
+    }
+
+    private void EnableCaptchas()
+    {
+        var reCaptchaEnabled = ExtensionManager.ExtensionEnabled("Recaptcha");
+        var simpleCaptchaEnabled = ExtensionManager.ExtensionEnabled("SimpleCaptcha");
+
+        if (reCaptchaEnabled && simpleCaptchaEnabled)
+        {
+            var useRecaptcha = ExtensionManager.GetExtension("SimpleCaptcha").Priority < ExtensionManager.GetExtension("Recaptcha").Priority;
+            reCaptchaEnabled = useRecaptcha;
+            simpleCaptchaEnabled = !useRecaptcha;
+        }
+
+        try
+        {
+            if (reCaptchaEnabled)
+            {
+                recaptcha = new RecaptchaControl { UserUniqueIdentifier = Guid.NewGuid().ToString() };
+                recaptcha.Initialize();
+                captchaHtml = recaptcha.RenderHtml();
+            }
+            else if (simpleCaptchaEnabled)
+            {
+                simpleCaptcha = new SimpleCaptchaControl();
+                simpleCaptcha.Initialize();
+                captchaHtml = simpleCaptcha.RenderHtml();
+            }
+        }
+        catch (Exception ex)
+        {
+            Utils.Log("CommentList.EnableCaptchas", ex);
+            recaptcha = null;
+            simpleCaptcha = null;
+            captchaHtml = string.Empty;
+        }
+    }
+
+    private bool ValidateCaptcha()
+    {
+        if (recaptcha != null && recaptcha.RecaptchaNecessary)
+        {
+            return recaptcha.ValidateAsync(FormRecaptchaResponse, FormRecaptchaChallenge);
+        }
+
+        if (simpleCaptcha != null && simpleCaptcha.SimpleCaptchaNecessary)
+        {
+            simpleCaptcha.Validate(FormSimpleCaptcha ?? string.Empty);
+            return simpleCaptcha.IsValid;
+        }
+
+        return true;
+    }
+
+    private CommentFormValues GetCookie()
+    {
+        var values = new CommentFormValues();
+        if (HttpContext.Request.Cookies.TryGetValue("comment", out var cookie) && !string.IsNullOrEmpty(cookie))
+        {
+            var parsed = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(cookie);
+            values.Name = parsed.TryGetValue("name", out var name) ? Uri.UnescapeDataString(name.ToString()) : null;
+            values.Email = parsed.TryGetValue("email", out var email) ? email.ToString() : null;
+            values.Website = parsed.TryGetValue("url", out var url) ? url.ToString() : null;
+        }
+        return values;
+    }
+
+    private void SetCookie(string name, string email, string website)
+    {
+        var value = $"name={Uri.EscapeDataString(name)}&email={Uri.EscapeDataString(email)}&url={Uri.EscapeDataString(website.Trim())}&country=";
+        HttpContext.Response.Cookies.Append("comment", value, new CookieOptions { Expires = DateTimeOffset.Now.AddMonths(24), HttpOnly = true, IsEssential = true });
+    }
+
+    /// <summary>
+    /// Moderation links of the comment views (?deletecomment=, ?approvecomment=, ...).
+    /// </summary>
+    private bool Moderate()
+    {
+        var url = Post.RelativeLink;
+
+        if (Guid.TryParse(DeleteCommentId, out var deleteId))
+        {
+            var comment = Post.Comments.FirstOrDefault(c => c.Id == deleteId);
+            if (comment != null)
+            {
+                Post.RemoveComment(comment);
+            }
+            Navigation.NavigateTo(url + "#comment");
+            return true;
+        }
+
+        if (Guid.TryParse(DeleteCommentAndChildrenId, out var deleteAllId))
+        {
+            var comment = Post.Comments.FirstOrDefault(c => c.Id == deleteAllId);
+            if (comment != null)
+            {
+                var toDelete = new List<Comment>();
+                Collect(comment, toDelete);
+                foreach (var c in toDelete)
+                {
+                    Post.RemoveComment(c);
+                }
+            }
+            Navigation.NavigateTo(url + "#comment");
+            return true;
+        }
+
+        if (Guid.TryParse(ApproveCommentId, out var approveId))
+        {
+            var comment = Post.NotApprovedComments.FirstOrDefault(c => c.Id == approveId);
+            if (comment != null)
+            {
+                Post.ApproveComment(comment);
+            }
+            Navigation.NavigateTo(url);
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(ApproveAllComments))
+        {
+            Post.ApproveAllComments();
+            Navigation.NavigateTo(url);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void Collect(Comment comment, List<Comment> list)
+    {
+        list.Add(comment);
+        foreach (var child in comment.Comments)
+        {
+            Collect(child, list);
+        }
     }
 }

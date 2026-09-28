@@ -1,0 +1,44 @@
+@* Port of Scripting.Helpers.AddTrackingScript: Disqus comment counts and the tracking script from the settings *@
+
+@if (!string.IsNullOrEmpty(script))
+{
+    @((MarkupString)script)
+}
+
+@code {
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
+
+    private string script;
+
+    protected override void OnInitialized()
+    {
+        var sb = new System.Text.StringBuilder();
+
+        if (BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Disqus && BlogSettings.Instance.IsCommentsEnabled)
+        {
+            var scheme = HttpContext?.Request.Scheme ?? "https";
+            sb.Append("<script type=\"text/javascript\"> \n");
+            sb.Append("//<![CDATA[ \n");
+            sb.Append("(function() { ");
+            sb.Append("var links = document.getElementsByTagName('a'); ");
+            sb.Append("var query = '?'; ");
+            sb.Append("for(var i = 0; i < links.length; i++) { ");
+            sb.Append("if(links[i].href.indexOf('#comment') >= 0) { ");
+            sb.Append("query += 'url' + i + '=' + encodeURIComponent(links[i].href) + '&'; ");
+            sb.Append("}}");
+            sb.Append("document.write('<script charset=\"utf-8\" type=\"text/javascript\" src=\"" + scheme + "://disqus.com/forums/");
+            sb.Append(BlogSettings.Instance.DisqusWebsiteName);
+            sb.Append("/get_num_replies.js' + query + '\"></' + 'script>'); ");
+            sb.Append("})(); \n");
+            sb.Append("//]]> \n");
+            sb.Append("</script> \n");
+        }
+
+        if (!string.IsNullOrEmpty(BlogSettings.Instance.TrackingScript))
+        {
+            sb.Append(BlogSettings.Instance.TrackingScript);
+        }
+
+        script = sb.Length > 0 ? "\n" + sb : null;
+    }
+}

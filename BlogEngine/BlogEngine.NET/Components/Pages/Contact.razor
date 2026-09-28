@@ -1,13 +1,16 @@
 @page "/contact"
+@page "/contact.aspx"
+@layout PageLayout
 @using System.ComponentModel.DataAnnotations
 @using System.Net.Mail
 @using System.Text.RegularExpressions
 @using System.Web
 @using BlogEngine.Core
-@inject NavigationManager Navigation
 @inject IHttpContextAccessor HttpContextAccessor
 
-<PageTitle>@HttpUtility.HtmlEncode(Utils.Translate("contact"))</PageTitle>
+@* Port of contact.aspx (static SSR form post) *@
+
+<BlogHead Title="@Utils.Translate("contact")" Description="@Utils.StripHtml(BlogSettings.Instance.ContactFormMessage)" />
 
 <div id="contact" class="contact-page page-global">
     @if (!messageSent)
@@ -16,7 +19,7 @@
             <h2 class="contact-page-title page-global-title">@Utils.Translate("contact")</h2>
             <div class="contact-page-message">@((MarkupString)BlogSettings.Instance.ContactFormMessage)</div>
 
-            <EditForm Model="@contactModel" OnValidSubmit="HandleSubmit">
+            <EditForm Model="@contactModel" FormName="contact" method="post" enctype="multipart/form-data" OnValidSubmit="HandleSubmit">
                 <DataAnnotationsValidator />
 
                 <div class="form-group">
@@ -47,7 +50,7 @@
                 {
                     <div class="form-group">
                         <label for="txtAttachment">@Utils.Translate("attachFile")</label>
-                        <InputFile id="txtAttachment" OnChange="OnFileSelected" data-id="txtAttachment" />
+                        <input type="file" id="txtAttachment" name="txtAttachment" data-id="txtAttachment" />
                     </div>
                 }
 
@@ -56,7 +59,7 @@
 
                 @if (!string.IsNullOrEmpty(statusMessage))
                 {
-                    <div class="alert alert-danger">@statusMessage</div>
+                    <div class="alert alert-danger">@((MarkupString)statusMessage)</div>
                 }
 
                 @if (showCaptchaError)
@@ -82,11 +85,12 @@
 </div>
 
 @code {
-    private ContactFormModel contactModel = new();
+    [SupplyParameterFromForm(FormName = "contact")]
+    private ContactFormModel contactModel { get; set; }
     private bool messageSent = false;
     private string statusMessage = string.Empty;
     private bool showCaptchaError = false;
-    private IBrowserFile attachmentFile;
+    private IFormFile attachmentFile;
 
     // Cookie-persisted data
     private string cookieUrl = string.Empty;
@@ -95,6 +99,14 @@
     protected override void OnInitialized()
     {
         var httpContext = HttpContextAccessor.HttpContext;
+        if (contactModel != null)
+        {
+            // posted form: keep the cookie values used in the mail body
+            GetCookie();
+            return;
+        }
+
+        contactModel = new ContactFormModel();
         var queryString = httpContext?.Request.Query;
 
         // Pre-fill from query string
@@ -148,8 +160,14 @@
         }
     }
 
-    private async Task HandleSubmit()
+    private void HandleSubmit()
     {
+        var form = HttpContextAccessor.HttpContext?.Request;
+        if (BlogSettings.Instance.EnableContactAttachments && form?.HasFormContentType == true)
+        {
+            attachmentFile = form.Form.Files["txtAttachment"];
+        }
+
         showCaptchaError = false;
         statusMessage = string.Empty;
 
@@ -205,10 +223,9 @@
                 mail.IsBodyHtml = true;
 
                 // Handle file attachment
-                if (attachmentFile != null)
+                if (attachmentFile != null && attachmentFile.Length > 0)
                 {
-                    var stream = attachmentFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
-                    var attachment = new Attachment(stream, attachmentFile.Name);
+                    var attachment = new Attachment(attachmentFile.OpenReadStream(), attachmentFile.FileName);
                     mail.Attachments.Add(attachment);
                 }
 
@@ -224,15 +241,10 @@
         {
             if (Security.IsAuthorizedTo(Rights.ViewDetailedErrorMessages))
             {
-                statusMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+                statusMessage = System.Net.WebUtility.HtmlEncode(ex.InnerException != null ? ex.InnerException.Message : ex.Message);
             }
             return false;
         }
-    }
-
-    private void OnFileSelected(InputFileChangeEventArgs e)
-    {
-        attachmentFile = e.File;
     }
 
     public class ContactFormModel

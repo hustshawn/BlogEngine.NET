@@ -1,109 +1,110 @@
-@using BlogEngine.Core
 @using BlogEngine.Core.Web.Controls
-@inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+@* Port of Custom/Controls/PostList.ascx: renders the posts of the current page through the theme's PostView *@
 
-@if (Visible)
+@if (visible)
 {
-    <div class="posts">
-        @foreach (var postView in renderedPosts)
+    <div id="posts" class="posts">
+        @foreach (var view in views)
         {
-            <Defaults.PostView Post="@postView.Post" ShowExcerpt="@postView.ShowExcerpt"
-                               Index="@postView.Index" Location="@ServingLocation.PostList" />
-        }
-
-        @if (renderedPosts.Count == 0 && Posts != null && Posts.Count == 0)
-        {
-            <p>@Utils.Translate("none")</p>
+            <DynamicComponent Type="@postViewType" Parameters="@(new Dictionary<string, object> { ["View"] = view })" />
         }
     </div>
 
+    <div id="postPaging" style="display: none">
+        @if (showPrev)
+        {
+            <a style="float:left">&lt;&lt; @Utils.Translate("previousPosts")</a>
+        }
+        <a style="float:right">@Utils.Translate("nextPosts") &gt;&gt;</a>
+    </div>
+
     <div style="clear:both; display:block">
-        <PostPager Posts="@Posts" />
+        <PostPager Posts="@posts" />
     </div>
 }
 
 @code {
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
+
+    /// <summary>Posts to list; all applicable posts when null.</summary>
     [Parameter] public List<IPublishable> Posts { get; set; }
+
+    /// <summary>The criteria by which the content is being served (by tag, category, author, etc).</summary>
     [Parameter] public ServingContentBy ContentBy { get; set; } = ServingContentBy.AllContent;
 
-    private bool Visible = true;
-    private List<PostViewData> renderedPosts = new();
+    private bool visible = true;
+    private bool showPrev = true;
+    private List<IPublishable> posts;
+    private readonly List<PostViewBase> views = new();
+    private Type postViewType;
 
-    private class PostViewData
+    protected override void OnParametersSet()
     {
-        public Post Post { get; set; }
-        public bool ShowExcerpt { get; set; }
-        public int Index { get; set; }
-    }
-
-    protected override void OnInitialized()
-    {
-        if (!Security.IsAuthorizedTo(Rights.ViewPublicPosts))
+        views.Clear();
+        visible = Security.IsAuthorizedTo(Rights.ViewPublicPosts);
+        if (!visible)
         {
-            Visible = false;
             return;
         }
 
-        BindPosts();
-    }
+        postViewType = Theme.Template("PostView");
+        posts = Posts ?? Post.ApplicablePosts.ConvertAll(p => (IPublishable)p);
 
-    private void BindPosts()
-    {
-        if (Posts == null)
+        if (posts.Count == 0)
         {
-            Posts = Post.ApplicablePosts.ConvertAll(p => (IPublishable)p);
+            showPrev = false;
+            return;
         }
 
-        if (Posts.Count == 0) return;
-
-        var visiblePosts = Posts.FindAll(p => p.IsVisible);
-        var postsPerPage = BlogSettings.Instance.PostsPerPage;
-        var count = Math.Min(postsPerPage, visiblePosts.Count);
-        var page = GetPageIndex();
-        var index = page * count;
+        var visiblePosts = posts.FindAll(p => p.IsVisible);
+        var count = Math.Min(BlogSettings.Instance.PostsPerPage, visiblePosts.Count);
+        var index = GetPageIndex() * count;
         var stop = count;
-
         if (index + count > visiblePosts.Count)
+        {
             stop = visiblePosts.Count - index;
+        }
 
         if (stop < 0 || stop + index > visiblePosts.Count)
-            return;
-
-        var showExcerpt = ShowExcerpt();
-        var counter = 0;
-
-        foreach (Post post in visiblePosts.GetRange(index, stop))
         {
-            if (counter == stop) break;
+            showPrev = false;
+            return;
+        }
 
-            renderedPosts.Add(new PostViewData
+        var rawUrl = HttpContext == null ? string.Empty : HttpContext.Request.Path + HttpContext.Request.QueryString;
+        var showExcerpt = ShowExcerpt(rawUrl);
+        var counter = 0;
+        foreach (var post in visiblePosts.GetRange(index, stop).OfType<Post>())
+        {
+            views.Add(new PostViewBase
             {
                 Post = post,
                 ShowExcerpt = showExcerpt,
-                Index = counter
+                Location = ServingLocation.PostList,
+                ContentBy = ContentBy,
+                Index = counter++,
+                RequestUrl = rawUrl
             });
-            counter++;
+        }
+
+        if (index + stop >= visiblePosts.Count)
+        {
+            showPrev = false;
         }
     }
 
     private int GetPageIndex()
     {
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
-        {
-            var pageStr = httpContext.Request.Query["page"].FirstOrDefault();
-            if (int.TryParse(pageStr, out int idx))
-                return idx - 1;
-        }
-        return 0;
+        return int.TryParse(HttpContext?.Request.Query["page"], out var index) ? index - 1 : 0;
     }
 
-    private bool ShowExcerpt()
+    /// <summary>
+    /// Whether or not to show the entire post or just the excerpt/description in the post list.
+    /// </summary>
+    private static bool ShowExcerpt(string rawUrl)
     {
-        var httpContext = HttpContextAccessor.HttpContext;
-        var url = httpContext?.Request.Path.Value?.ToUpperInvariant() ?? string.Empty;
-        bool tagOrCategory = url.Contains("/CATEGORY/") || url.Contains("?TAG=/");
+        var url = rawUrl.ToUpperInvariant();
+        var tagOrCategory = url.Contains("/CATEGORY/") || url.Contains("?TAG=/");
 
         return BlogSettings.Instance.ShowDescriptionInPostList ||
             (BlogSettings.Instance.ShowDescriptionInPostListForPostsByTagOrCategory && tagOrCategory);

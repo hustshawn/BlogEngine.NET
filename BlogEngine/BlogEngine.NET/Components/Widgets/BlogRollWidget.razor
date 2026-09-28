@@ -1,0 +1,49 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/BlogRoll/widget.cshtml *@
+
+<div class="Widget widget blogroll">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        @if (rolls != null)
+        {
+            <ul class="xoxo">
+                @foreach (var roll in rolls)
+                {
+                    var feeds = roll.FeedUrl == null ? null : vm.GetFeeds(roll.FeedUrl.ToString());
+                    <li>
+                        <a href="@roll.FeedUrl">
+                            <img width="12" height="12" alt="@roll.Description" src="@imgPath/rssButton.png">
+                        </a>
+                        <a rel="contact" href="@roll.BlogUrl">@roll.Title</a>
+                        @if (feeds != null && feeds.Count > 0)
+                        {
+                            <ul>
+                                @foreach (var feed in feeds)
+                                {
+                                    <li>
+                                        <a title="@feed.Title.Text" href="@feed.Links[0].Uri">@vm.Shorten(feed.Title.Text)</a>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        <a href="@(Utils.ApplicationRelativeWebRoot)opml.axd" style="display: block; text-align: right" title="@Utils.Translate("downloadOPML")">
+            @Utils.Translate("downloadOPML")
+            <img src="@imgPath/opml.png" width="12" height="12" alt="OPML" />
+        </a>
+    </div>
+</div>
+
+@code {
+    private readonly BlogEngine.Core.Data.ViewModels.BlogRollVM vm = new();
+    private List<BlogRollItem> rolls;
+    private readonly string imgPath = Utils.ApplicationRelativeWebRoot + "Content/images/blog";
+
+    protected override void OnParametersSet()
+    {
+        rolls = vm.BlogRolls;
+    }
+}

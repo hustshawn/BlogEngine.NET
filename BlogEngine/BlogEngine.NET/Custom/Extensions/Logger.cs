@@ -59,7 +59,7 @@ namespace App_Code.Extensions
         {
             get
             {
-                var basePath = AppDomain.CurrentDomain.BaseDirectory;
+                var basePath = BlogConfig.ContentRootPath;
 
                 // If Blog.CurrentInstance is not available, use default storage location
                 try

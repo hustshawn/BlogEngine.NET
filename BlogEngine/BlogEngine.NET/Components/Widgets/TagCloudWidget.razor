@@ -1,0 +1,23 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/TagCloud/widget.cshtml *@
+
+<div class="Widget widget tagcloud">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul>
+            @foreach (var tag in tags)
+            {
+                <li>@((MarkupString)tag)</li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private List<string> tags = new();
+
+    protected override void OnParametersSet()
+    {
+        tags = new BlogEngine.Core.Data.Services.TagCloud().Links();
+    }
+}

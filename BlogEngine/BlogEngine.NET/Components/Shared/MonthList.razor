@@ -1,6 +1,7 @@
-@using BlogEngine.Core
 @using Microsoft.Extensions.Caching.Memory
 @inject IMemoryCache MemoryCache
+
+@* Port of AppCode/Controls/MonthList.cs (expand/collapse of the years via BlogEngine.toggleMonth in blog.js) *@
 
 @if (months.Count == 0)
 {
@@ -13,16 +14,10 @@ else
         {
             @foreach (var yearGroup in months.GroupBy(m => m.Key.Year))
             {
-                <li class="year">
-                    <span @onclick="() => ToggleYear(yearGroup.Key)" style="cursor:pointer">@yearGroup.Key</span>
-                    <ul id="year@(yearGroup.Key)" class="@(yearGroup.Key == currentYear ? "open" : "")"
-                        style="display: @(IsYearExpanded(yearGroup.Key) ? "block" : "none")">
+                <li class="year" onclick="BlogEngine.toggleMonth('year@(yearGroup.Key)')">@yearGroup.Key<ul id="year@(yearGroup.Key)" class="@(yearGroup.Key == DateTime.Now.Year ? "open" : null)">
                         @foreach (var item in yearGroup)
                         {
-                            <li>
-                                <a href="@GetMonthUrl(item.Key)">@(item.Key.ToString("MMMM"))</a>
-                                (@item.Value)
-                            </li>
+                            <li><a href="@GetMonthUrl(item.Key)">@item.Key.ToString("MMMM")</a> (@item.Value)</li>
                         }
                     </ul>
                 </li>
@@ -32,10 +27,7 @@ else
         {
             @foreach (var item in months)
             {
-                <li>
-                    <a href="@GetMonthUrl(item.Key)">@(item.Key.ToString("MMMM yyyy"))</a>
-                    (@item.Value)
-                </li>
+                <li><a href="@GetMonthUrl(item.Key)">@item.Key.ToString("MMMM yyyy")</a> (@item.Value)</li>
             }
         }
     </ul>
@@ -43,22 +35,14 @@ else
 
 @code {
     [Parameter] public bool GroupByYear { get; set; } = true;
-    [Parameter] public bool RecentDatesAtTop { get; set; } = false;
+    [Parameter] public bool RecentDatesAtTop { get; set; }
 
     private SortedDictionary<DateTime, int> months = new();
-    private int currentYear = DateTime.Now.Year;
-    private HashSet<int> expandedYears = new();
 
-    protected override void OnInitialized()
+    protected override void OnParametersSet()
     {
-        expandedYears.Add(currentYear);
-        LoadMonths();
-    }
-
-    private void LoadMonths()
-    {
-        const string CacheKey = "BE_MonthListCacheKey";
-        if (!MemoryCache.TryGetValue(CacheKey, out SortedDictionary<DateTime, int> cached))
+        var cacheKey = $"BE_MonthListCacheKey_{Blog.CurrentInstance.Id}_{RecentDatesAtTop}";
+        if (!MemoryCache.TryGetValue(cacheKey, out SortedDictionary<DateTime, int> cached))
         {
             IComparer<DateTime> comparer = RecentDatesAtTop
                 ? Comparer<DateTime>.Create((x, y) => -x.CompareTo(y))
@@ -72,26 +56,13 @@ else
                 cached[month] = count + 1;
             }
 
-            MemoryCache.Set(CacheKey, cached, TimeSpan.FromHours(1));
+            MemoryCache.Set(cacheKey, cached, TimeSpan.FromHours(1));
         }
         months = cached;
     }
 
-    private string GetMonthUrl(DateTime date)
+    private static string GetMonthUrl(DateTime date)
     {
-        return $"{Utils.RelativeOrAbsoluteWebRoot}{date.Year}/{date.ToString("MM")}/default{BlogConfig.FileExtension}";
-    }
-
-    private void ToggleYear(int year)
-    {
-        if (expandedYears.Contains(year))
-            expandedYears.Remove(year);
-        else
-            expandedYears.Add(year);
-    }
-
-    private bool IsYearExpanded(int year)
-    {
-        return expandedYears.Contains(year);
+        return $"{Utils.RelativeOrAbsoluteWebRoot}{date.Year}/{date:MM}/default{BlogConfig.FileExtension}";
     }
 }

@@ -1,0 +1,54 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/CategoryList/widget.cshtml *@
+
+<div class="Widget widget categorylist">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul id="categorylist">
+            @foreach (var cat in BlogEngine.NET.Custom.Widgets.CategoryList.SortCategories().Values)
+            {
+                int i = cat.CompleteTitle().Count(c => c == '-');
+                var spaces = string.Concat(Enumerable.Repeat("&nbsp;&nbsp;&nbsp;", i));
+                var posts = Post.GetPostsByCategory(cat).FindAll(p => p.IsVisible).Count;
+                <li>
+                    @if (i > 0)
+                    {
+                        <a>@((MarkupString)spaces)</a>
+                    }
+                    @if (showRssIcon)
+                    {
+                        <a rel="nofollow" href="@categoryUrl/feed/@Utils.RemoveIllegalCharacters(cat.Title)">
+                            <img class="rssButton" alt="RSS feed for SubBlog" src="@(Utils.ApplicationRelativeWebRoot)Content/images/blog/rssButton.png">
+                        </a>
+                    }
+                    <a title="Category: @cat.Title" href="@categoryUrl/@Utils.RemoveIllegalCharacters(cat.Title)">
+                        @cat.Title
+                        @if (showPostCnt)
+                        {
+                            <span>(@posts)</span>
+                        }
+                    </a>
+                </li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private readonly string categoryUrl = Utils.RelativeWebRoot + "category";
+    private bool showRssIcon = true;
+    private bool showPostCnt = true;
+
+    protected override void OnParametersSet()
+    {
+        var settings = Settings;
+        if (settings.ContainsKey("showrssicon"))
+        {
+            showRssIcon = bool.Parse(settings["showrssicon"]);
+        }
+        if (settings.ContainsKey("showpostcount"))
+        {
+            showPostCnt = bool.Parse(settings["showpostcount"]);
+        }
+    }
+}

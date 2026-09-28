@@ -1,0 +1,18 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/BlogList/widget.cshtml *@
+
+<div class="Widget widget bloglist">
+    <h4 class="WidgetHeader widget-header">
+        @Title
+    </h4>
+    <div class="WidgetContent widget-content">
+        <ul>
+            @foreach (var blog in Blog.Blogs.Where(b => b.IsActive))
+            {
+                <li>
+                    <a title="@blog.Name" href="@blog.RelativeWebRoot">@blog.Name</a>
+                </li>
+            }
+        </ul>
+    </div>
+</div>

@@ -1,0 +1,19 @@
+@inherits WidgetComponentBase
+@* Port of Custom/Widgets/PageList/widget.cshtml *@
+
+<div class="Widget widget pagelist">
+    <h4 class="WidgetHeader widget-header">@Title</h4>
+    <div class="WidgetContent widget-content">
+        <ul>
+            @foreach (var item in BlogEngine.Core.Page.Pages.OrderBy(p => p.SortOrder).Where(p => p.ShowInList && p.IsVisibleToPublic))
+            {
+                var href = item.RelativeLink;
+                if (BlogSettings.Instance.RemoveExtensionsFromUrls && !string.IsNullOrEmpty(BlogConfig.FileExtension))
+                {
+                    href = href.Replace(BlogConfig.FileExtension, "");
+                }
+                <li><a href="@href" title="@item.Description">@item.Title</a></li>
+            }
+        </ul>
+    </div>
+</div>
