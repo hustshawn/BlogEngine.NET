@@ -26,7 +26,8 @@ namespace BlogEngine.NET.AppCode
 
         private static void Rewrite(HttpContext context)
         {
-            var path = context.Request.Path.Value ?? string.Empty;
+            // full path: Utils.RelativeWebRoot includes the PathBase (child blog virtual path)
+            var path = Utils.GetRequestPath(context);
             var root = Utils.RelativeWebRoot;
 
             if (path.StartsWith($"{root}api/", StringComparison.OrdinalIgnoreCase) ||
@@ -100,6 +101,11 @@ namespace BlogEngine.NET.AppCode
                 query = pathAndQuery.Substring(index) + (query ?? string.Empty);
                 pathAndQuery = pathAndQuery.Substring(0, index);
             }
+
+            // targets are app-absolute; routing sees the path below PathBase
+            var pathBase = context.Request.PathBase.Value;
+            if (!string.IsNullOrEmpty(pathBase) && pathAndQuery.StartsWith(pathBase + "/", StringComparison.OrdinalIgnoreCase))
+                pathAndQuery = pathAndQuery.Substring(pathBase.Length);
 
             context.Request.Path = new PathString(pathAndQuery);
             if (query != null)

@@ -59,7 +59,7 @@
             if (string.IsNullOrEmpty(referrerHeader) || !Uri.TryCreate(referrerHeader, UriKind.Absolute, out var referrer))
                 return;
 
-            var requestUrl = new Uri($"{context.Request.Scheme}://{context.Request.Host}{context.Request.Path}{context.Request.QueryString}");
+            var requestUrl = new Uri($"{context.Request.Scheme}://{context.Request.Host}{Utils.GetRawUrl(context)}");
 
             if (!referrer.Host.Equals(Utils.AbsoluteWebRoot.Host, StringComparison.OrdinalIgnoreCase) &&
                 !IsSearchEngine(referrer.ToString()))

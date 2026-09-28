@@ -141,7 +141,7 @@
             return;
         }
 
-        var rawPath = HttpContext.Request.Path.Value;
+        var rawPath = Utils.GetRequestPath(HttpContext);
         if (Slug == null && HttpContext.Request.QueryString.Value?.Contains("id=") == true)
         {
             // post.aspx?id= : 301 to the permalink unless several posts share the same link
@@ -191,7 +191,7 @@
         {
             Post = post,
             Location = ServingLocation.SinglePost,
-            RequestUrl = HttpContext.Request.Path + HttpContext.Request.QueryString
+            RequestUrl = Utils.GetRawUrl(HttpContext)
         };
 
         if (post.Tags.Count > 0)

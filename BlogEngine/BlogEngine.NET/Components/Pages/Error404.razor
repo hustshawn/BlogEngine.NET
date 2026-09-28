@@ -125,7 +125,7 @@
 
         if (httpContext != null)
         {
-            requestUrl = new Uri($"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.Path}{httpContext.Request.QueryString}");
+            requestUrl = new Uri($"{httpContext.Request.Scheme}://{httpContext.Request.Host}{Utils.GetRawUrl(httpContext)}");
         }
 
         if (referrer != null)

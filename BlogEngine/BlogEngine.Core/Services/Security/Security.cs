@@ -434,7 +434,7 @@ namespace BlogEngine.Core
             {
                 context.Response.Redirect(string.Format("{0}Account/login?ReturnURL={1}",
                     Utils.RelativeWebRoot,
-                    Uri.EscapeDataString(context.Request.Path + context.Request.QueryString)));
+                    Uri.EscapeDataString(Utils.GetRawUrl(context))));
             }
         }
 

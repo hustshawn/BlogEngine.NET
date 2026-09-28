@@ -19,12 +19,12 @@ namespace BlogEngine.Core.Providers.CacheProvider
         private readonly ConcurrentDictionary<string, byte> _trackedKeys = new ConcurrentDictionary<string, byte>();
 
         /// <summary>
-        /// Creates a new CacheProvider using the specified IMemoryCache.
+        /// Creates a new CacheProvider using the specified IMemoryCache, scoped to one blog instance.
         /// </summary>
-        public CacheProvider(IMemoryCache cache)
+        public CacheProvider(IMemoryCache cache, Guid blogId)
         {
             _cache = cache;
-            _keyPrefix = Blog.CurrentInstance.Id + "_";
+            _keyPrefix = blogId + "_";
         }
 
         /// <summary>

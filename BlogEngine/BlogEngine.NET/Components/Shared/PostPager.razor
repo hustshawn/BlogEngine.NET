@@ -1,4 +1,4 @@
-@using BlogEngine.Core
+﻿@using BlogEngine.Core
 @inject IHttpContextAccessor HttpContextAccessor
 
 @if (!string.IsNullOrEmpty(pagerHtml))
@@ -93,7 +93,7 @@
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext == null) return "?page={0}";
 
-        var path = httpContext.Request.Path.Value ?? "/";
+        var path = Utils.GetRequestPath(httpContext);
         var queryString = httpContext.Request.QueryString.Value ?? string.Empty;
         var fullPath = path + queryString;
 
@@ -132,7 +132,7 @@
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext == null) return "/";
 
-        var path = httpContext.Request.Path.Value ?? "/";
+        var path = Utils.GetRequestPath(httpContext);
         var queryString = httpContext.Request.QueryString.Value ?? string.Empty;
         var fullPath = path + queryString;
 

@@ -71,7 +71,7 @@
             return;
         }
 
-        var rawUrl = HttpContext == null ? string.Empty : HttpContext.Request.Path + HttpContext.Request.QueryString;
+        var rawUrl = HttpContext == null ? string.Empty : Utils.GetRawUrl(HttpContext);
         var showExcerpt = ShowExcerpt(rawUrl);
         var counter = 0;
         foreach (var post in visiblePosts.GetRange(index, stop).OfType<Post>())

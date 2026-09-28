@@ -26,6 +26,12 @@
 		private static Dictionary<string, ManagedExtension> extensions = new Dictionary<string, ManagedExtension>();
 
         /// <summary>
+        /// Set once the application-wide extension list is loaded (was HttpRuntime.Cache["Extensions"],
+        /// shared by all blog instances like the static dictionary itself)
+        /// </summary>
+        private static volatile bool extensionsCached;
+
+        /// <summary>
         ///     The new extensions.
         /// </summary>
         private static StringCollection newExtensions = new StringCollection();
@@ -443,8 +449,7 @@
         /// </summary>
         private static void LoadExtensions()
         {
-            if (Blog.CurrentInstance.Cache["Extensions"] != null &&
-                ((Dictionary<string, ManagedExtension>)Blog.CurrentInstance.Cache["Extensions"]).Count != 0)
+            if (extensionsCached && extensions.Count != 0)
             {
                 return;
             }
@@ -523,8 +528,7 @@
         /// </summary>
         private static void SaveToCache()
         {
-            Blog.CurrentInstance.Cache.Remove("Extensions");
-            Blog.CurrentInstance.Cache["Extensions"] = extensions;
+            extensionsCached = true;
         }
 
         #endregion

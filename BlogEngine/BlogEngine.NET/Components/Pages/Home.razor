@@ -68,7 +68,7 @@
 
     protected override void OnParametersSet()
     {
-        var path = HttpContext?.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+        var path = HttpContext == null ? string.Empty : Utils.GetRequestPath(HttpContext).ToLowerInvariant();
         var rawUrl = path + HttpContext?.Request.QueryString.Value?.ToLowerInvariant();
 
         ProcessSearchEngine(rawUrl);

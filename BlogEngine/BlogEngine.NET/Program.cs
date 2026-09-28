@@ -84,6 +84,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.IsEssential = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.CookieManager = new BlogEngine.Core.Services.Security.BlogInstanceCookieManager();
         options.Events = new CookieAuthenticationEvents
         {
             // Port of Security.ContextAuthenticateRequest: rejects tickets of another blog instance or
@@ -163,6 +164,9 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/error", createScopeForErrors: true);
 }
+
+// Former web.config HttpModules: child blog virtual paths (-> PathBase), www subdomain, compression, referrers
+app.UseBlogEngineMiddleware();
 
 // Unknown public URLs render the error404 page (customErrors 404 -> error404.aspx in the original)
 app.UseWhen(

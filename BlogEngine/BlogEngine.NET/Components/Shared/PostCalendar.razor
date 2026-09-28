@@ -78,7 +78,7 @@
     private string NavUrl(int monthOffset)
     {
         var date = new DateTime(visibleDate.Year, visibleDate.Month, 1).AddMonths(monthOffset);
-        return $"{HttpContext?.Request.Path}?date={date:yyyy-MM-dd}";
+        return $"{(HttpContext == null ? string.Empty : Utils.GetRequestPath(HttpContext))}?date={date:yyyy-MM-dd}";
     }
 
     private void BuildCalendarGrid()

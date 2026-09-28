@@ -521,7 +521,7 @@ namespace BlogEngine.Core
 
                     if (blog == null)
                     {
-                        string rawUrl = VirtualPathUtility.AppendTrailingSlash(context.Request.Path + context.Request.QueryString);
+                        string rawUrl = VirtualPathUtility.AppendTrailingSlash(Utils.GetRawUrl(context));
                         string hostname = context.Request.Host.Host;
 
                         for (int i = 0; i < blogs.Count; i++)
@@ -1077,7 +1077,7 @@ namespace BlogEngine.Core
         /// </summary>
         public Providers.CacheProvider.CacheProvider Cache
         {
-            get { return _cache ?? (_cache = new Providers.CacheProvider.CacheProvider(_memoryCache ?? new MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()))); }
+            get { return _cache ?? (_cache = new Providers.CacheProvider.CacheProvider(_memoryCache ?? new MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), this.Id)); }
         }
 
     }

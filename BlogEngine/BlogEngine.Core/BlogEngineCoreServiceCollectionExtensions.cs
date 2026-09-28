@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -103,6 +104,9 @@ namespace BlogEngine.Core
                     return provider;
                 });
             }
+
+            // Used by UseBlogEngineMiddleware when the EnableHttpCompression setting is on
+            services.AddResponseCompression();
 
             // Site map services
             services.AddSingleton<ISiteMapService, PageSiteMap>();

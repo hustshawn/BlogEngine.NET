@@ -232,6 +232,23 @@
         }
 
         /// <summary>
+        ///     The request path including PathBase (the application virtual directory and, for
+        ///     child blogs, the blog's virtual path), i.e. the path System.Web's Request.RawUrl had.
+        /// </summary>
+        public static string GetRequestPath(HttpContext context)
+        {
+            return (context.Request.PathBase + context.Request.Path).Value ?? "/";
+        }
+
+        /// <summary>
+        ///     Equivalent of System.Web's Request.RawUrl: path including PathBase, plus query string.
+        /// </summary>
+        public static string GetRawUrl(HttpContext context)
+        {
+            return GetRequestPath(context) + context.Request.QueryString.Value;
+        }
+
+        /// <summary>
         ///     Gets if the current HTTP request is a homepage request, taking the blog
         ///     instance into consideration.
         /// </summary>
@@ -251,7 +268,7 @@
                     .Any(x => knownQueryParameters.Any(y => x.Equals(y, StringComparison.OrdinalIgnoreCase))))
                     return false;
 
-                string path = context.Request.Path;
+                string path = GetRequestPath(context);
 
                 if (RelativeWebRoot.Equals(VirtualPathUtility.AppendTrailingSlash(path), StringComparison.OrdinalIgnoreCase))
                     return true;
