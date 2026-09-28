@@ -1,0 +1,23 @@
+@* Standard-2017 theme PostNavigation - previous/next post links with titles *@
+
+<div id="postnavigation" class="navigation-posts well-global clearfix">
+    <div class="text-left next-post">
+        @if (!string.IsNullOrEmpty(NextPostUrl))
+        {
+            <a href="@NextPostUrl" class="nav-next">&larr; @NextPostTitle</a>
+        }
+    </div>
+    <div class="text-right prev-post">
+        @if (!string.IsNullOrEmpty(PreviousPostUrl))
+        {
+            <a href="@PreviousPostUrl" class="nav-prev">@PreviousPostTitle &rarr;</a>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string PreviousPostUrl { get; set; } = "";
+    [Parameter] public string PreviousPostTitle { get; set; } = "";
+    [Parameter] public string NextPostUrl { get; set; } = "";
+    [Parameter] public string NextPostTitle { get; set; } = "";
+}

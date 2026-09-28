@@ -1,0 +1,60 @@
+@page "/admin/Extensions/Settings"
+@layout BlogEngine.NET.Components.Layout.AdminLayout
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using BlogEngine.Core
+@using BlogEngine.Core.Web.Extensions
+@inject NavigationManager Navigation
+
+<div class="content-box-outer">
+    <div class="content-box-left">
+        @if (extension != null && extension.BlogSettings.Count > 0)
+        {
+            @foreach (var s in extension.BlogSettings)
+            {
+                @if (!string.IsNullOrEmpty(s.Name) && !s.Hidden)
+                {
+                    <ExtensionSettingsPanel ExtensionName="@ExtensionName" SettingName="@s.Name" />
+                }
+            }
+        }
+        else
+        {
+            <p>No settings available for this extension.</p>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "ext")]
+    public string ExtensionName { get; set; }
+
+    private ManagedExtension extension;
+
+    protected override void OnInitialized()
+    {
+        Security.DemandUserHasRight(Rights.AccessAdminPages, true);
+
+        if (string.IsNullOrEmpty(ExtensionName)) return;
+
+        var extensions = ExtensionManager.Extensions
+            .Where(x => x.Key != "MetaExtension")
+            .ToList();
+
+        if (!Blog.CurrentInstance.IsPrimary)
+            extensions = extensions.Where(x => x.Value.SubBlogEnabled == true).ToList();
+
+        extensions.Sort(
+            (e1, e2) => e1.Value.Priority == e2.Value.Priority
+                ? string.CompareOrdinal(e1.Key, e2.Key)
+                : e1.Value.Priority.CompareTo(e2.Value.Priority));
+
+        var manExtensions = new List<ManagedExtension>();
+        foreach (var ext in extensions)
+        {
+            var oExt = ExtensionManager.GetExtension(ext.Key);
+            manExtensions.Add(oExt);
+        }
+
+        extension = manExtensions.FirstOrDefault(x => x.Name == ExtensionName);
+    }
+}

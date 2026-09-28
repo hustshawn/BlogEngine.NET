@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class CommentFilterController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class CommentFilterController : ControllerBase
 {
     readonly ICommentFilterRepository repository;
 
@@ -20,29 +22,29 @@ public class CommentFilterController : ApiController
         return repository.Find(take, skip, filter, order);
     }
 
-    public HttpResponseMessage Post([FromBody]CommentFilterItem item)
+    public IActionResult Post([FromBody]CommentFilterItem item)
     {
         var result = repository.Add(item);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.Created, result);
+        return Created("", result);
     }
 
     [HttpPut]
-    public HttpResponseMessage DeleteAll()
+    public IActionResult DeleteAll()
     {
         repository.RemoveAll();
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<BlogEngine.Core.Data.Models.Blog> items)
+    public IActionResult ProcessChecked([FromBody]List<BlogEngine.Core.Data.Models.Blog> items)
     {
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = Request.GetRouteData().Values["id"].ToString();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString();
 
         if (action.ToLower() == "delete")
         {
@@ -54,6 +56,6 @@ public class CommentFilterController : ApiController
                 }
             }
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }

@@ -1,0 +1,208 @@
+@page "/page"
+@page "/page/{PageId:guid}"
+@using System.Text
+@using System.Web
+@using BlogEngine.Core
+@using BlogPage = BlogEngine.Core.Page
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>@pageTitle</PageTitle>
+
+<div id="page" class="page-global">
+    @if (currentPage != null)
+    {
+        <h2 class="page-global-title">@HttpUtility.HtmlEncode(currentPage.Title)</h2>
+        <div>@((MarkupString)pageContent)</div>
+        @((MarkupString)AdminLinks)
+
+        @if (showDisqusComments)
+        {
+            <div id="disqus_box">
+                <div id="disqus_thread"></div>
+                <script type="text/javascript">
+                    var disqus_url = '@PermaLink';
+                    var disqus_developer = '@(BlogSettings.Instance.DisqusDevMode ? 1 : 0)';
+                    (function() {
+                        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+                        dsq.src = 'http://@(BlogSettings.Instance.DisqusWebsiteName).disqus.com/embed.js';
+                        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+                    })();
+                </script>
+                <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript=@BlogSettings.Instance.DisqusWebsiteName">comments powered by Disqus.</a></noscript>
+                <a href="http://disqus.com" class="dsq-brlink">blog comments powered by <span class="logo-disqus">Disqus</span></a>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")]
+    public string QueryId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "deletepage")]
+    public string DeletePageId { get; set; }
+
+    [Parameter]
+    public Guid? PageId { get; set; }
+
+    private BlogPage currentPage;
+    private bool _pageLoaded;
+    private string pageTitle = string.Empty;
+    private string pageContent = string.Empty;
+    private bool showDisqusComments = false;
+
+    protected override void OnInitialized()
+    {
+        // Handle delete page request
+        if (!string.IsNullOrEmpty(DeletePageId) && DeletePageId.Length == 36)
+        {
+            Guid deleteId;
+            if (Guid.TryParse(DeletePageId, out deleteId))
+            {
+                DeletePage(deleteId);
+                return;
+            }
+        }
+
+        Guid id = GetPageId();
+        if (id != Guid.Empty)
+        {
+            LoadPage(id);
+            ServePage();
+            AddMetaTags();
+        }
+        else
+        {
+            Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+        }
+    }
+
+    private Guid GetPageId()
+    {
+        if (PageId.HasValue)
+            return PageId.Value;
+
+        if (!string.IsNullOrEmpty(QueryId) && Guid.TryParse(QueryId, out Guid result))
+            return result;
+
+        return Guid.Empty;
+    }
+
+    private void LoadPage(Guid id)
+    {
+        if (!_pageLoaded)
+        {
+            _pageLoaded = true;
+            currentPage = BlogPage.GetPage(id);
+        }
+    }
+
+    private void ServePage()
+    {
+        if (currentPage == null || !currentPage.IsVisible)
+        {
+            Navigation.NavigateTo("/error404", false, true);
+            return;
+        }
+
+        var arg = new ServingEventArgs(currentPage.Content, ServingLocation.SinglePage);
+        BlogPage.OnServing(currentPage, arg);
+
+        if (arg.Cancel)
+        {
+            Navigation.NavigateTo("/error404", false, true);
+            return;
+        }
+
+        pageContent = arg.Body;
+
+        // Check for Disqus comments on pages
+        showDisqusComments = BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.Disqus
+            && BlogSettings.Instance.DisqusAddCommentsToPages;
+    }
+
+    private void AddMetaTags()
+    {
+        if (currentPage == null)
+            return;
+
+        pageTitle = HttpUtility.HtmlEncode(currentPage.Title);
+    }
+
+    private void DeletePage(Guid id)
+    {
+        var pg = BlogPage.GetPage(id);
+        if (pg == null)
+        {
+            return;
+        }
+        if (!pg.CanUserDelete)
+        {
+            Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+            return;
+        }
+        if (pg.HasChildPages)
+        {
+            return;
+        }
+        pg.Delete();
+        pg.Save();
+        Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+    }
+
+    /// <summary>
+    /// Gets the admin links to edit and delete a page.
+    /// </summary>
+    public string AdminLinks
+    {
+        get
+        {
+            if (!Security.IsAuthenticated || currentPage == null)
+            {
+                return string.Empty;
+            }
+
+            var sb = new StringBuilder();
+
+            if (currentPage.CanUserEdit)
+            {
+                if (sb.Length > 0) { sb.Append(" | "); }
+                sb.AppendFormat(
+                    "<a href=\"{0}admin/app/editor/editpage.cshtml?id={1}\">{2}</a>",
+                    Utils.RelativeWebRoot,
+                    currentPage.Id,
+                    Utils.Translate("edit"));
+            }
+
+            if (currentPage.CanUserDelete && !currentPage.HasChildPages)
+            {
+                if (sb.Length > 0) { sb.Append(" | "); }
+                sb.AppendFormat(
+                    string.Concat("<a href=\"javascript:void(0);\" onclick=\"if (confirm('", Utils.Translate("areYouSureDeletePage"), "')) location.href='?deletepage={0}'\">{1}</a>"),
+                    currentPage.Id,
+                    Utils.Translate("delete"));
+            }
+
+            if (sb.Length > 0)
+            {
+                sb.Insert(0, "<div id=\"admin\">");
+                sb.Append("</div>");
+            }
+
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>
+    /// Gets PermaLink.
+    /// </summary>
+    public string PermaLink
+    {
+        get
+        {
+            if (currentPage == null) return string.Empty;
+            return $"{Utils.AbsoluteWebRoot}page?id={currentPage.Id}";
+        }
+    }
+}

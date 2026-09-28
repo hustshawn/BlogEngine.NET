@@ -1,0 +1,206 @@
+@page "/archive"
+@using System.Web
+@using BlogEngine.Core
+@inject NavigationManager Navigation
+
+<PageTitle>@HttpUtility.HtmlEncode(Utils.Translate("archive"))</PageTitle>
+
+<div id="archive" class="archive-page page-global">
+    <h2 class="archive-page-title page-global-title">@Utils.Translate("archive")</h2>
+
+    <ul class="archive-page-menu">
+        @foreach (var menuItem in menuItems)
+        {
+            <li>
+                <a href="@menuItem.Href" rel="directory">@((MarkupString)HttpUtility.HtmlEncode(menuItem.Title))</a>
+            </li>
+        }
+    </ul>
+
+    <div class="archive-page-content">
+        @foreach (var section in archiveSections)
+        {
+            <h2 id="cat-@Utils.RemoveIllegalCharacters(section.Name)">
+                @if (section.Category != null)
+                {
+                    <a href="@section.Category.FeedRelativeLink">
+                        <img src="@(Utils.RelativeWebRoot + "Content/images/blog/rssButton.png")" alt="RSS" />
+                    </a>
+                }
+                @section.Name (@section.Posts.Count)
+            </h2>
+
+            <table summary="@section.Name">
+                <tr>
+                    <th>@Utils.Translate("date")</th>
+                    <th>@Utils.Translate("title")</th>
+                    @if (BlogSettings.Instance.IsCommentsEnabled)
+                    {
+                        <th class="comments">@Utils.Translate("comments")</th>
+                    }
+                    @if (BlogSettings.Instance.EnableRating)
+                    {
+                        <th class="rating">@Utils.Translate("rating")</th>
+                    }
+                </tr>
+                @foreach (var post in section.Posts)
+                {
+                    <tr>
+                        <td class="date">@post.DateCreated.ToString("yyyy-MM-dd")</td>
+                        <td class="title"><a href="@post.RelativeLink">@post.Title</a></td>
+                        @if (BlogSettings.Instance.IsCommentsEnabled)
+                        {
+                            <td class="comments">
+                                @if (BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.BlogEngine)
+                                {
+                                    @post.ApprovedComments.Count
+                                }
+                                else
+                                {
+                                    <span><a href="@(post.PermaLink + "#comment")">@Utils.Translate("comments")</a></span>
+                                }
+                            </td>
+                        }
+                        @if (BlogSettings.Instance.EnableRating)
+                        {
+                            <td class="rating">@(post.Raters == 0 ? "None" : Math.Round(post.Rating, 1).ToString())</td>
+                        }
+                    </tr>
+                }
+            </table>
+        }
+    </div>
+
+    <br />
+    <div id="totals" class="archive-page-total">
+        <h3>@Utils.Translate("total")</h3>
+        <span>@totalPostsText</span><br />
+        @if (!string.IsNullOrEmpty(totalCommentsText))
+        {
+            <span>@((MarkupString)totalCommentsText)</span>
+            <br />
+        }
+        @if (!string.IsNullOrEmpty(totalRatersText))
+        {
+            <span>@totalRatersText</span>
+        }
+    </div>
+</div>
+
+@code {
+    private List<MenuItem> menuItems = new();
+    private List<ArchiveSection> archiveSections = new();
+    private string totalPostsText = string.Empty;
+    private string totalCommentsText = string.Empty;
+    private string totalRatersText = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        CreateMenu();
+        CreateArchive();
+        AddTotals();
+    }
+
+    private void CreateMenu()
+    {
+        var processedCategories = new List<string>();
+
+        foreach (Category cat in Category.ApplicableCategories)
+        {
+            if (cat.Posts.Count > 0)
+            {
+                if (!processedCategories.Contains(cat.Title))
+                {
+                    AddCategoryToMenu(cat.Title);
+                    processedCategories.Add(cat.Title);
+                }
+            }
+        }
+    }
+
+    private void AddCategoryToMenu(string title)
+    {
+        menuItems.Add(new MenuItem
+        {
+            Title = title,
+            Href = string.Format("{0}archive{1}#cat-{2}",
+                Blog.CurrentInstance.RelativeWebRoot,
+                BlogConfig.FileExtension,
+                Utils.RemoveIllegalCharacters(title))
+        });
+    }
+
+    private void CreateArchive()
+    {
+        var processedCategories = new List<string>();
+
+        foreach (Category cat in Category.ApplicableCategories)
+        {
+            if (cat.Posts.Count > 0)
+            {
+                if (!processedCategories.Contains(cat.Title))
+                {
+                    string name = cat.Title;
+                    List<Post> list = cat.Posts.FindAll(p => p.IsVisible);
+
+                    archiveSections.Add(new ArchiveSection
+                    {
+                        Name = name,
+                        Category = cat,
+                        Posts = list
+                    });
+
+                    processedCategories.Add(cat.Title);
+                }
+            }
+        }
+
+        // Uncategorized posts
+        List<Post> noCatList = Post.ApplicablePosts.FindAll(p => p.Categories.Count == 0 && p.IsVisible);
+        if (noCatList.Count > 0)
+        {
+            string name = Utils.Translate("uncategorized");
+            archiveSections.Add(new ArchiveSection
+            {
+                Name = name,
+                Category = null,
+                Posts = noCatList
+            });
+
+            AddCategoryToMenu(name);
+        }
+    }
+
+    private void AddTotals()
+    {
+        int comments = 0;
+        int raters = 0;
+        List<Post> posts = Post.ApplicablePosts.FindAll(p => p.IsVisible);
+        foreach (Post post in posts)
+        {
+            comments += post.ApprovedComments.Count;
+            raters += post.Raters;
+        }
+
+        totalPostsText = posts.Count + " " + Utils.Translate("posts").ToLowerInvariant();
+
+        if (BlogSettings.Instance.IsCommentsEnabled && BlogSettings.Instance.CommentProvider == BlogSettings.CommentsBy.BlogEngine)
+            totalCommentsText = comments + " " + Utils.Translate("comments").ToLowerInvariant();
+
+        if (BlogSettings.Instance.EnableRating)
+            totalRatersText = raters + " " + Utils.Translate("raters").ToLowerInvariant();
+    }
+
+    private class MenuItem
+    {
+        public string Title { get; set; }
+        public string Href { get; set; }
+    }
+
+    private class ArchiveSection
+    {
+        public string Name { get; set; }
+        public Category Category { get; set; }
+        public List<Post> Posts { get; set; } = new();
+    }
+}

@@ -1,0 +1,94 @@
+@page "/Account/create-blog"
+@layout AccountLayout
+@using BlogEngine.Core
+// Membership and Roles are provided by BlogEngine.Core namespace
+@inject NavigationManager Navigation
+
+<PageTitle>@Utils.Translate("createBlog")</PageTitle>
+
+<h1 class="account-title">@Utils.Translate("createBlog")</h1>
+<div class="account-body">
+    <div class="form-group first-child ltr-dir">
+        <label class="label-up">@(Utils.AbsoluteWebRoot)<span style="font-weight: bold">@blogName</span></label>
+        <input type="text" @bind="blogName" @bind:event="oninput" class="textEntry form-control" />
+    </div>
+    <div class="form-group">
+        <label class="label-up">@Utils.Translate("userName"):</label>
+        <input type="text" @bind="userName" class="textEntry form-control ltr-dir" />
+    </div>
+    <div class="form-group">
+        <label class="label-up">@Utils.Translate("email"):</label>
+        <input type="text" @bind="email" class="textEntry form-control ltr-dir" />
+    </div>
+    <div class="form-group">
+        <label class="label-up">@string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength)</label>
+        <input type="password" @bind="password" class="passwordEntry form-control ltr-dir" />
+    </div>
+    <div class="form-group">
+        <label class="label-up">@Utils.Translate("confirmPassword"):</label>
+        <input type="password" @bind="confirmPassword" class="passwordEntry form-control ltr-dir" />
+    </div>
+
+    <button class="btn btn-success btn-block" @onclick="HandleCreateBlog">Create</button>
+</div>
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="alert alert-warning">@statusMessage</div>
+}
+
+@code {
+    private string blogName = string.Empty;
+    private string userName = string.Empty;
+    private string email = string.Empty;
+    private string password = string.Empty;
+    private string confirmPassword = string.Empty;
+    private string statusMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        if (!BlogSettings.Instance.CreateBlogOnSelfRegistration || !Blog.CurrentInstance.IsPrimary)
+        {
+            Navigation.NavigateTo("/Account/login", forceLoad: true);
+        }
+    }
+
+    private void HandleCreateBlog()
+    {
+        string blogNameTrimmed = blogName.Trim().ToLower();
+        string msg = CreateNewBlog();
+
+        if (string.IsNullOrEmpty(msg))
+        {
+            Navigation.NavigateTo(Utils.ApplicationRelativeWebRoot + blogNameTrimmed, forceLoad: true);
+        }
+        else
+        {
+            statusMessage = msg;
+        }
+    }
+
+    private string CreateNewBlog()
+    {
+        string message = string.Empty;
+
+        if (!BlogGenerator.ValidateProperties(blogName, userName, email, out message))
+        {
+            if (string.IsNullOrWhiteSpace(message)) { message = "Validation for new blog failed."; }
+            return message;
+        }
+
+        // REVIEW: Captcha validation skipped in Blazor — RecaptchaControl requires JS interop integration
+        // The original used a server-side RecaptchaControl.Validate(). In Blazor, this would need
+        // a JS interop based reCAPTCHA implementation.
+
+        Blog blog = BlogGenerator.CreateNewBlog(blogName, userName, email, password, out message);
+
+        if (blog == null || !string.IsNullOrWhiteSpace(message))
+        {
+            return message ?? "Failed to create the new blog.";
+        }
+
+        return message;
+    }
+}

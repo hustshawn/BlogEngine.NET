@@ -1,30 +1,58 @@
-﻿using System;
+﻿using Microsoft.AspNetCore.Http;
+using System;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Headers;
 
-public class FileSystemDataStreamProvider : MultipartFormDataStreamProvider
+/// <summary>
+/// Replaces the legacy MultipartFormDataStreamProvider with IFormFile-based validation.
+/// Validates file extensions and provides a sanitized local filename.
+/// </summary>
+public static class FileUploadHelper
 {
-    public FileSystemDataStreamProvider(string path) : base(path) { }
+    private static readonly string[] AllowedExtensions = { "png", "gif", "jpg", "zip", "xml" };
 
-    public override Stream GetStream(HttpContent parent, HttpContentHeaders headers)
+    /// <summary>
+    /// Checks if the uploaded file has an allowed extension.
+    /// </summary>
+    public static bool IsAllowedExtension(IFormFile file)
     {
-        //TODO: pull from config or pass as a parameter
-        var extensions = new[] { "png", "gif", "jpg", "zip", "xml" };
-        var filename = headers.ContentDisposition.FileName.Replace("\"", string.Empty);
+        if (file == null || string.IsNullOrEmpty(file.FileName))
+            return false;
+
+        var filename = file.FileName.Replace("\"", string.Empty);
 
         if (filename.IndexOf('.') < 0)
-            return Stream.Null;
+            return false;
 
         var extension = filename.Split('.').Last();
-
-        return extensions.Any(i => i.Equals(extension, StringComparison.InvariantCultureIgnoreCase))
-            ? base.GetStream(parent, headers) : Stream.Null;
+        return AllowedExtensions.Any(i => i.Equals(extension, StringComparison.InvariantCultureIgnoreCase));
     }
 
-    public override string GetLocalFileName(System.Net.Http.Headers.HttpContentHeaders headers)
+    /// <summary>
+    /// Returns a sanitized local filename from the uploaded file.
+    /// </summary>
+    public static string GetLocalFileName(IFormFile file)
     {
-        return headers.ContentDisposition.FileName.Replace("\"", string.Empty);
+        return file.FileName.Replace("\"", string.Empty);
+    }
+
+    /// <summary>
+    /// Saves an IFormFile to the specified directory path, validating extension first.
+    /// Returns the full path of the saved file, or null if extension not allowed.
+    /// </summary>
+    public static string SaveToDirectory(IFormFile file, string directoryPath)
+    {
+        if (!IsAllowedExtension(file))
+            return null;
+
+        var fileName = GetLocalFileName(file);
+        var fullPath = Path.Combine(directoryPath, fileName);
+
+        using (var stream = new FileStream(fullPath, FileMode.Create))
+        {
+            file.CopyTo(stream);
+        }
+
+        return fullPath;
     }
 }

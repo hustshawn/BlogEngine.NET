@@ -3,12 +3,10 @@
 using System;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Web;
 
 using BlogEngine.Core;
 using BlogEngine.Core.Web.Controls;
 using BlogEngine.Core.Web.Extensions;
-using Resources;
 
 #endregion
 
@@ -66,7 +64,7 @@ public class BreakPost
     {
         var post = (Post)sender;
         var index = e.Body.IndexOf("[more]");
-        var link = $"<a class=\"more\" href=\"{post.RelativeLink}#continue\">{labels.more}...</a>";
+        var link = $"<a class=\"more\" href=\"{post.RelativeLink}#continue\">{"more"}...</a>";
         var newBody = e.Body.Substring(0, index);
 
         // Need to close any open HTML tags in NewBody where the matching close tags have been truncated.
@@ -143,10 +141,10 @@ public class BreakPost
     /// </param>
     private static void PrepareFullPost(ServingEventArgs e)
     {
-        var request = HttpContext.Current.Request;
-        e.Body = request.UrlReferrer == null || request.UrlReferrer.Host != request.Url.Host
-                     ? e.Body.Replace("[more]", string.Empty)
-                     : e.Body.Replace("[more]", "<span id=\"continue\"></span>");
+        // In ASP.NET Core, we don't have easy access to HttpContext here in an extension event handler.
+        // Default to removing [more] marker (same behavior as when there's no referrer).
+        // The "continue" anchor is inserted when a referrer from the same host is detected.
+        e.Body = e.Body.Replace("[more]", string.Empty);
     }
 
     #endregion

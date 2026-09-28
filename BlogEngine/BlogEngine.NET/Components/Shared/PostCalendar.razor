@@ -1,0 +1,150 @@
+@using BlogEngine.Core
+@inject IHttpContextAccessor HttpContextAccessor
+
+<div id="calendarContainer">
+    <table class="calendar" summary="" style="border-collapse:collapse;">
+        <tr>
+            <td>
+                @if (visibleDate.Year != oldestPostDate.Year || visibleDate.Month != oldestPostDate.Month)
+                {
+                    <a href="javascript:void(0)" @onclick="() => Navigate(-1)" @onclick:preventDefault>&lt;</a>
+                }
+                else
+                {
+                    <text>&lt;</text>
+                }
+                &nbsp;&nbsp;
+            </td>
+            <td style="text-align:center;width:100px">@visibleDate.ToString("MMMM yyyy")</td>
+            <td align="right">
+                &nbsp;&nbsp;
+                @if (visibleDate.Year != DateTime.Now.Year || visibleDate.Month != DateTime.Now.Month)
+                {
+                    <a href="javascript:void(0)" @onclick="() => Navigate(1)" @onclick:preventDefault>&gt;</a>
+                }
+                else
+                {
+                    <text>&gt;</text>
+                }
+            </td>
+        </tr>
+    </table>
+
+    <table class="calendar" summary="Post calendar" style="border-collapse:collapse; width:100%;">
+        <thead>
+            <tr>
+                @foreach (var dayName in System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames)
+                {
+                    <th style="text-align:center; padding:2px;">@dayName</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in calendarRows)
+            {
+                <tr>
+                    @foreach (var cell in row)
+                    {
+                        @((MarkupString)cell)
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter] public bool ShowPostTitles { get; set; }
+
+    private DateTime visibleDate = DateTime.Now;
+    private DateTime oldestPostDate = DateTime.Now;
+    private List<List<string>> calendarRows = new();
+
+    protected override void OnInitialized()
+    {
+        var applicablePosts = Post.ApplicablePosts;
+        if (applicablePosts.Count > 0)
+            oldestPostDate = applicablePosts[applicablePosts.Count - 1].DateCreated;
+
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            var dateParam = httpContext.Request.Query["date"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(dateParam) && DateTime.TryParse(dateParam, out var parsedDate))
+                visibleDate = parsedDate;
+        }
+
+        BuildCalendarGrid();
+    }
+
+    private void Navigate(int monthOffset)
+    {
+        visibleDate = visibleDate.AddMonths(monthOffset);
+        BuildCalendarGrid();
+    }
+
+    private void BuildCalendarGrid()
+    {
+        calendarRows.Clear();
+        var firstDay = new DateTime(visibleDate.Year, visibleDate.Month, 1);
+        var startDow = (int)firstDay.DayOfWeek;
+        var daysInMonth = DateTime.DaysInMonth(visibleDate.Year, visibleDate.Month);
+
+        var currentRow = new List<string>();
+
+        // Leading empty cells
+        for (int i = 0; i < startDow; i++)
+            currentRow.Add("<td>&nbsp;</td>");
+
+        for (int day = 1; day <= daysInMonth; day++)
+        {
+            var date = new DateTime(visibleDate.Year, visibleDate.Month, day);
+            var isToday = date.Date == DateTime.Now.Date;
+            var todayStyle = isToday ? "background-color:#ffffcc;" : "";
+            var postsOnDay = Post.GetPostsByDate(date, date);
+            var hasVisiblePost = postsOnDay.Any(p => p.IsVisible);
+
+            string cellContent;
+            if (hasVisiblePost)
+            {
+                if (ShowPostTitles)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append(day);
+                    foreach (var post in postsOnDay.Where(p => p.IsVisible))
+                    {
+                        sb.AppendFormat("<br /><a href=\"{0}\">{1}</a>",
+                            System.Net.WebUtility.HtmlEncode(post.RelativeOrAbsoluteLink),
+                            System.Net.WebUtility.HtmlEncode(post.Title));
+                    }
+                    cellContent = sb.ToString();
+                }
+                else
+                {
+                    var dayUrl = $"{Utils.RelativeOrAbsoluteWebRoot}{date.Year}/{date.Month:00}/{date.Day:00}/default{BlogConfig.FileExtension}";
+                    cellContent = $"<a href=\"{System.Net.WebUtility.HtmlEncode(dayUrl)}\" class=\"exist\">{day}</a>";
+                }
+            }
+            else
+            {
+                cellContent = day.ToString();
+            }
+
+            currentRow.Add($"<td style=\"text-align:center; padding:2px; {todayStyle}\">{cellContent}</td>");
+
+            if (currentRow.Count == 7)
+            {
+                calendarRows.Add(currentRow);
+                currentRow = new List<string>();
+            }
+        }
+
+        // Trailing empty cells
+        if (currentRow.Count > 0)
+        {
+            while (currentRow.Count < 7)
+                currentRow.Add("<td>&nbsp;</td>");
+            calendarRows.Add(currentRow);
+        }
+    }
+}

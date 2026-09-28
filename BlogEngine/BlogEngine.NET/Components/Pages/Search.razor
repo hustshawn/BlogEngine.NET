@@ -1,0 +1,244 @@
+@page "/search"
+@using System.Net
+@using System.Xml
+@using BlogEngine.Core
+@inject NavigationManager Navigation
+
+<PageTitle>@pageTitle</PageTitle>
+
+<div class="searchpage post search-page page-global">
+    <h2 class="page-global-title">@((MarkupString)headlineHtml)</h2>
+    <div id="searchpage" class="search-page-searchbox clearfix">
+        <input type="text" name="q" id="q"
+               @onkeypress="OnSearchKeyPress" @bind="queryTerm" @bind:event="oninput" />
+        <input type="button" value="@Utils.Translate("search")" class="btn btn-primary"
+               @onclick="DoSearch" />
+        @if (BlogSettings.Instance.EnableCommentSearch && BlogSettings.Instance.ShowIncludeCommentsOption)
+        {
+            <input type="checkbox" name="comment" id="comment" @bind="includeComments" />
+            <label for="comment">@BlogSettings.Instance.SearchCommentLabelText</label>
+        }
+    </div>
+
+    @foreach (var item in pagedResults)
+    {
+        <div class="searchresult">
+            <a href="@item.AbsoluteLink">@item.Title</a>
+            <span class="text">@((MarkupString)GetContent(item.Description, item.Content))</span>
+            <span class="type">@((MarkupString)GetTypeInfo(item))</span>
+            <span class="url">@ShortenUrl(item.AbsoluteLink.ToString())</span>
+        </div>
+    }
+
+    @if (totalPages > 1)
+    {
+        <ul class="paging">
+            @for (int i = 0; i < totalPages; i++)
+            {
+                var pageNum = i;
+                <li class="@(pageNum == currentPage ? "active" : "")">
+                    <a href="@GetPageUrl(pageNum + 1)">@(pageNum + 1)</a>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private const int PAGE_SIZE = 20;
+
+    [SupplyParameterFromQuery(Name = "q")]
+    public string Q { get; set; }
+
+    [SupplyParameterFromQuery(Name = "comment")]
+    public string Comment { get; set; }
+
+    [SupplyParameterFromQuery(Name = "page")]
+    public string PageNum { get; set; }
+
+    private string queryTerm = string.Empty;
+    private bool includeComments;
+    private string pageTitle = Utils.Translate("search");
+    private string headlineHtml = Utils.Translate("search");
+    private List<IPublishable> allResults = new();
+    private List<IPublishable> pagedResults = new();
+    private int currentPage;
+    private int totalPages;
+
+    protected override void OnInitialized()
+    {
+        queryTerm = Q ?? string.Empty;
+        includeComments = Comment == "true";
+
+        if (!string.IsNullOrWhiteSpace(queryTerm))
+        {
+            var encodedTerm = WebUtility.HtmlEncode(queryTerm);
+            pageTitle = WebUtility.HtmlEncode(Utils.Translate("searchResultsFor")) + " '" + encodedTerm + "'";
+            headlineHtml = Utils.Translate("searchResultsFor") + " '" + encodedTerm + "'";
+
+            Uri url;
+            if (!Uri.TryCreate(queryTerm, UriKind.Absolute, out url))
+            {
+                allResults = BlogEngine.Core.Search.Hits(queryTerm, includeComments);
+            }
+            else
+            {
+                SearchByApml(url);
+            }
+
+            BindSearchResult();
+        }
+        else
+        {
+            pageTitle = Utils.Translate("search");
+            headlineHtml = Utils.Translate("search");
+        }
+    }
+
+    private void SearchByApml(Uri url)
+    {
+        try
+        {
+            Dictionary<Uri, XmlDocument> docs = Utils.FindSemanticDocuments(url, "apml");
+            if (docs.Count > 0)
+            {
+                foreach (Uri key in docs.Keys)
+                {
+                    allResults = BlogEngine.Core.Search.ApmlMatches(docs[key], 30);
+                    pageTitle = "APML matches for '" + WebUtility.HtmlEncode(key.ToString()) + "'";
+                    headlineHtml = pageTitle;
+                    break;
+                }
+            }
+            else
+            {
+                pageTitle = "APML matches for '" + WebUtility.HtmlEncode(queryTerm) + "'";
+                headlineHtml = pageTitle;
+            }
+        }
+        catch
+        {
+            // Preserve original silent catch behavior
+        }
+    }
+
+    private void BindSearchResult()
+    {
+        int page = 1;
+        if (!string.IsNullOrWhiteSpace(PageNum))
+        {
+            int.TryParse(PageNum, out page);
+            if (page < 1) page = 1;
+        }
+
+        currentPage = page - 1;
+        totalPages = (int)Math.Ceiling((decimal)allResults.Count / PAGE_SIZE);
+
+        int start = PAGE_SIZE * currentPage;
+        if (start <= allResults.Count - 1)
+        {
+            int size = PAGE_SIZE;
+            if (start + size > allResults.Count)
+            {
+                size = allResults.Count - start;
+            }
+            pagedResults = allResults.GetRange(start, size);
+        }
+    }
+
+    private string GetPageUrl(int pageNumber)
+    {
+        var q = WebUtility.HtmlEncode(queryTerm);
+        var commentParam = includeComments ? "&comment=true" : "";
+        return $"/search?q={Uri.EscapeDataString(queryTerm)}{commentParam}&page={pageNumber}";
+    }
+
+    private void OnSearchKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            DoSearch();
+        }
+    }
+
+    private void DoSearch()
+    {
+        var commentParam = includeComments ? "&comment=true" : "";
+        Navigation.NavigateTo($"/search?q={Uri.EscapeDataString(queryTerm)}{commentParam}", forceLoad: true);
+    }
+
+    protected string ShortenUrl(string uri)
+    {
+        if (!uri.Contains("#"))
+            return uri;
+
+        int index = uri.IndexOf("#");
+        return uri.Substring(0, index);
+    }
+
+    protected string GetContent(string description, string content)
+    {
+        string text = string.Empty;
+        if (!string.IsNullOrEmpty(description))
+        {
+            text = description;
+        }
+        else
+        {
+            text = Utils.StripHtml(content);
+            if (text.Length > 200)
+            {
+                text = text.Substring(0, 200) + " ...";
+            }
+            text = "\"" + text.Trim() + "\"";
+        }
+        return text;
+    }
+
+    private string GetTypeInfo(IPublishable item)
+    {
+        string typeLabel = "<strong>" + Utils.Translate("type") + "</strong>: {0}";
+        string categoriesLabel = "<strong>" + Utils.Translate("categories") + "</strong> : {0}";
+        string tagsLabel = "<strong>" + Utils.Translate("tags") + "</strong> : {0}";
+        string keywordsLabel = "<strong>" + Utils.Translate("keywords") + "</strong> : {0}    ";
+
+        if (item is Comment)
+        {
+            return string.Format(typeLabel, Utils.Translate("comment"));
+        }
+        else if (item is Post post)
+        {
+            string text = string.Format(typeLabel, Utils.Translate("post"));
+            if (post.Categories.Count > 0)
+            {
+                string cat = string.Empty;
+                foreach (Category category in post.Categories)
+                {
+                    cat += category.Title + ", ";
+                }
+                text += "<br />" + string.Format(categoriesLabel, cat.Substring(0, cat.Length - 2));
+            }
+
+            if (post.Tags.Count > 0)
+            {
+                string t = string.Empty;
+                foreach (string tag in post.Tags)
+                {
+                    t += tag + ", ";
+                }
+                text += "<br />" + string.Format(tagsLabel, t.Substring(0, t.Length - 2));
+            }
+            return text;
+        }
+        else if (item is BlogEngine.Core.Page page)
+        {
+            string text = string.Format(typeLabel, Utils.Translate("page"));
+            if (!string.IsNullOrEmpty(page.Keywords))
+            {
+                text += "<br />" + string.Format(keywordsLabel, page.Keywords);
+            }
+            return text;
+        }
+        return string.Empty;
+    }
+}

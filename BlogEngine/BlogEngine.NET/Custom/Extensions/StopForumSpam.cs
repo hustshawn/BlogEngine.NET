@@ -2,7 +2,7 @@
 {
     using System;
     using System.IO;
-    using System.Net;
+    using System.Net.Http;
 
     using BlogEngine.Core;
     using BlogEngine.Core.Web.Controls;
@@ -14,21 +14,10 @@
     [Extension("Checks comment against stopforumspam.com spammers list.", "1.0", "BlogEngine.NET", 0, false)]
     public class StopForumSpam : ICustomFilter
     {
-        #region Constants and Fields
+        private static readonly HttpClient _httpClient = new HttpClient();
 
-        /// <summary>
-        /// The pass through.
-        /// </summary>
         private bool passThrough = true;
 
-        #endregion
-
-        #region Properties
-
-        /// <summary>
-        ///     Gets a value indicating whether comment will be passed to other
-        ///     custom filters for validation
-        /// </summary>
         public bool FallThrough
         {
             get
@@ -37,47 +26,27 @@
             }
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region ICustomFilter
-
-        /// <summary>
-        /// Check if comment is spam
-        /// </summary>
-        /// <param name="comment">
-        /// The comment
-        /// </param>
-        /// <returns>
-        /// True if comment is spam
-        /// </returns>
         public bool Check(Comment comment)
         {
             try
             {
                 var url = $"http://www.stopforumspam.com/api?ip={comment.IP}";
 
-                var request = (HttpWebRequest)WebRequest.Create(url);
-                var response = (HttpWebResponse)request.GetResponse();
-                var responseStream = response.GetResponseStream();
-                if (responseStream != null)
-                {
-                    var reader = new StreamReader(responseStream);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                var response = _httpClient.Send(request);
+                using var responseStream = response.Content.ReadAsStream();
+                var reader = new StreamReader(responseStream);
 
-                    var value = reader.ReadToEnd();
-                    reader.Close();
+                var value = reader.ReadToEnd();
+                reader.Close();
 
-                    var spam = value.ToLowerInvariant().Contains("<appears>yes</appears>") ? true : false;
+                var spam = value.ToLowerInvariant().Contains("<appears>yes</appears>");
 
-                    // if comment IP appears in the stopforumspam list
-                    // it is for sure spam; no need to pass to others.
-                    passThrough = spam ? false : true;
+                // if comment IP appears in the stopforumspam list
+                // it is for sure spam; no need to pass to others.
+                passThrough = spam ? false : true;
 
-                    return spam;
-                }
-            
-                return false;
+                return spam;
             }
             catch (Exception e)
             {
@@ -86,33 +55,15 @@
             }
         }
 
-        /// <summary>
-        /// Enables or disables filter
-        /// </summary>
-        /// <returns>
-        /// True of false
-        /// </returns>
         public bool Initialize()
         {
-            // do not need any initialization
-            // simply return true to enable filter
             return true;
         }
 
-        /// <summary>
-        /// Report mistakes to service
-        /// </summary>
-        /// <param name="comment">
-        /// A Comment.
-        /// </param>
         public void Report(Comment comment)
         {
             // if we needed report mistakes back to
             // service, we would put code here
         }
-
-        #endregion
-
-        #endregion
     }
 }

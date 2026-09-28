@@ -1,0 +1,80 @@
+@using BlogEngine.Core
+@using BlogEngine.Core.DataStore
+@using System.Xml
+
+<div id="widgetzone_@ZoneName" class="widgetzone">
+    @foreach (var widget in widgets)
+    {
+        <WidgetContainer WidgetName="@widget.Name" WidgetId="@widget.Id"
+                         WidgetTitle="@widget.Title" ShowTitle="true">
+            @((MarkupString)widget.RenderedHtml)
+        </WidgetContainer>
+    }
+</div>
+
+@code {
+    [Parameter] public string ZoneName { get; set; } = "be_WIDGET_ZONE";
+
+    private List<WidgetData> widgets = new();
+
+    private class WidgetData
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string RenderedHtml { get; set; } = string.Empty;
+    }
+
+    protected override void OnInitialized()
+    {
+        var cleanZoneName = Utils.RemoveIllegalCharacters(ZoneName);
+
+        var doc = Blog.CurrentInstance.Cache[cleanZoneName] as XmlDocument;
+        if (doc == null)
+        {
+            doc = RetrieveXml(cleanZoneName);
+            if (doc != null)
+                Blog.CurrentInstance.Cache[cleanZoneName] = doc;
+        }
+
+        if (doc == null) return;
+
+        var zone = doc.SelectNodes("//widget");
+        if (zone == null) return;
+
+        foreach (XmlNode widgetNode in zone)
+        {
+            var widgetName = widgetNode.InnerText;
+            var widgetId = widgetNode.Attributes?["id"]?.Value ?? Guid.NewGuid().ToString();
+            var widgetTitle = widgetNode.Attributes?["title"]?.Value ?? widgetName;
+
+            string html;
+            try
+            {
+                var fileName = $"{Utils.ApplicationRelativeWebRoot}Custom/Widgets/{widgetName}/widget.cshtml";
+                var model = new { Id = widgetId, Name = widgetName, Title = widgetTitle };
+                html = RazorHelpers.ParseRazor(fileName, model);
+            }
+            catch (Exception ex)
+            {
+                html = $"<p style=\"color:red\">Widget {widgetName} not found, check log for details.</p>";
+                Utils.Log("WidgetZone.OnInitialized", ex);
+            }
+
+            widgets.Add(new WidgetData
+            {
+                Id = Guid.TryParse(widgetId, out var gid) ? gid : Guid.NewGuid(),
+                Name = widgetName,
+                Title = widgetTitle,
+                RenderedHtml = html
+            });
+        }
+    }
+
+    private static XmlDocument RetrieveXml(string zoneName)
+    {
+        var ws = new WidgetSettings(zoneName) { SettingsBehavior = new XmlDocumentBehavior() };
+        var doc = (XmlDocument)ws.GetSettings();
+        return doc;
+    }
+}

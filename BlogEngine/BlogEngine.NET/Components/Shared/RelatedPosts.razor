@@ -1,0 +1,114 @@
+@using BlogEngine.Core
+@using System.Text
+
+@if (BlogSettings.Instance.EnableRelatedPosts && Item != null && relatedHtml != null)
+{
+    @((MarkupString)relatedHtml)
+}
+
+@code {
+    [Parameter] public IPublishable Item { get; set; }
+    [Parameter] public string Headline { get; set; } = Utils.Translate("relatedPosts");
+    [Parameter] public int MaxResults { get; set; } = 3;
+    [Parameter] public bool ShowDescription { get; set; }
+    [Parameter] public int DescriptionMaxLength { get; set; } = 100;
+
+    private static readonly Dictionary<Guid, Dictionary<Guid, string>> _RelatedPostsCache = new();
+    private static readonly object _SyncRoot = new();
+    private string relatedHtml;
+
+    static RelatedPosts()
+    {
+        Post.Saved += (sender, e) =>
+        {
+            if (e.Action != SaveAction.Update) return;
+            var post = (Post)sender;
+            var cache = GetBlogCache();
+            if (cache.ContainsKey(post.Id))
+                cache.Remove(post.Id);
+        };
+    }
+
+    private static Dictionary<Guid, string> GetBlogCache()
+    {
+        var blogId = Blog.CurrentInstance.Id;
+        if (!_RelatedPostsCache.ContainsKey(blogId))
+        {
+            lock (_SyncRoot)
+            {
+                if (!_RelatedPostsCache.ContainsKey(blogId))
+                    _RelatedPostsCache[blogId] = new Dictionary<Guid, string>();
+            }
+        }
+        return _RelatedPostsCache[blogId];
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!BlogSettings.Instance.EnableRelatedPosts || Item == null)
+        {
+            relatedHtml = null;
+            return;
+        }
+
+        var cache = GetBlogCache();
+        if (!cache.ContainsKey(Item.Id))
+        {
+            var relatedPosts = Search.FindRelatedItems(Item);
+            if (relatedPosts.Count <= 1)
+            {
+                relatedHtml = null;
+                return;
+            }
+            CreateList(relatedPosts, cache);
+        }
+
+        if (cache.ContainsKey(Item.Id))
+            relatedHtml = cache[Item.Id].Replace("+++", Headline);
+        else
+            relatedHtml = null;
+    }
+
+    private void CreateList(IEnumerable<IPublishable> relatedPosts, Dictionary<Guid, string> cache)
+    {
+        var sb = new StringBuilder();
+        const string LinkFormat = "<a href=\"{0}\">{1}</a>";
+        const string DescriptionFormat = "<span>{0}</span>";
+        sb.Append("<div id=\"relatedPosts\">");
+        sb.Append("<h3>+++</h3>");
+        sb.Append("<div>");
+
+        var count = 0;
+        foreach (var post in relatedPosts)
+        {
+            if (post != Item)
+            {
+                sb.Append(string.Format(LinkFormat, post.RelativeLink, System.Net.WebUtility.HtmlEncode(post.Title)));
+                if (ShowDescription)
+                {
+                    var description = Utils.StripHtml(post.Description);
+                    if (description != null && description.Length > DescriptionMaxLength)
+                        description = $"{description.Substring(0, DescriptionMaxLength)}...";
+
+                    if (string.IsNullOrEmpty(description))
+                    {
+                        var content = Utils.StripHtml(post.Content);
+                        description = content.Length > DescriptionMaxLength
+                            ? $"{content.Substring(0, DescriptionMaxLength)}..."
+                            : content;
+                    }
+
+                    sb.Append(string.Format(DescriptionFormat, description));
+                }
+
+                count++;
+            }
+
+            if (count == MaxResults) break;
+        }
+
+        sb.Append("</div>");
+        sb.Append("</div>");
+        cache[Item.Id] = sb.ToString();
+    }
+}

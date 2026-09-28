@@ -1,22 +1,30 @@
 ﻿using BlogEngine.Core;
 using BlogEngine.Core.Data.Models;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Http;
-using System.Web.Hosting;
-using System.Web.Http;
 
-public class LogsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class LogsController : ControllerBase
 {
+    private readonly IWebHostEnvironment _env;
+
+    public LogsController(IWebHostEnvironment env)
+    {
+        _env = env;
+    }
+
     [HttpGet]
     public IEnumerable<SelectOption> GetLog()
     {
         if (!Security.IsAuthorizedTo(BlogEngine.Core.Rights.AccessAdminPages))
             throw new System.UnauthorizedAccessException();
 
-        var action = Request.GetRouteData().Values["id"].ToString();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString();
 
         switch (action)
         {
@@ -29,34 +37,34 @@ public class LogsController : ApiController
     }
 
     [HttpPut]
-    public HttpResponseMessage PurgeLog()
+    public IActionResult PurgeLog()
     {
         if (!Security.IsAuthorizedTo(BlogEngine.Core.Rights.AccessAdminPages))
             throw new System.UnauthorizedAccessException();
 
-        string fileLocation = HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
+        string fileLocation = Path.Combine(_env.ContentRootPath, BlogConfig.StorageLocation.TrimStart('~', '/'), "logger.txt");
         try
         {
-            File.Delete(fileLocation);
-            return Request.CreateResponse(HttpStatusCode.OK);
+            System.IO.File.Delete(fileLocation);
+            return Ok();
         }
         catch (UnauthorizedAccessException)
         {
-            return Request.CreateResponse(HttpStatusCode.Unauthorized);
+            return Unauthorized();
         }
         catch (Exception ex)
         {
             Utils.Log("Error purging log file", ex);
-            return Request.CreateResponse(HttpStatusCode.InternalServerError);
+            return StatusCode(500);
         }
     }
 
     IEnumerable<SelectOption> GetLogFile()
     {
-        string fileLocation = HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, "logger.txt"));
+        string fileLocation = Path.Combine(_env.ContentRootPath, BlogConfig.StorageLocation.TrimStart('~', '/'), "logger.txt");
         var items = new List<SelectOption>();
     
-        if (File.Exists(fileLocation))
+        if (System.IO.File.Exists(fileLocation))
         {
             using (var sw = new StreamReader(fileLocation))
             {

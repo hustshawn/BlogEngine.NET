@@ -1,0 +1,185 @@
+@page "/Account/register"
+@layout AccountLayout
+@using BlogEngine.Core
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using System.Security.Claims
+// Membership and Roles are provided by BlogEngine.Core namespace
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Register</PageTitle>
+
+<h1 id="CreateHdr" class="account-title">@Utils.Translate("createAccount")</h1>
+<div class="account-body">
+    <div class="form-group first-child">
+        <label class="label-up">@Utils.Translate("userName"):</label>
+        <div class="boxRound">
+            <input type="text" @bind="userName" class="textEntry form-control" />
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="label-up">@Utils.Translate("email"):</label>
+        <div class="boxRound">
+            <input type="text" @bind="email" class="textEntry form-control" />
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="label-up">@string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength)</label>
+        <div class="boxRound">
+            <input type="password" @bind="password" class="passwordEntry form-control" />
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="label-up">@Utils.Translate("confirmPassword"):</label>
+        <div class="boxRound">
+            <input type="password" @bind="confirmPassword" class="passwordEntry form-control" />
+        </div>
+    </div>
+
+    <div class="btn-wrapper text-center">
+        <button class="btn btn-success btn-block" @onclick="HandleRegister">@Utils.Translate("createUser")</button>
+    </div>
+</div>
+
+<hr />
+<div class="account-body text-center text-uppercase">
+    @Utils.Translate("alreadyHaveAccount")
+    <a href="@(Utils.RelativeWebRoot)Account/login">@Utils.Translate("loginNow")</a>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-warning">@errorMessage</div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "ReturnUrl")]
+    public string ReturnUrl { get; set; }
+
+    private string userName = string.Empty;
+    private string email = string.Empty;
+    private string password = string.Empty;
+    private string confirmPassword = string.Empty;
+    private string errorMessage = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // If blog creation is enabled on self-registration and this is primary blog, redirect
+        if (BlogSettings.Instance.CreateBlogOnSelfRegistration && Blog.CurrentInstance.IsPrimary)
+        {
+            Navigation.NavigateTo("/Account/create-blog", forceLoad: true);
+            return;
+        }
+
+        // If self registration not allowed, redirect to login
+        if (!BlogSettings.Instance.EnableSelfRegistration)
+        {
+            Navigation.NavigateTo(Utils.RelativeWebRoot + "Account/login", forceLoad: true);
+            return;
+        }
+    }
+
+    private async Task HandleRegister()
+    {
+        // Validate
+        if (string.IsNullOrWhiteSpace(userName))
+        {
+            errorMessage = Utils.Translate("userNameIsRequired");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(password) || password.Length < Membership.MinRequiredPasswordLength)
+        {
+            errorMessage = string.Format(Utils.Translate("passwordMinimumCharacters"), Membership.MinRequiredPasswordLength);
+            return;
+        }
+
+        if (password != confirmPassword)
+        {
+            errorMessage = Utils.Translate("newAndConfirmPasswordMismatch");
+            return;
+        }
+
+        // Check if user already exists
+        if (Membership.GetUser(userName) != null)
+        {
+            errorMessage = Utils.Translate("anotherUserName");
+            return;
+        }
+
+        // Check if email already used
+        if (Membership.GetUserNameByEmail(email) != null)
+        {
+            errorMessage = Utils.Translate("anotherEmail");
+            return;
+        }
+
+        try
+        {
+            // Create the user
+            MembershipCreateStatus status;
+            Membership.CreateUser(userName, password, email, null, null, true, out status);
+
+            if (status != MembershipCreateStatus.Success)
+            {
+                errorMessage = status.ToString();
+                return;
+            }
+
+            // Add to initial role if configured
+            if (!string.IsNullOrEmpty(BlogSettings.Instance.SelfRegistrationInitialRole))
+            {
+                string role = BlogEngine.Core.Roles.GetAllRoles()
+                    .FirstOrDefault(r => r.Equals(BlogSettings.Instance.SelfRegistrationInitialRole, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(role))
+                {
+                    BlogEngine.Core.Roles.AddUsersToRoles(new[] { userName }, new[] { role });
+                }
+            }
+
+            // Authenticate the new user
+            Security.AuthenticateUser(userName, password, false);
+
+            // Sign in with cookie auth
+            var httpContext = HttpContextAccessor.HttpContext;
+            if (httpContext != null)
+            {
+                var claims = new List<Claim>
+                {
+                    new Claim(ClaimTypes.Name, userName)
+                };
+
+                try
+                {
+                    var roles = BlogEngine.Core.Roles.GetRolesForUser(userName);
+                    foreach (var role in roles)
+                    {
+                        claims.Add(new Claim(ClaimTypes.Role, role));
+                    }
+                }
+                catch { }
+
+                var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+                var principal = new ClaimsPrincipal(identity);
+
+                await httpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    principal,
+                    new AuthenticationProperties { IsPersistent = false });
+            }
+
+            var continueUrl = ReturnUrl;
+            if (string.IsNullOrEmpty(continueUrl))
+            {
+                continueUrl = Utils.RelativeWebRoot;
+            }
+
+            Navigation.NavigateTo(continueUrl, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+}

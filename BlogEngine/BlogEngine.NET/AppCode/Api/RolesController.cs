@@ -4,10 +4,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class RolesController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class RolesController : ControllerBase
 {
     readonly IRolesRepository repository;
 
@@ -21,49 +23,49 @@ public class RolesController : ApiController
         return repository.Find(take, skip, filter, order);
     }
 
-    public HttpResponseMessage Get(string id)
+    public IActionResult Get(string id)
     {
         var result = repository.FindById(id);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
-    public HttpResponseMessage Post([FromBody]RoleItem role)
+    public IActionResult Post([FromBody]RoleItem role)
     {
         var result = repository.Add(role);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.Created, result);
+        return Created("", result);
     }
 
-    public HttpResponseMessage Put([FromBody]List<RoleItem> items)
+    public IActionResult Put([FromBody]List<RoleItem> items)
     {
         if (items == null || items.Count == 0)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
         foreach (var item in items)
         {
             repository.Remove(item.RoleName);
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
-    public HttpResponseMessage Delete(string id)
+    public IActionResult Delete(string id)
     {
         repository.Remove(id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<RoleItem> items)
+    public IActionResult ProcessChecked([FromBody]List<RoleItem> items)
     {
         if (items == null || items.Count == 0)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        var action = Request.GetRouteData().Values["id"].ToString();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString();
 
         if (action.ToLower() == "delete")
         {
@@ -75,28 +77,28 @@ public class RolesController : ApiController
                 }
             }
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpGet]
-    public HttpResponseMessage GetRights(string id)
+    public IActionResult GetRights(string id)
     {
         var result = repository.GetRoleRights(id);
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
     [HttpGet]
-    public HttpResponseMessage GetUserRoles(string id)
+    public IActionResult GetUserRoles(string id)
     {
         var result = repository.GetUserRoles(id);
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
     [HttpPut]
-    public HttpResponseMessage SaveRights([FromBody]List<Group> rights, string id)
+    public IActionResult SaveRights([FromBody]List<Group> rights, string id)
     {
         repository.SaveRights(rights, id); 
 
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }

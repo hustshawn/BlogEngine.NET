@@ -1,0 +1,115 @@
+@using BlogEngine.Core
+
+<ul class="toprounded">
+    @foreach (var item in menuItems)
+    {
+        <li><a href="@item.Url"><span>@item.Text</span></a></li>
+    }
+</ul>
+
+@code {
+    private List<MenuItem> menuItems = new();
+
+    private class MenuItem
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+    }
+
+    protected override void OnInitialized()
+    {
+        BindMenu();
+    }
+
+    private void BindMenu()
+    {
+        // REVIEW: behavior inferred from usage — verify
+        // The original used SiteMap.Providers["SecuritySiteMap"] to build the menu.
+        // In modern .NET, we build static admin menu items based on user rights.
+        var adminRoot = Utils.RelativeWebRoot + "admin";
+
+        if (Security.IsAuthenticated)
+        {
+            if (Security.IsAuthorizedTo(Rights.AccessAdminPages))
+            {
+                menuItems.Add(new MenuItem
+                {
+                    Text = "Dashboard",
+                    Url = adminRoot + "/#/dashboard"
+                });
+
+                menuItems.Add(new MenuItem
+                {
+                    Text = Utils.Translate("posts"),
+                    Url = adminRoot + "/#/content/posts"
+                });
+
+                menuItems.Add(new MenuItem
+                {
+                    Text = Utils.Translate("pages"),
+                    Url = adminRoot + "/#/content/pages"
+                });
+
+                menuItems.Add(new MenuItem
+                {
+                    Text = Utils.Translate("categories"),
+                    Url = adminRoot + "/#/content/categories"
+                });
+
+                menuItems.Add(new MenuItem
+                {
+                    Text = Utils.Translate("tags"),
+                    Url = adminRoot + "/#/content/tags"
+                });
+
+                menuItems.Add(new MenuItem
+                {
+                    Text = Utils.Translate("comments"),
+                    Url = adminRoot + "/#/comments"
+                });
+
+                if (Security.IsAdministrator)
+                {
+                    menuItems.Add(new MenuItem
+                    {
+                        Text = Utils.Translate("users"),
+                        Url = adminRoot + "/#/security/users"
+                    });
+
+                    menuItems.Add(new MenuItem
+                    {
+                        Text = Utils.Translate("roles"),
+                        Url = adminRoot + "/#/security/roles"
+                    });
+
+                    menuItems.Add(new MenuItem
+                    {
+                        Text = Utils.Translate("settings"),
+                        Url = adminRoot + "/#/settings"
+                    });
+
+                    if (Blog.CurrentInstance.IsPrimary)
+                    {
+                        menuItems.Add(new MenuItem
+                        {
+                            Text = "Blogs",
+                            Url = adminRoot + "/#/blogs"
+                        });
+                    }
+                }
+            }
+
+            menuItems.Add(new MenuItem
+            {
+                Text = Utils.Translate("myProfile"),
+                Url = Utils.RelativeWebRoot + "admin/#/security/profile"
+            });
+
+            menuItems.Add(new MenuItem
+            {
+                Text = Utils.Translate("changePassword"),
+                Url = Utils.RelativeWebRoot + "Account/change-password"
+            });
+        }
+    }
+}

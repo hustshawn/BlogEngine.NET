@@ -1,0 +1,35 @@
+@using BlogEngine.Core
+
+@* RazorHost theme WidgetContainer *@
+@* Originally used RazorHelpers.ParseRazor with WIDGET_CONTAINER_BODY_MARKER for body placement *@
+
+<div class="widget @(Widget.Name.Replace(" ", string.Empty).ToLowerInvariant())" id="widget@(Widget.WidgetId)">
+    @if (!Widget.ShowTitle)
+    {
+        @((MarkupString)AdminLinks)
+    }
+    @if (Widget.ShowTitle)
+    {
+        <h4 class="widget-header">
+            @Widget.Title
+            <span class="float-right">@((MarkupString)AdminLinks)</span>
+        </h4>
+    }
+    <div class="widget-content">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public WidgetData Widget { get; set; }
+    [Parameter] public string AdminLinks { get; set; } = "";
+    [Parameter] public RenderFragment ChildContent { get; set; }
+
+    public class WidgetData
+    {
+        public string Name { get; set; } = "";
+        public string WidgetId { get; set; } = "";
+        public string Title { get; set; } = "";
+        public bool ShowTitle { get; set; }
+    }
+}

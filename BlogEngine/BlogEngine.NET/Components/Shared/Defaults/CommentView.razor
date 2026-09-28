@@ -1,0 +1,58 @@
+@using BlogEngine.Core
+@using System.Text
+
+<div>
+    <h4>By @Comment.Author at @Comment.DateCreated</h4>
+    <p>@((MarkupString)Text)</p>
+
+    @if (Security.IsAuthenticated)
+    {
+        <span>
+            @((MarkupString)AdminLinks())
+        </span>
+    }
+
+    @* Nested sub-comments placeholder for nesting support *@
+    @if (Comment.Comments != null && Comment.Comments.Count > 0)
+    {
+        <div class="sub-comments" style="margin-left: 30px;">
+            @foreach (var subComment in Comment.Comments)
+            {
+                <CommentView Comment="@subComment" Post="@Post" IsOdd="@(!IsOdd)" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Comment Comment { get; set; }
+    [Parameter] public Post Post { get; set; }
+    [Parameter] public bool IsOdd { get; set; }
+
+    private string Text => Comment?.Content ?? string.Empty;
+
+    private string AdminLinks()
+    {
+        if (!Security.IsAuthenticated || Comment == null || Post == null)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+
+        var matchingComment = Post.Comments.FirstOrDefault(c => c.Id == Comment.Id);
+        if (matchingComment != null)
+        {
+            sb.AppendFormat(" | <a href=\"mailto:{0}\">{0}</a>", matchingComment.Email);
+        }
+
+        if (Security.IsAuthorizedTo(Rights.ModerateComments))
+        {
+            sb.AppendFormat(
+                " | <a href=\"?deletecomment={0}\" onclick=\"return confirm('{1}?')\">{2}</a>",
+                Comment.Id,
+                Utils.Translate("areYouSureDeleteComment"),
+                Utils.Translate("delete"));
+        }
+
+        return sb.ToString();
+    }
+}

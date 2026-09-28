@@ -1,0 +1,44 @@
+@using BlogEngine.Core
+
+@* Standard-2017 theme PostView - renders a single post *@
+
+<article class="post" id="post@(Index)">
+    <header class="post-header">
+        <h2 class="post-title">
+            <a href="@Post.RelativeOrAbsoluteLink">@System.Net.WebUtility.HtmlEncode(Post.Title)</a>
+        </h2>
+        <div class="post-info clearfix">
+            <span class="post-date">@Post.DateCreated.ToString("dd MMMM yyyy")</span>
+            <span class="post-author"><a href="@(Utils.AbsoluteWebRoot + "author/" + Utils.RemoveIllegalCharacters(Post.Author + BlogConfig.FileExtension))">@(Post.AuthorProfile != null ? Utils.RemoveIllegalCharacters(Post.AuthorProfile.DisplayName) : Utils.RemoveIllegalCharacters(Post.Author))</a></span>
+            <span class="post-category">@((MarkupString)CategoryLinks)</span>
+        </div>
+    </header>
+    <section class="post-body text">
+        @((MarkupString)Body)
+    </section>
+    @if (SinglePost)
+    {
+        <footer class="post-footer">
+            <div class="post-tags">
+                @Labels["tags"] : @((MarkupString)TagLinks)
+            </div>
+            <div class="post-rating">
+                @((MarkupString)Rating)
+            </div>
+            <div class="post-adminlinks">@((MarkupString)AdminLinks)</div>
+        </footer>
+    }
+</article>
+
+@code {
+    [Parameter] public Post Post { get; set; }
+    [Parameter] public int Index { get; set; }
+    [Parameter] public bool SinglePost { get; set; }
+    [Parameter] public string Body { get; set; } = "";
+    [Parameter] public string AdminLinks { get; set; } = "";
+    [Parameter] public string CategoryLinks { get; set; } = "";
+    [Parameter] public string TagLinks { get; set; } = "";
+    [Parameter] public string Rating { get; set; } = "";
+    // REVIEW: Labels dictionary should be populated from IStringLocalizer<labels> — verify integration
+    [Parameter] public Dictionary<string, string> Labels { get; set; } = new();
+}

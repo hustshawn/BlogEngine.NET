@@ -3,39 +3,41 @@ using BlogEngine.Core;
 using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Data.ViewModels;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Net;
-using System.Net.Http;
 using System.Net.Mail;
 using System.Text;
-using System.Web;
-using System.Web.Http;
 
-public class SettingsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class SettingsController : ControllerBase
 {
     readonly ISettingsRepository repository;
 
     public SettingsController(ISettingsRepository repository)
     {
         if (!WebUtils.CheckRightsForAdminSettingsPage(true))
-            throw new HttpResponseException(HttpStatusCode.Unauthorized);
+            throw new UnauthorizedAccessException();
 
         this.repository = repository;
     }
 
+    [HttpGet]
     public SettingsVM Get()
     {
         return repository.Get();
     }
 
-    public HttpResponseMessage Put([FromBody]Settings settings, string action = "")
+    [HttpPut]
+    public IActionResult Put([FromBody]Settings settings, string action = "")
     {
         if (action == "testEmail")
         {
             var retMsg = TestEmail(settings);
             if (!string.IsNullOrEmpty(retMsg))
             {
-                return Request.CreateResponse(HttpStatusCode.OK, retMsg);
+                return Ok(retMsg);
             }
         }
         else if(action == "clearCache")
@@ -46,7 +48,7 @@ public class SettingsController : ApiController
         {
             repository.Update(settings);
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     string TestEmail(Settings settings)
@@ -68,12 +70,12 @@ public class SettingsController : ApiController
         var body = new StringBuilder();
         body.Append("<div style=\"font: 11px verdana, arial\">");
         body.Append("Success");
-        if (HttpContext.Current != null)
+        if (HttpContext != null)
         {
             body.Append(
                 "<br /><br />_______________________________________________________________________________<br /><br />");
             body.AppendFormat("<strong>IP address:</strong> {0}<br />", Utils.GetClientIP());
-            body.AppendFormat("<strong>User-agent:</strong> {0}", HttpContext.Current.Request.UserAgent);
+            body.AppendFormat("<strong>User-agent:</strong> {0}", HttpContext.Request.Headers["User-Agent"].ToString());
         }
 
         body.Append("</div>");

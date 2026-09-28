@@ -4,7 +4,6 @@ using System;
 using System.Net.Mail;
 using System.Text;
 using System.Threading;
-using System.Web;
 
 using BlogEngine.Core;
 using BlogEngine.Core.Web.Controls;
@@ -97,7 +96,7 @@ public class SendCommentMail
                 From = new MailAddress(BlogSettings.Instance.Email),
                 Subject = BlogSettings.Instance.EmailSubjectPrefix + subject + post.Title
             };
-        mail.ReplyToList.Add(new MailAddress(replyTo, HttpUtility.HtmlDecode(comment.Author)));
+        mail.ReplyToList.Add(new MailAddress(replyTo, System.Net.WebUtility.HtmlDecode(comment.Author)));
         mail.To.Add(BlogSettings.Instance.Email);
 
         var sb = new StringBuilder();
@@ -133,11 +132,8 @@ public class SendCommentMail
             sb.AppendFormat("<strong>Country code:</strong> {0}<br />", comment.Country.ToUpperInvariant());
         }
 
-        if (HttpContext.Current != null)
-        {
-            sb.AppendFormat("<strong>IP address:</strong> {0}<br />", Utils.GetClientIP());
-            sb.AppendFormat("<strong>User-agent:</strong> {0}", HttpContext.Current.Request.UserAgent);
-        }
+        // IP and User-Agent info from the comment object when HttpContext is not available
+        sb.AppendFormat("<strong>IP address:</strong> {0}<br />", comment.IP ?? Utils.GetClientIP());
 
         sb.Append("</div>");
         sb.Append("</div>");

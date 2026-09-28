@@ -1,16 +1,21 @@
 ﻿using System;
-using System.Web.Http.ExceptionHandling;
+using Microsoft.AspNetCore.Mvc.Filters;
 using BlogEngine.Core;
 
 namespace BlogEngine.NET.AppCode.Api
 {
-    public class UnhandledExceptionLogger : ExceptionLogger
+    /// <summary>
+    /// Global exception filter that logs unhandled exceptions.
+    /// Replaces the Web API 2 ExceptionLogger (IExceptionLogger from System.Web.Http.ExceptionHandling).
+    /// </summary>
+    public class UnhandledExceptionLogger : IExceptionFilter
     {
-        public override void Log(ExceptionLoggerContext context)
+        public void OnException(ExceptionContext context)
         {
             if (context.Exception is UnauthorizedAccessException) { return; }
 
-            Utils.Log("{0} {1}: {2}", context.Request.Method, context.Request.RequestUri, context.Exception.Message);
+            var request = context.HttpContext.Request;
+            Utils.Log("{0} {1}: {2}", request.Method, request.Path + request.QueryString, context.Exception.Message);
         }
     }
 }

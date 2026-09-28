@@ -2,28 +2,30 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BlogEngine.NET.AppCode.Api
 {
-    public class PackageExtraController : ApiController
+    [ApiController]
+    [Route("api/[controller]")]
+    public class PackageExtraController : ControllerBase
     {
         public IEnumerable<PackageExtra> Get()
         {
             return Gallery.GetPackageExtras();
         }
 
-        public HttpResponseMessage Get(string id)
+        public IActionResult Get(string id)
         {
             if (string.IsNullOrEmpty(id))
-                throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+                return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
             var result = Gallery.GetPackageExtra(id);
             if (result != null)
-                return Request.CreateResponse(HttpStatusCode.OK, result);
+                return Ok(result);
 
-            return Request.CreateResponse(HttpStatusCode.OK);
+            return Ok();
         }
     }
 }

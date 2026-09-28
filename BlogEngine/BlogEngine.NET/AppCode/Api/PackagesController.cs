@@ -2,12 +2,14 @@
 using BlogEngine.Core.Data.Models;
 using BlogEngine.Core.Packaging;
 using System.Collections.Generic;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Net;
-using System.Net.Http;
+using Microsoft.AspNetCore.Http;
 
-public class PackagesController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class PackagesController : ControllerBase
 {
     readonly IPackageRepository repository;
 
@@ -21,22 +23,22 @@ public class PackagesController : ApiController
         return repository.Find(take, skip, filter, order);
     }
 
-    public HttpResponseMessage Get(string id)
+    public IActionResult Get(string id)
     {
         var result = repository.FindById(id);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
     [HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<Package> items)
+    public IActionResult ProcessChecked([FromBody]List<Package> items)
     {
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = Request.GetRouteData().Values["id"].ToString();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString();
 
         try
         {
@@ -45,7 +47,7 @@ public class PackagesController : ApiController
                 foreach (var item in items)
                 {
                     if (!repository.Install(item.Id))
-                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                        return StatusCode((int)HttpStatusCode.InternalServerError);
                 }
             }
             if (action == "uninstall")
@@ -53,7 +55,7 @@ public class PackagesController : ApiController
                 foreach (var item in items)
                 {
                     if (!repository.Uninstall(item.Id))
-                        throw new HttpResponseException(HttpStatusCode.InternalServerError);
+                        return StatusCode((int)HttpStatusCode.InternalServerError);
                 }
             }
 
@@ -73,83 +75,83 @@ public class PackagesController : ApiController
                     repository.Update(item);
                 }
             }
-            return Request.CreateResponse(HttpStatusCode.OK);
+            return Ok();
         }
         catch (System.Exception ex)
         {
             BlogEngine.Core.Utils.Log("Error processing package", ex);
-            throw new HttpResponseException(HttpStatusCode.InternalServerError);
+            return StatusCode((int)HttpStatusCode.InternalServerError);
         }
     }
 
     [HttpPut]
-    public bool Update([FromBody]Package item)
+    public IActionResult Update([FromBody]Package item)
     {
         try
         {
             repository.Update(item);
-            return true;
+            return Ok(true);
         }
         catch (UnauthorizedAccessException)
         {
-            throw new HttpResponseException(HttpStatusCode.Unauthorized);
+            return StatusCode((int)HttpStatusCode.Unauthorized);
         }
         catch (Exception ex)
         {
             BlogEngine.Core.Utils.Log("Error updating package", ex);
-            throw new HttpResponseException(HttpStatusCode.InternalServerError);
+            return StatusCode((int)HttpStatusCode.InternalServerError);
         }
     }
 
     [HttpPut]
-    public HttpResponseMessage Install(string id)
+    public IActionResult Install(string id)
     {
         if (string.IsNullOrEmpty(id))
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
         repository.Install(id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage Uninstall(string id)
+    public IActionResult Uninstall(string id)
     {
         if (string.IsNullOrEmpty(id))
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
         repository.Uninstall(id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage Rate(string id, [FromBody]Review review)
+    public IActionResult Rate(string id, [FromBody]Review review)
     {
-        if (review == null) return Request.CreateResponse(HttpStatusCode.ExpectationFailed, "Review can not be null");
+        if (review == null) return StatusCode(417, "Review can not be null");
 
         if (review.Body.Length > 450) review.Body = review.Body.Substring(0, 450);
 
         var result = Gallery.RatePackage(id, review);
 
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
     [HttpPut]
-    public bool Refresh()
+    public IActionResult Refresh()
     {
         try
         {
             BlogEngine.Core.Blog.CurrentInstance.Cache.Remove(Constants.CacheKey);
-            return true;
+            return Ok(true);
         }
         catch (Exception ex)
         {
             BlogEngine.Core.Utils.Log("Error refreshing gallery cache", ex);
-            throw new HttpResponseException(HttpStatusCode.InternalServerError);
+            return StatusCode((int)HttpStatusCode.InternalServerError);
         }
     }
 
     [HttpPut]
-    public HttpResponseMessage SetTheme(string id)
+    public IActionResult SetTheme(string id)
     {
         if (!string.IsNullOrEmpty(id))
         {
@@ -157,6 +159,6 @@ public class PackagesController : ApiController
             bs.Theme = id;
             bs.Save();
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }

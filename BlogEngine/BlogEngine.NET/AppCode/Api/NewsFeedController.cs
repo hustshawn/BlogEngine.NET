@@ -2,10 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.ServiceModel.Syndication;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
 using System.Xml;
 
-public class NewsFeedController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class NewsFeedController : ControllerBase
 {
     public List<SelectOption> Get()
     {

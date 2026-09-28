@@ -1,0 +1,33 @@
+@using BlogEngine.Core
+@using BlogEngine.Core.DataStore
+@using System.Collections.Specialized
+
+@* WidgetBase is an abstract base component for widgets.
+   In Blazor, this is implemented as a base class that widget components inherit from. *@
+
+@ChildContent
+
+@code {
+    [Parameter] public RenderFragment ChildContent { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public bool ShowTitle { get; set; } = true;
+    [Parameter] public Guid WidgetId { get; set; }
+    [Parameter] public string Zone { get; set; } = string.Empty;
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public bool IsEditable { get; set; }
+    [Parameter] public bool DisplayHeader { get; set; } = true;
+
+    /// <summary>
+    /// Get settings from data store
+    /// </summary>
+    public StringDictionary GetSettings()
+    {
+        var cacheId = $"be_widget_{WidgetId}";
+        if (Blog.CurrentInstance.Cache[cacheId] == null)
+        {
+            var ws = new WidgetSettings(WidgetId.ToString());
+            Blog.CurrentInstance.Cache[cacheId] = ws.GetSettings();
+        }
+        return (StringDictionary)Blog.CurrentInstance.Cache[cacheId];
+    }
+}

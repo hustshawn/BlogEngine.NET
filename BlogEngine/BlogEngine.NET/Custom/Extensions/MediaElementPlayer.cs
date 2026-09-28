@@ -8,12 +8,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Collections;
 using System.Collections.Generic;
-using System.Web;
-using System.Web.UI.HtmlControls;
 using BlogEngine.Core;
 using BlogEngine.Core.Web.Controls;
 using BlogEngine.Core.Web.Extensions;
-using Page=System.Web.UI.Page;
 
 /// <summary>
 /// Adds a HTML5 video/audio player to posts with Flash/Silverlight fallbacks
@@ -21,21 +18,15 @@ using Page=System.Web.UI.Page;
 [Extension("HTML5 Video/Audio Player", "1.5", @"<a href=""http://johndyer.me/"">John Dyer</a>")]
 public class MediaElementPlayer
 {
-
-    #region Private members
     private const string _extensionName = "MediaElementPlayer";
     private static readonly object _syncRoot = new object();
     static protected Dictionary<Guid, ExtensionSettings> _blogsSettings = new Dictionary<Guid, ExtensionSettings>();
-    #endregion
 
     private const int _widthDefault = 480;
     private const int _heightDefault = 360;
-	private const bool _enableAutoSize = false;
+    private const bool _enableAutoSize = false;
     private const string _folderDefault = "Custom/Media";
 
-    /// <summary>
-    /// Adds a Flash video player to the post.
-    /// </summary>
     static MediaElementPlayer()
     {
         Post.Serving += Publishable_Serving;
@@ -45,7 +36,6 @@ public class MediaElementPlayer
 
     private static void InitSettings()
     {
-        // call Settings getter so default settings are loaded on application start.
         var s = Settings;
     }
 
@@ -108,7 +98,6 @@ public class MediaElementPlayer
 ";
         initialSettings.IsScalar = true;
 
-
         initialSettings.AddParameter("width", "Default Width");
         initialSettings.AddValue("width", _widthDefault.ToString());
 
@@ -126,179 +115,161 @@ public class MediaElementPlayer
         if (!ExtensionManager.ExtensionEnabled("MediaElementPlayer"))
             return;
 
-        if (e.Location == ServingLocation.PostList || e.Location == ServingLocation.SinglePost || e.Location == ServingLocation.Feed || e.Location == ServingLocation.SinglePage) {
-	
-			HttpContext context = HttpContext.Current;			
-	
-			string regex = @"(video|audio)";
-			List<ShortCode> shortCodes = GetShortCodes(e.Body, regex, true);
-	
-			if (shortCodes.Count == 0)
-				return;
-							
-			ProcessMediaTags(e, shortCodes);
-			
-			// this won't happen on feeds
-			if (context.CurrentHandler is Page) {
-				Page page = (Page)context.CurrentHandler;
-				AddHeader(page);
-                AddFooter(page);
-			}
-		}
-	}
+        if (e.Location == ServingLocation.PostList || e.Location == ServingLocation.SinglePost || e.Location == ServingLocation.Feed || e.Location == ServingLocation.SinglePage)
+        {
+            string regex = @"(video|audio)";
+            List<ShortCode> shortCodes = GetShortCodes(e.Body, regex, true);
 
-    private static void AddHeader(Page page)
-    {
-		string path = Utils.ApplicationRelativeWebRoot + "Scripts/mediaelement/";
-		
-		AddJavaScript(path + "mediaelement.min.js", page);
-        AddJavaScript(path + "mediaelementplayer.min.js", page);
-        AddStylesheet(path + "mediaelementplayer.min.css", page);
+            if (shortCodes.Count == 0)
+                return;
+
+            ProcessMediaTags(e, shortCodes);
+
+            // Inject media player assets inline (replaces old Page.ClientScript approach)
+            if (e.Location != ServingLocation.Feed)
+            {
+                InjectMediaPlayerAssets(e);
+            }
+        }
     }
 
-    private static void AddJavaScript(string src, Page page)
+    /// <summary>
+    /// Injects the media player CSS/JS references inline in the content body.
+    /// Replaces the old Page.ClientScript.RegisterStartupScript approach.
+    /// </summary>
+    private static void InjectMediaPlayerAssets(ServingEventArgs e)
     {
-        BlogEngine.Core.Web.Scripting.Helpers.AddScript(page, src, false, true, true);
-    }
+        string path = Utils.ApplicationRelativeWebRoot + "Scripts/mediaelement/";
 
-    private static void AddStylesheet(string href, Page page)
-    {
-        BlogEngine.Core.Web.Scripting.Helpers.AddStyle(page, href);
-    }
-
-    private static void AddFooter(Page page)
-    {
-
-		int width = 0;
-		int height = 0;
+        int width = 0;
+        int height = 0;
 
         if (!Int32.TryParse(Settings.GetSingleValue("width"), out width))
-			width = _widthDefault;
+            width = _widthDefault;
         if (!Int32.TryParse(Settings.GetSingleValue("height"), out height))
-			height = _heightDefault;      
+            height = _heightDefault;
 
-		string startupScript = @"
-<script type=""text/javascript"">
-$(document).ready(function($) {
-	$('audio.mep, video.mep').mediaelementplayer({defaultVideoWidth:" + width.ToString() + ", defaultVideoHeight:" + height.ToString() + @"});
-});
-</script>	
-";
-        page.ClientScript.RegisterStartupScript(page.GetType(), _extensionName, startupScript, false);
-	}
+        string assets = 
+            "<link rel=\"stylesheet\" href=\"" + path + "mediaelementplayer.min.css\" />" +
+            "<script type=\"text/javascript\" src=\"" + path + "mediaelement.min.js\"></script>" +
+            "<script type=\"text/javascript\" src=\"" + path + "mediaelementplayer.min.js\"></script>" +
+            "<script type=\"text/javascript\">" +
+            "document.addEventListener('DOMContentLoaded', function() {" +
+            "  var elements = document.querySelectorAll('audio.mep, video.mep');" +
+            "  for (var i = 0; i < elements.length; i++) {" +
+            "    new MediaElementPlayer(elements[i], {defaultVideoWidth:" + width + ", defaultVideoHeight:" + height + "});" +
+            "  }" +
+            "});" +
+            "</script>";
 
+        e.Body = e.Body + assets;
+    }
 
     private static void ProcessMediaTags(ServingEventArgs e, List<ShortCode> shortCodes)
     {
-	
-		// path to media
-        string folder = Settings.GetSingleValue("folder");			
-		string path = Utils.RelativeWebRoot + folder.TrimEnd(new char[] {'/'}) + "/";
-		
-		// override for feed
-		if (e.Location == ServingLocation.Feed) {
-			path = Utils.AbsoluteWebRoot + folder.TrimEnd(new char[] { '/' }) + "/";			
-		}
-					
-		// do replacement for media
-		foreach (ShortCode sc in shortCodes)
-		{
-			string tagName = sc.TagName;
-			string src = sc.GetAttributeValue("src", "");
-			string w = sc.GetAttributeValue("width", "");
-			string h = sc.GetAttributeValue("height", "");
+        string folder = Settings.GetSingleValue("folder");
+        string path = Utils.RelativeWebRoot + folder.TrimEnd(new char[] { '/' }) + "/";
 
-			string mp4 = sc.GetAttributeValue("mp4", "");
-			string mp3 = sc.GetAttributeValue("mp3", "");
-			string webm = sc.GetAttributeValue("webm", "");
-			string ogg = sc.GetAttributeValue("ogg", "");
-			
-			string poster = sc.GetAttributeValue("poster", "");
-			string autoplay = sc.GetAttributeValue("autoplay", "");
-			string preload = sc.GetAttributeValue("preload", "");
+        if (e.Location == ServingLocation.Feed)
+        {
+            path = Utils.AbsoluteWebRoot + folder.TrimEnd(new char[] { '/' }) + "/";
+        }
 
-			string code =
-				"<" + tagName + " class=\"mep\" controls=\"controls\"" + ((src != "") ? " src=\"" + ((src.IndexOf("http") == 0) ? "" : path) + src + "\"" : "") + ((poster != "") ? " poster=\"" + ((poster.IndexOf("http") == 0) ? "" : path) + poster + "\"" : "") + ((w != "") ? " width=\"" + w + "\"" : "") + ((h != "") ? " height=\"" + h + "\"" : "") + ((autoplay != "") ? " autoplay=\"autoplay\"" : "") + ((preload != "") ? " preload=\"" + preload + "\"" : "") + ">" +
-					((mp4 != "") ? "<source src=\"" + ((mp4.IndexOf("http") == 0) ? "" : path) + mp4 + "\" type=\"video/mp4\" />" : "") +
-					((mp3 != "") ? "<source src=\"" +((mp3.IndexOf("http") == 0) ? "" : path) + mp3 + "\" type=\"audio/mp3\" />" : "") +
-					((webm != "") ? "<source src=\"" + ((webm.IndexOf("http") == 0) ? "" : path) + webm + "\" type=\"video/webm\" />" : "") +
-					((ogg != "") ? "<source src=\"" + ((ogg.IndexOf("http") == 0) ? "" : path) + ogg + "\" type=\"video/ogg\" />" : "") + 
-				
-				"</" + tagName + ">";		
-				
-			e.Body = e.Body.Replace(sc.Text, code);
-			
-		}	
-	}		
-	
-	public static List<ShortCode> GetShortCodes(string input)
+        foreach (ShortCode sc in shortCodes)
+        {
+            string tagName = sc.TagName;
+            string src = sc.GetAttributeValue("src", "");
+            string w = sc.GetAttributeValue("width", "");
+            string h = sc.GetAttributeValue("height", "");
+
+            string mp4 = sc.GetAttributeValue("mp4", "");
+            string mp3 = sc.GetAttributeValue("mp3", "");
+            string webm = sc.GetAttributeValue("webm", "");
+            string ogg = sc.GetAttributeValue("ogg", "");
+
+            string poster = sc.GetAttributeValue("poster", "");
+            string autoplay = sc.GetAttributeValue("autoplay", "");
+            string preload = sc.GetAttributeValue("preload", "");
+
+            string code =
+                "<" + tagName + " class=\"mep\" controls=\"controls\"" + ((src != "") ? " src=\"" + ((src.IndexOf("http") == 0) ? "" : path) + src + "\"" : "") + ((poster != "") ? " poster=\"" + ((poster.IndexOf("http") == 0) ? "" : path) + poster + "\"" : "") + ((w != "") ? " width=\"" + w + "\"" : "") + ((h != "") ? " height=\"" + h + "\"" : "") + ((autoplay != "") ? " autoplay=\"autoplay\"" : "") + ((preload != "") ? " preload=\"" + preload + "\"" : "") + ">" +
+                    ((mp4 != "") ? "<source src=\"" + ((mp4.IndexOf("http") == 0) ? "" : path) + mp4 + "\" type=\"video/mp4\" />" : "") +
+                    ((mp3 != "") ? "<source src=\"" + ((mp3.IndexOf("http") == 0) ? "" : path) + mp3 + "\" type=\"audio/mp3\" />" : "") +
+                    ((webm != "") ? "<source src=\"" + ((webm.IndexOf("http") == 0) ? "" : path) + webm + "\" type=\"video/webm\" />" : "") +
+                    ((ogg != "") ? "<source src=\"" + ((ogg.IndexOf("http") == 0) ? "" : path) + ogg + "\" type=\"video/ogg\" />" : "") +
+                "</" + tagName + ">";
+
+            e.Body = e.Body.Replace(sc.Text, code);
+        }
+    }
+
+    public static List<ShortCode> GetShortCodes(string input)
     {
-		return GetShortCodes(input, true);
-	}
+        return GetShortCodes(input, true);
+    }
+
     public static List<ShortCode> GetShortCodes(string input, bool removeParagraphs)
     {
-		return GetShortCodes(input, @"\w+", removeParagraphs);
-	}
+        return GetShortCodes(input, @"\w+", removeParagraphs);
+    }
+
     public static List<ShortCode> GetShortCodes(string input, string regexMatchString, bool removeParagraphs)
     {
-		List<ShortCode> shortCodes = new List<ShortCode>();
+        List<ShortCode> shortCodes = new List<ShortCode>();
 
-		// get the main tag [tag attr="value"]
-		string find = @"\[(?<tag>" + regexMatchString + @")(?<attrs>[^\]]+)\]";
-		if (removeParagraphs) {
-			find = @"(<p>[\s\n]?)+" + find + @"([\s\n]?</p>)+";
-		}
-				
-		MatchCollection matches = Regex.Matches(input, find);
-		
-		foreach (Match match in matches) {
-			
-			string tagName = match.Groups["tag"].Value;
-			string attributes = match.Groups["attrs"].Value;
+        string find = @"\[(?<tag>" + regexMatchString + @")(?<attrs>[^\]]+)\]";
+        if (removeParagraphs)
+        {
+            find = @"(<p>[\s\n]?)+" + find + @"([\s\n]?</p>)+";
+        }
 
-			ShortCode sc = new ShortCode(tagName, match.Value);
+        MatchCollection matches = Regex.Matches(input, find);
 
-			// parse the attributes
-			// attr="value"
-			MatchCollection attrMatches = Regex.Matches(attributes, @"(?<attr>\w+)=""(?<val>[^""]+)""");			
-			
-			foreach (Match attrMatch in attrMatches) {
-				sc.Attributes.Add(attrMatch.Groups["attr"].Value, attrMatch.Groups["val"].Value);
-			}
+        foreach (Match match in matches)
+        {
+            string tagName = match.Groups["tag"].Value;
+            string attributes = match.Groups["attrs"].Value;
 
-			shortCodes.Add(sc);
-		}
-		
+            ShortCode sc = new ShortCode(tagName, match.Value);
 
-		return shortCodes;
-	}
+            MatchCollection attrMatches = Regex.Matches(attributes, @"(?<attr>\w+)=""(?<val>[^""]+)""");
+
+            foreach (Match attrMatch in attrMatches)
+            {
+                sc.Attributes.Add(attrMatch.Groups["attr"].Value, attrMatch.Groups["val"].Value);
+            }
+
+            shortCodes.Add(sc);
+        }
+
+        return shortCodes;
+    }
 
     public class ShortCode
     {
+        public ShortCode() : this("", "") { }
 
-		public ShortCode(): this("","") {
-		}
-		
-		public ShortCode(string tagName, string text) {
-			_tagName = tagName;
-			_text = text;
-			_attributes = new Dictionary<string, string>();
-		}
-		
-		private string _tagName;
-		private string _text;
-		private Dictionary<string, string> _attributes;
+        public ShortCode(string tagName, string text)
+        {
+            _tagName = tagName;
+            _text = text;
+            _attributes = new Dictionary<string, string>();
+        }
 
-		public string TagName { get { return _tagName; } set { _tagName = value; } }
-		public string Text { get { return _text; } set { _text = value; } }
-		public Dictionary<string, string> Attributes { get { return _attributes; } set { _attributes = value; } }
+        private string _tagName;
+        private string _text;
+        private Dictionary<string, string> _attributes;
 
-		public string GetAttributeValue(string attributeName, string defaultValue) {
-			if (Attributes.ContainsKey(attributeName))
-				return Attributes[attributeName];
-			else
-				return defaultValue;
-		}
-	}
-	
+        public string TagName { get { return _tagName; } set { _tagName = value; } }
+        public string Text { get { return _text; } set { _text = value; } }
+        public Dictionary<string, string> Attributes { get { return _attributes; } set { _attributes = value; } }
+
+        public string GetAttributeValue(string attributeName, string defaultValue)
+        {
+            if (Attributes.ContainsKey(attributeName))
+                return Attributes[attributeName];
+            else
+                return defaultValue;
+        }
+    }
 }

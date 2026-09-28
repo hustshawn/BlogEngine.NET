@@ -1,0 +1,45 @@
+@using BlogEngine.Core
+
+@* Standard-2017 theme CommentForm - comment submission form with preview and notify *@
+
+<div class="comment-form well-global">
+    <h3 class="well-global-title" id="addcomment">@Labels["addComment"]</h3>
+    <div class="form-group">
+        <input type="text" class="form-control" placeholder="@Labels["name"]" name="txtName" id="txtName" />
+    </div>
+    <div class="form-group">
+        <input type="text" placeholder="@Labels["email"]" class="form-control" id="txtEmail" />
+        <span id="gravatarmsg"></span>
+    </div>
+    @if (BlogSettings.Instance.EnableWebsiteInComments)
+    {
+        <div class="form-group">
+            <input type="text" placeholder="@Labels["website"] (optional)" class="form-control" id="txtWebsite" />
+        </div>
+    }
+    <div class="form-group" id="commentCompose">
+        <textarea class="form-control" id="txtContent" placeholder="@Labels["comment"]" cols="50" rows="7" name="txtContent"></textarea>
+    </div>
+    @if (BlogSettings.Instance.ShowLivePreview)
+    {
+        <div class="form-group comment-preview">
+            <label>@Labels["previewComment"]</label>
+            <div id="commentPreview">
+                <img src="@(Utils.RelativeWebRoot)Content/images/blog/ajax-loader.gif" style="display: none" alt="Loading" />
+            </div>
+        </div>
+    }
+    <div id="commentCaptcha" class="form-group"></div>
+    <div class="form-group">
+        <label>
+            <input type="checkbox" id="cbNotify" />
+            @Labels["notifyOnNewComments"]
+        </label>
+    </div>
+    <input type="button" id="btnSaveAjax" value="@Labels["saveComment"]" class="btn btn-primary btn-block" onclick="return BlogEngine.validateAndSubmitCommentForm()" />
+</div>
+
+@code {
+    // REVIEW: Labels dictionary should be populated from IStringLocalizer<labels> — verify integration
+    [Parameter] public Dictionary<string, string> Labels { get; set; } = new();
+}

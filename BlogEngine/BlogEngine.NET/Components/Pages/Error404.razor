@@ -1,0 +1,215 @@
+@page "/error404"
+@using System.Net
+@using BlogEngine.Core
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>@(Utils.Translate("PageNotFound"))</PageTitle>
+
+<div class="post error404 page-global">
+    <h2 class="page-global-title">Ooops! I can't find the page you're looking for</h2>
+
+    @if (showSearchEngine)
+    {
+        <div class="search">
+            <p>
+                You did a search on <strong><a href="@referrerUrl">@referrerHost</a></strong>
+                for <strong>@searchTerm</strong>. However, their index seems to be out of date.
+            </p>
+            <h2>All is not lost!</h2>
+            <p>I think that the following pages on my site will be able to help you:</p>
+            <div class="searchresults">
+                @foreach (var item in searchResults)
+                {
+                    <a href="@item.RelativeLink">@item.Title</a>
+                    @if (!string.IsNullOrEmpty(item.Description))
+                    {
+                        <br />
+                        <span>@item.Description</span>
+                    }
+                    <br />
+                }
+            </div>
+        </div>
+    }
+
+    @if (showExternalReferrer)
+    {
+        <div>
+            <p>
+                You were incorrectly referred to this page by:
+                <a href="javascript:history.go(-1)">@referrerHost</a>
+            </p>
+            <p>I suggest you try one of the links below:</p>
+            <ul>
+                <li><a href="/archive">@Utils.Translate("archive")</a></li>
+                <li><a href="@Utils.RelativeWebRoot">Home page</a></li>
+            </ul>
+            <p>You can also try to <a href="@(Utils.RelativeWebRoot)search">search for the page you were looking for</a>.</p>
+            <p>I'm sorry for the inconvenience</p>
+        </div>
+    }
+
+    @if (showInternalReferrer)
+    {
+        <div>
+            <p>
+                This one's down to me! Please accept my apologies for this - I'll see to it
+                that the developer responsible for this broken link is given 20 lashes
+                (but only after he or she has fixed this problem).
+            </p>
+            <p>You can also try to <a href="@(Utils.RelativeWebRoot)search">search for the page you were looking for</a>.</p>
+            <br /><br />
+        </div>
+    }
+
+    @if (showDirectHit)
+    {
+        <div>
+            <p>You might find one of the following links useful:</p>
+            <ul>
+                @foreach (var item in directHitResults)
+                {
+                    <li><a href="@item.RelativeLink">@item.Title</a></li>
+                }
+                <li><a href="/archive">@Utils.Translate("archive")</a></li>
+                <li><a href="@Utils.RelativeWebRoot">Home page</a></li>
+            </ul>
+            <p>You can also try to <a href="@(Utils.RelativeWebRoot)search">search for the page you were looking for</a>.</p>
+            <hr />
+            <p><strong>You may not be able to find the page you were after because of:</strong></p>
+            <ol type="a">
+                <li>An <strong>out-of-date bookmark/favorite</strong></li>
+                <li>A search engine that has an <strong>out-of-date listing for us</strong></li>
+                <li>A <strong>miss-typed address</strong></li>
+            </ol>
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "aspxerrorpath")]
+    public string AspxErrorPath { get; set; }
+
+    private bool showSearchEngine;
+    private bool showExternalReferrer;
+    private bool showInternalReferrer;
+    private bool showDirectHit;
+    private string searchTerm = string.Empty;
+    private string referrerUrl = string.Empty;
+    private string referrerHost = string.Empty;
+    private List<IPublishable> searchResults = new();
+    private List<IPublishable> directHitResults = new();
+
+    protected override void OnInitialized()
+    {
+        // Set 404 status code via HttpContext (available during SSR)
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            httpContext.Response.StatusCode = 404;
+        }
+
+        Uri referrer = null;
+        Uri requestUrl = null;
+
+        if (httpContext?.Request?.Headers?.ContainsKey("Referer") == true)
+        {
+            var refStr = httpContext.Request.Headers["Referer"].ToString();
+            Uri.TryCreate(refStr, UriKind.Absolute, out referrer);
+        }
+
+        if (httpContext != null)
+        {
+            requestUrl = new Uri($"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.Path}{httpContext.Request.QueryString}");
+        }
+
+        if (referrer != null)
+        {
+            referrerUrl = referrer.ToString();
+            referrerHost = referrer.Host;
+        }
+
+        if (!string.IsNullOrEmpty(AspxErrorPath) && AspxErrorPath.Contains("/post/"))
+        {
+            DirectHitSearch();
+            showDirectHit = true;
+        }
+        else if (referrer == null)
+        {
+            showDirectHit = true;
+        }
+        else if (requestUrl != null && referrer.Host == requestUrl.Host)
+        {
+            showInternalReferrer = true;
+        }
+        else if (GetSearchKey(referrer) != string.Empty)
+        {
+            searchTerm = GetSearchTerm(referrer, GetSearchKey(referrer));
+            BindSearchResult();
+            showSearchEngine = true;
+        }
+        else if (referrer != null)
+        {
+            showExternalReferrer = true;
+        }
+    }
+
+    private void DirectHitSearch()
+    {
+        if (string.IsNullOrEmpty(AspxErrorPath)) return;
+
+        string from = AspxErrorPath;
+        int index = from.LastIndexOf("/") + 1;
+        string title = from.Substring(index).Replace("", string.Empty).Replace("-", " ");
+
+        List<IPublishable> items = BlogEngine.Core.Search.Hits(title, false);
+        if (items.Count > 0)
+        {
+            directHitResults.Add(items[0]);
+        }
+    }
+
+    private void BindSearchResult()
+    {
+        List<IPublishable> items = BlogEngine.Core.Search.Hits(searchTerm, false);
+        int max = 1;
+        foreach (IPublishable item in items)
+        {
+            searchResults.Add(item);
+            max++;
+            if (max == 3) break;
+        }
+    }
+
+    private string GetSearchKey(Uri referrer)
+    {
+        if (referrer == null) return string.Empty;
+
+        string referrerStr = referrer.Host.ToLowerInvariant();
+        string query = referrer.Query ?? string.Empty;
+
+        if (referrerStr.Contains("google.") && query.Contains("q="))
+            return "q=";
+
+        if (referrerStr.Contains("yahoo.") && query.Contains("p="))
+            return "p=";
+
+        if (query.Contains("q="))
+            return "q=";
+
+        return string.Empty;
+    }
+
+    private string GetSearchTerm(Uri referrer, string key)
+    {
+        string referrerStr = referrer.ToString();
+        int start = referrerStr.IndexOf(key) + key.Length;
+        int stop = referrerStr.IndexOf("&", start);
+        if (stop == -1)
+            stop = referrerStr.Length;
+
+        string term = referrerStr.Substring(start, stop - start);
+        return term.Replace("+", " ");
+    }
+}

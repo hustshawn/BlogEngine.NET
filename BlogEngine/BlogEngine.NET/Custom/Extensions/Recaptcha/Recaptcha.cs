@@ -67,7 +67,7 @@
         var iframe = document.createElement('iframe');
         iframe.name = 'Recaptcha Log Viewer';
         iframe.id = 'RecaptchaLogDetails';
-        iframe.src = '../Pages/RecaptchaLogViewer.aspx';
+        iframe.src = '../Pages//admin/Extensions/Settings';
         iframe.style.height = size.height + 'px';
         iframe.style.width = size.width + 'px';
         iframe.style.position = 'fixed';
@@ -141,7 +141,7 @@
                             settings.AddValue("Language", new[] { "en|English", "nl|Dutch", "fr|French", "de|German", "pt|Portuguese", "ru|Russian", "es|Spanish", "tr|Turkish" }, "en");
 
                             settings.Help =
-                                $"\n<script type='text/javascript'>\n{JScript}\n</script>\nYou can create your own public key at <a href='http://www.Recaptcha.net'>http://www.Recaptcha.net</a>. This is used for communication between your website and the recapcha server.<br /><br />Please rememeber you need to <span style=\"color:red\">enable extension</span> for reCaptcha to show up on the comments form.<br /><br />You can see some statistics on Captcha solving by storing successful attempts. If you're getting spam, this should also confirm that the spammers are at least solving the captcha.<br /><br /><a href='../Pages/RecaptchaLogViewer.aspx' target='_blank' onclick='return showRecaptchaLog()'>Click here to view the log</a>";
+                                $"\n<script type='text/javascript'>\n{JScript}\n</script>\nYou can create your own public key at <a href='http://www.Recaptcha.net'>http://www.Recaptcha.net</a>. This is used for communication between your website and the recapcha server.<br /><br />Please rememeber you need to <span style=\"color:red\">enable extension</span> for reCaptcha to show up on the comments form.<br /><br />You can see some statistics on Captcha solving by storing successful attempts. If you're getting spam, this should also confirm that the spammers are at least solving the captcha.<br /><br /><a href='../Pages//admin/Extensions/Settings' target='_blank' onclick='return showRecaptchaLog()'>Click here to view the log</a>";
 
                             blogsSettings[blogId] = ExtensionManager.InitSettings("Recaptcha", settings);
 

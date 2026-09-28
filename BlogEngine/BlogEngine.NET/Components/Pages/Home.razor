@@ -1,0 +1,405 @@
+@page "/"
+@page "/default"
+@page "/category/{CategoryId:guid}"
+@page "/author/{AuthorName}"
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using System.Xml
+@using System.Web
+@using BlogEngine.Core
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>@pageTitle</PageTitle>
+
+@if (!string.IsNullOrEmpty(errorHtml))
+{
+    <div id="divError">@((MarkupString)errorHtml)</div>
+}
+
+@if (showPostList)
+{
+    @* PostList rendered as a sub-component; for now render post summaries inline *@
+    <div id="post-list">
+        @if (posts != null && posts.Count > 0)
+        {
+            @foreach (var pub in GetPagedPosts())
+            {
+                if (pub is Post post)
+                {
+                    <div class="post-item">
+                        <h2><a href="@post.RelativeLink">@post.Title</a></h2>
+                        <span class="post-date">@post.DateCreated.ToString("MMMM d, yyyy")</span>
+                        <span class="post-author"> by @post.Author</span>
+                        <div class="post-body">@((MarkupString)(post.Description ?? string.Empty))</div>
+                    </div>
+                }
+            }
+            @if (TotalPages > 1)
+            {
+                <div class="pager">
+                    @for (int i = 1; i <= TotalPages; i++)
+                    {
+                        var pageNum = i;
+                        <a href="@GetPageUrl(pageNum)" class="@(pageNum == currentPage ? "active" : "")">@pageNum</a>
+                    }
+                </div>
+            }
+        }
+        else if (posts != null)
+        {
+            <p>No posts found.</p>
+        }
+    </div>
+}
+
+@if (showCalendar)
+{
+    <div class="calendar">
+        <p>@Utils.Translate("calendar")</p>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "id")]
+    public string QueryId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "name")]
+    public string QueryName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tag")]
+    public string QueryTag { get; set; }
+
+    [SupplyParameterFromQuery(Name = "year")]
+    public string QueryYear { get; set; }
+
+    [SupplyParameterFromQuery(Name = "month")]
+    public string QueryMonth { get; set; }
+
+    [SupplyParameterFromQuery(Name = "date")]
+    public string QueryDate { get; set; }
+
+    [SupplyParameterFromQuery(Name = "calendar")]
+    public string QueryCalendar { get; set; }
+
+    [SupplyParameterFromQuery(Name = "apml")]
+    public string QueryApml { get; set; }
+
+    [SupplyParameterFromQuery(Name = "page")]
+    public string QueryPage { get; set; }
+
+    [Parameter]
+    public Guid? CategoryId { get; set; }
+
+    [Parameter]
+    public string AuthorName { get; set; }
+
+    private string pageTitle = string.Empty;
+    private string errorHtml = string.Empty;
+    private bool showPostList = true;
+    private bool showCalendar = false;
+    private List<IPublishable> posts;
+    private ServingContentBy contentBy = ServingContentBy.AllContent;
+    private int currentPage = 1;
+    private const int PageSize = 10;
+    private string metaDescription = string.Empty;
+    private string metaKeywords = string.Empty;
+
+    private int TotalPages => posts != null && posts.Count > 0 ? (int)Math.Ceiling((double)posts.Count / PageSize) : 0;
+
+    protected override void OnInitialized()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        var rawUrl = httpContext?.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+        var queryString = httpContext?.Request.QueryString.Value ?? string.Empty;
+        var fullUrl = rawUrl + queryString;
+
+        // Parse page number
+        if (!string.IsNullOrEmpty(QueryPage) && int.TryParse(QueryPage, out int pg))
+        {
+            currentPage = pg;
+        }
+
+        // Check for search engine / bot crawling
+        CheckAndProcessSearchEngine(httpContext, fullUrl);
+
+        if (rawUrl.Contains("/category/") || CategoryId.HasValue)
+        {
+            DisplayCategories();
+        }
+        else if (rawUrl.Contains("/author/") || !string.IsNullOrEmpty(AuthorName))
+        {
+            DisplayAuthors();
+        }
+        else if (!string.IsNullOrEmpty(QueryTag))
+        {
+            DisplayTags();
+        }
+        else if (!string.IsNullOrEmpty(QueryYear) || !string.IsNullOrEmpty(QueryDate) || !string.IsNullOrEmpty(QueryCalendar))
+        {
+            // Old URL format with year= in query string — do permanent redirect
+            if (queryString.Contains("year=", StringComparison.OrdinalIgnoreCase))
+            {
+                RedirectOldDateUrl();
+            }
+            else
+            {
+                DisplayDateRange();
+            }
+        }
+        else if (!string.IsNullOrEmpty(QueryApml))
+        {
+            DisplayApmlFiltering();
+        }
+        else
+        {
+            // Default home page
+            if (!BlogSettings.Instance.UseBlogNameInPageTitles)
+                pageTitle = BlogSettings.Instance.Name + " | ";
+            else
+                pageTitle = string.Empty;
+
+            if (!string.IsNullOrEmpty(BlogSettings.Instance.Description))
+                pageTitle += HttpUtility.HtmlEncode(BlogSettings.Instance.Description);
+
+            metaDescription = BuildMetaDescription(BlogSettings.Instance.Description);
+        }
+
+        AddMetaKeywords();
+    }
+
+    private void CheckAndProcessSearchEngine(HttpContext httpContext, string crawlerUrl)
+    {
+        if (httpContext == null) return;
+
+        // Check if client is a crawler
+        var userAgent = httpContext.Request.Headers["User-Agent"].ToString().ToLowerInvariant();
+        bool isCrawler = userAgent.Contains("bot") || userAgent.Contains("crawler") || userAgent.Contains("spider") || userAgent.Contains("slurp");
+
+        if (isCrawler)
+        {
+            if (crawlerUrl.Contains("/category/") ||
+                crawlerUrl.Contains("?tag") ||
+                crawlerUrl.Contains("?page=") ||
+                crawlerUrl.Contains("/search", StringComparison.OrdinalIgnoreCase) ||
+                crawlerUrl.Contains("/archive", StringComparison.OrdinalIgnoreCase))
+            {
+                // REVIEW: behavior inferred — originally added NOINDEX meta tag and redirected
+                Navigation.NavigateTo(Utils.RelativeWebRoot, false, true);
+            }
+        }
+    }
+
+    private void DisplayCategories()
+    {
+        Guid categoryId = CategoryId ?? Guid.Empty;
+        if (categoryId == Guid.Empty && !string.IsNullOrEmpty(QueryId))
+        {
+            Guid.TryParse(QueryId, out categoryId);
+        }
+
+        if (categoryId != Guid.Empty)
+        {
+            contentBy = ServingContentBy.Category;
+            var category = Category.GetCategory(categoryId, Blog.CurrentInstance.IsSiteAggregation);
+            if (category != null)
+            {
+                posts = Post.GetPostsByCategory(category)
+                    .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+                pageTitle = category.Title;
+                metaDescription = BuildMetaDescription(
+                    string.IsNullOrWhiteSpace(category.Description) ? category.Title : category.Description);
+            }
+        }
+    }
+
+    private void DisplayAuthors()
+    {
+        string author = AuthorName;
+        if (string.IsNullOrEmpty(author))
+            author = QueryName;
+
+        if (!string.IsNullOrEmpty(author))
+        {
+            author = Uri.UnescapeDataString(author);
+            contentBy = ServingContentBy.Author;
+            posts = Post.GetPostsByAuthor(author)
+                .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+            pageTitle = Utils.Translate("AllPostsBy") + " " + HttpUtility.HtmlEncode(author);
+            metaDescription = BuildMetaDescription(pageTitle);
+        }
+    }
+
+    private void DisplayTags()
+    {
+        if (!string.IsNullOrEmpty(QueryTag))
+        {
+            var tag = QueryTag.StartsWith("/") ? QueryTag.Substring(1) : QueryTag;
+            contentBy = ServingContentBy.Tag;
+            posts = Post.GetPostsByTag(tag)
+                .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+            pageTitle = string.Format("{0} '{1}'", Utils.Translate("AllPostsTagged"), tag);
+            metaDescription = BuildMetaDescription(pageTitle);
+        }
+    }
+
+    private void DisplayDateRange()
+    {
+        string year = QueryYear;
+        string month = QueryMonth;
+        string specificDate = QueryDate;
+
+        if (!string.IsNullOrEmpty(year) && !string.IsNullOrEmpty(month))
+        {
+            DateTime dateFrom = DateTime.Parse(year + "-" + month + "-01", CultureInfo.InvariantCulture);
+            DateTime dateTo = dateFrom.AddMonths(1).AddMilliseconds(-1);
+            contentBy = ServingContentBy.DateRange;
+            posts = Post.GetPostsByDate(dateFrom, dateTo)
+                .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+            pageTitle = dateFrom.ToString("MMMM yyyy");
+        }
+        else if (!string.IsNullOrEmpty(year))
+        {
+            DateTime dateFrom = DateTime.Parse(year + "-01-01", CultureInfo.InvariantCulture);
+            DateTime dateTo = dateFrom.AddYears(1).AddMilliseconds(-1);
+            contentBy = ServingContentBy.DateRange;
+            posts = Post.GetPostsByDate(dateFrom, dateTo)
+                .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+            pageTitle = dateFrom.ToString("yyyy");
+        }
+        else if (!string.IsNullOrEmpty(specificDate) && specificDate.Length == 10)
+        {
+            DateTime date = DateTime.Parse(specificDate, CultureInfo.InvariantCulture);
+            contentBy = ServingContentBy.DateRange;
+            posts = Post.GetPostsByDate(date, date)
+                .ConvertAll(new Converter<Post, IPublishable>(p => p as IPublishable));
+            pageTitle = date.ToString("MMMM d. yyyy");
+        }
+        else if (!string.IsNullOrEmpty(QueryCalendar))
+        {
+            showCalendar = true;
+            showPostList = false;
+            pageTitle = HttpUtility.HtmlEncode(Utils.Translate("calendar"));
+        }
+
+        metaDescription = BuildMetaDescription(pageTitle + " - " + BlogSettings.Instance.Description);
+    }
+
+    private void DisplayApmlFiltering()
+    {
+        Uri url = null;
+        if (Uri.TryCreate(QueryApml, UriKind.Absolute, out url))
+        {
+            pageTitle = Utils.Translate("apmlFilteredList");
+            try
+            {
+                Dictionary<Uri, XmlDocument> docs = Utils.FindSemanticDocuments(url, "apml");
+                if (docs.Count > 0)
+                {
+                    foreach (Uri key in docs.Keys)
+                    {
+                        contentBy = ServingContentBy.Apml;
+                        posts = BlogEngine.Core.Search.ApmlMatches(docs[key], 30)
+                            .FindAll(p => p is Post);
+                        posts.Sort((ip1, ip2) => ip2.DateCreated.CompareTo(ip1.DateCreated));
+                        pageTitle += Utils.Translate("per") + HttpUtility.HtmlEncode(key.Host);
+                        break;
+                    }
+                }
+                else
+                {
+                    errorHtml = "<h1 style=\"text-align:center\">" + Utils.Translate("apmlNotFoundDesc") + "</h1><br /><br />";
+                    pageTitle = Utils.Translate("apmlNotFound");
+                }
+            }
+            catch (NotSupportedException)
+            {
+                errorHtml = "<h1 style=\"text-align:center\">" + Utils.Translate("apmlNoInfoWebsite") + "</h1><br /><br />";
+                pageTitle = Utils.Translate("apmlNotFound");
+            }
+            catch (System.Net.WebException)
+            {
+                errorHtml = "<h1 style=\"text-align:center\">" + Utils.Translate("apmlNoConnWebsite") + "</h1><br /><br />";
+                pageTitle = Utils.Translate("apmlAddrInvalid");
+            }
+            catch (XmlException)
+            {
+                errorHtml = "<h1 style=\"text-align:center\">" + Utils.Translate("apmlInvalidXml") + "</h1><br /><br />";
+                pageTitle = Utils.Translate("apmlDocErr");
+            }
+        }
+        else if (posts == null || posts.Count == 0)
+        {
+            errorHtml = "<h1 style=\"text-align:center\">" + Utils.Translate("apmlInvalidUrl") + "</h1><br /><br />";
+            pageTitle = Utils.Translate("apmlNotFound");
+        }
+    }
+
+    private void RedirectOldDateUrl()
+    {
+        string year = QueryYear;
+        string month = QueryMonth;
+        string date = QueryDate;
+        string pagePart = string.IsNullOrEmpty(QueryPage) ? string.Empty : "?page=" + QueryPage;
+        string rewrite = null;
+
+        if (!string.IsNullOrEmpty(date))
+        {
+            DateTime dateParsed = DateTime.Parse(date);
+            rewrite = Utils.RelativeWebRoot + dateParsed.Year + "/" + dateParsed.Month + "/" + dateParsed.Day + "/default" + BlogConfig.FileExtension;
+        }
+        else if (!string.IsNullOrEmpty(year) && !string.IsNullOrEmpty(month))
+        {
+            rewrite = Utils.RelativeWebRoot + year + "/" + month + "/default" + BlogConfig.FileExtension;
+        }
+        else if (!string.IsNullOrEmpty(year))
+        {
+            rewrite = Utils.RelativeWebRoot + year + "/default" + BlogConfig.FileExtension;
+        }
+
+        if (rewrite != null)
+        {
+            // 301 permanent redirect — in Blazor we navigate; the original set 301 status
+            Navigation.NavigateTo(rewrite + pagePart, false, true);
+        }
+    }
+
+    private void AddMetaKeywords()
+    {
+        if (Category.Categories.Count > 0)
+        {
+            string[] categories = new string[Category.Categories.Count];
+            for (int i = 0; i < Category.Categories.Count; i++)
+            {
+                categories[i] = Category.Categories[i].Title;
+            }
+            metaKeywords = HttpUtility.HtmlEncode(string.Join(",", categories));
+        }
+    }
+
+    private string BuildMetaDescription(string desc)
+    {
+        if (string.IsNullOrEmpty(desc))
+            desc = BlogSettings.Instance.Name + " - " + BlogSettings.Instance.Description;
+        else
+            desc = BlogSettings.Instance.Name + " - " + BlogSettings.Instance.Description + " - " + desc;
+
+        return HttpUtility.HtmlEncode(desc);
+    }
+
+    private List<IPublishable> GetPagedPosts()
+    {
+        if (posts == null) return new List<IPublishable>();
+        int skip = (currentPage - 1) * PageSize;
+        return posts.Skip(skip).Take(PageSize).ToList();
+    }
+
+    private string GetPageUrl(int page)
+    {
+        var uri = Navigation.Uri;
+        var baseUri = new Uri(uri);
+        var queryParams = System.Web.HttpUtility.ParseQueryString(baseUri.Query);
+        queryParams["page"] = page.ToString();
+        return baseUri.AbsolutePath + "?" + queryParams.ToString();
+    }
+}

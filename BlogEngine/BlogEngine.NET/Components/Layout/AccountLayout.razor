@@ -1,0 +1,108 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+@* AccountLayout.razor — converted from Account/account.master + account.master.cs
+   Simplified layout for login/register/password pages.
+   Ports AddLocalizedStringsToJavaScript and SetStatus from code-behind. *@
+
+<HeadContent>
+    <title>Account Login</title>
+    <meta name="description" content="Account Login Membership User Password" />
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500" rel="stylesheet" />
+    <link href="Account/account.css" rel="stylesheet" />
+</HeadContent>
+
+<div class="@langDirection">
+    <div class="account">
+        <div class="account-header text-center">
+            <a href="https://blogengine.io/" target="_blank">
+                <img alt="BlogEngine.NET" src="Content/images/blog/logo.png" />
+            </a>
+        </div>
+        <div id="StatusBox">
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div id="AdminStatus" class="@statusCssClass">
+                    @((MarkupString)statusHtml)
+                </div>
+            }
+        </div>
+        <div class="account-box">
+            @Body
+        </div>
+    </div>
+</div>
+
+@code {
+    private string langDirection = "ltr";
+    private string statusCssClass = string.Empty;
+    private string statusMessage = string.Empty;
+    private string statusHtml = string.Empty;
+    private bool localizedStringsInjected;
+
+    protected override void OnInitialized()
+    {
+        langDirection = Utils.Translate("LangDirection", "ltr");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !localizedStringsInjected)
+        {
+            localizedStringsInjected = true;
+            await InjectLocalizedStringsToJavaScript();
+        }
+    }
+
+    /// <summary>
+    /// Ported from AccountMasterPage.AddLocalizedStringsToJavaScript.
+    /// Fetches localized strings from resource files and injects them as a JS object
+    /// so that account.js can use them for client-side validation messages.
+    /// </summary>
+    private async Task InjectLocalizedStringsToJavaScript()
+    {
+        var resourceKeys = new List<string>
+        {
+            "passwordIsRequried",
+            "emailIsRequired",
+            "emailIsInvalid",
+            "userNameIsRequired",
+            "newAndConfirmPasswordMismatch",
+            "confirmPasswordIsRequired",
+            "oldPasswordIsRequired",
+            "newPasswordIsRequired",
+            "passwordAndConfirmPasswordIsMatch",
+            "minPassLengthInChars"
+        };
+
+        var pairs = new Dictionary<string, string>();
+        foreach (var key in resourceKeys)
+        {
+            var translated = Utils.Translate(key);
+            // Escape double quotes for safe JS string embedding
+            pairs[key] = translated?.Replace("\"", "\\\"") ?? key;
+        }
+
+        // Build the JS object literal
+        var entries = pairs.Select(kvp => $"  {kvp.Key}: \"{kvp.Value}\"");
+        var jsObject = "var accountResources={\n" + string.Join(",\n", entries) + "\n};";
+
+        await JS.InvokeVoidAsync("eval", jsObject);
+    }
+
+    /// <summary>
+    /// Ported from AccountMasterPage.SetStatus — allows child pages to display status messages.
+    /// In the original, this was called directly on the master page from content pages.
+    /// In Blazor, child pages can use a cascading parameter or call this method via a reference.
+    /// </summary>
+    public void SetStatus(string status, string msg)
+    {
+        statusCssClass = status;
+        // HTML-encode the message for safety, preserve the close button
+        statusMessage = msg;
+        statusHtml = System.Net.WebUtility.HtmlEncode(msg) +
+            "<a href=\"javascript:void(0)\" onclick=\"document.getElementById('AdminStatus').style.display='none'\" style=\"width:20px;float:right\">X</a>";
+        StateHasChanged();
+    }
+}

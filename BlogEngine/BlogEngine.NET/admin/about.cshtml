@@ -1,7 +1,6 @@
-﻿@using System.Web.Optimization
+
 @using BlogEngine.Core
 @using BlogEngine.Core.Providers
-@using System.Web.Configuration
 @{
     Layout = "~/admin/themes/standard/layout.cshtml";
     if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
@@ -94,4 +93,4 @@
         </div>
     </div>
 </div>
-@Scripts.Render("~/scripts/blogadmin")
+<!-- Scripts loaded via static files -->

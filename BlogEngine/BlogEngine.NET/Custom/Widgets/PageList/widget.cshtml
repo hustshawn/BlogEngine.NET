@@ -13,7 +13,7 @@
                 {
                     href = href.Replace(BlogConfig.FileExtension, "");
                 }
-                <li><a href="@href" title="@page.Description">@page.Title</a></li>
+                <li><a href="@href" title="@(page.Description)">@(page.Title)</a></li>
             }
         </ul>
     </div>

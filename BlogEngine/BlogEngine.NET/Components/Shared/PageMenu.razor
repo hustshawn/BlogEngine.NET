@@ -1,0 +1,19 @@
+@using BlogEngine.Core
+
+@((MarkupString)menuHtml)
+
+@code {
+    private string menuHtml = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        var menu = new BlogEngine.Core.Web.Controls.PageMenu();
+        menu.Home = Utils.Translate("home");
+        menu.Contact = Utils.Translate("contact");
+        menu.Archive = Utils.Translate("archive");
+        menu.Logon = Utils.Translate("login");
+        menu.Logoff = Utils.Translate("logoff");
+
+        menuHtml = menu.Html + Environment.NewLine;
+    }
+}

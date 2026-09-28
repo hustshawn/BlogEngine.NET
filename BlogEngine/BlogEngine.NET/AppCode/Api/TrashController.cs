@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class TrashController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class TrashController : ControllerBase
 {
     readonly ITrashRepository repository;
 
@@ -21,23 +23,23 @@ public class TrashController : ApiController
     }
 
     [HttpPut]
-    public HttpResponseMessage Purge(TrashItem item)
+    public IActionResult Purge(TrashItem item)
     {
         repository.Purge(item.ObjectType, item.Id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage PurgeAll()
+    public IActionResult PurgeAll()
     {
         repository.PurgeAll();
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage Restore(TrashItem item)
+    public IActionResult Restore(TrashItem item)
     {
         repository.Restore(item.ObjectType, item.Id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }

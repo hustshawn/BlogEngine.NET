@@ -1,0 +1,97 @@
+@using BlogEngine.Core
+@using Microsoft.Extensions.Caching.Memory
+@inject IMemoryCache MemoryCache
+
+@if (months.Count == 0)
+{
+    <p>@Utils.Translate("none")</p>
+}
+else
+{
+    <ul id="monthList">
+        @if (GroupByYear)
+        {
+            @foreach (var yearGroup in months.GroupBy(m => m.Key.Year))
+            {
+                <li class="year">
+                    <span @onclick="() => ToggleYear(yearGroup.Key)" style="cursor:pointer">@yearGroup.Key</span>
+                    <ul id="year@(yearGroup.Key)" class="@(yearGroup.Key == currentYear ? "open" : "")"
+                        style="display: @(IsYearExpanded(yearGroup.Key) ? "block" : "none")">
+                        @foreach (var item in yearGroup)
+                        {
+                            <li>
+                                <a href="@GetMonthUrl(item.Key)">@(item.Key.ToString("MMMM"))</a>
+                                (@item.Value)
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+        }
+        else
+        {
+            @foreach (var item in months)
+            {
+                <li>
+                    <a href="@GetMonthUrl(item.Key)">@(item.Key.ToString("MMMM yyyy"))</a>
+                    (@item.Value)
+                </li>
+            }
+        }
+    </ul>
+}
+
+@code {
+    [Parameter] public bool GroupByYear { get; set; } = true;
+    [Parameter] public bool RecentDatesAtTop { get; set; } = false;
+
+    private SortedDictionary<DateTime, int> months = new();
+    private int currentYear = DateTime.Now.Year;
+    private HashSet<int> expandedYears = new();
+
+    protected override void OnInitialized()
+    {
+        expandedYears.Add(currentYear);
+        LoadMonths();
+    }
+
+    private void LoadMonths()
+    {
+        const string CacheKey = "BE_MonthListCacheKey";
+        if (!MemoryCache.TryGetValue(CacheKey, out SortedDictionary<DateTime, int> cached))
+        {
+            IComparer<DateTime> comparer = RecentDatesAtTop
+                ? Comparer<DateTime>.Create((x, y) => -x.CompareTo(y))
+                : Comparer<DateTime>.Default;
+
+            cached = new SortedDictionary<DateTime, int>(comparer);
+            foreach (var post in Post.ApplicablePosts.Where(p => p.IsVisibleToPublic))
+            {
+                var month = new DateTime(post.DateCreated.Year, post.DateCreated.Month, 1);
+                cached.TryGetValue(month, out int count);
+                cached[month] = count + 1;
+            }
+
+            MemoryCache.Set(CacheKey, cached, TimeSpan.FromHours(1));
+        }
+        months = cached;
+    }
+
+    private string GetMonthUrl(DateTime date)
+    {
+        return $"{Utils.RelativeOrAbsoluteWebRoot}{date.Year}/{date.ToString("MM")}/default{BlogConfig.FileExtension}";
+    }
+
+    private void ToggleYear(int year)
+    {
+        if (expandedYears.Contains(year))
+            expandedYears.Remove(year);
+        else
+            expandedYears.Add(year);
+    }
+
+    private bool IsYearExpanded(int year)
+    {
+        return expandedYears.Contains(year);
+    }
+}

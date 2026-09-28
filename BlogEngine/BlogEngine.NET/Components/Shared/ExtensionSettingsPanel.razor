@@ -1,0 +1,445 @@
+@using BlogEngine.Core
+@using BlogEngine.Core.Web.Extensions
+@using System.Data
+
+<h4>@SettingName @Utils.Translate("settings")</h4>
+<div style="color:Red; padding:5px 0 5px 0; display:block;">@ErrorMsg</div>
+<div style="color:Green; padding:5px 0 5px 0; display:block;">@InfoMsg</div>
+
+@if (!string.IsNullOrEmpty(Settings?.Help))
+{
+    <div class="alert alert-info">@Settings.Help</div>
+}
+
+<div class="form-horizontal">
+    @if (Settings != null && Settings.ShowAdd)
+    {
+        @foreach (var par in Settings.Parameters)
+        {
+            @if (par.ParamType != ParameterType.Boolean)
+            {
+                <label style="width:250px">@par.Label</label><br />
+            }
+
+            @if (par.ParamType == ParameterType.Boolean)
+            {
+                <input type="checkbox" class="mgrCheck" checked="@GetBoolValue(par.Name)" @onchange="e => OnCheckboxChanged(par.Name, e)" />
+                <label class="mgrCheckLbl">@par.Label</label>
+            }
+            else if (par.ParamType == ParameterType.DropDown)
+            {
+                <select class="form-control" style="width:250px" value="@GetDropDownValue(par.Name)"
+                        @onchange="e => OnDropDownChanged(par.Name, e)">
+                    @foreach (var item in par.Values)
+                    {
+                        var parts = item.Split('|');
+                        var text = parts.Length == 1 ? parts[0] : parts[1];
+                        var val = parts[0];
+                        <option value="@val">@text</option>
+                    }
+                </select>
+            }
+            else if (par.ParamType == ParameterType.ListBox)
+            {
+                <select size="@par.Values.Count" style="width:250px" value="@GetDropDownValue(par.Name)"
+                        @onchange="e => OnDropDownChanged(par.Name, e)">
+                    @foreach (var item in par.Values)
+                    {
+                        <option value="@item">@item</option>
+                    }
+                </select>
+            }
+            else if (par.ParamType == ParameterType.RadioGroup)
+            {
+                <div class="mgrRadioList" style="display:inline">
+                    @foreach (var item in par.Values)
+                    {
+                        <label style="display:inline; padding-left:5px">
+                            <input type="radio" name="@par.Name" value="@item"
+                                   checked="@(GetDropDownValue(par.Name) == item)"
+                                   @onchange="e => OnDropDownChanged(par.Name, e)" />
+                            @item
+                        </label>
+                    }
+                </div>
+            }
+            else
+            {
+                <input type="text" class="form-control" style="width:250px"
+                       maxlength="@par.MaxLength"
+                       value="@GetTextValue(par.Name)"
+                       @onchange="e => OnTextChanged(par.Name, e)" />
+            }
+            <br />
+        }
+    }
+</div>
+
+@if (Settings != null && (Settings.ShowAdd || Settings.IsScalar))
+{
+    <div style="margin: 10px 0; padding-bottom: 10px; border-bottom: 1px solid #ccc; display:block">
+        <button class="btn btn-success btn-header" @onclick="BtnAddClick">
+            @ButtonText
+        </button>
+    </div>
+}
+
+@if (Settings != null && !Settings.IsScalar)
+{
+    <table class="beTable" style="width:100%; border-collapse:collapse; border:1px ridge; cell-padding:3px">
+        <thead style="background-color:#f9f9f9; text-align:left">
+            <tr>
+                @if (GenerateEditButton)
+                {
+                    <th></th>
+                }
+                @if (GenerateDeleteButton)
+                {
+                    <th></th>
+                }
+                @foreach (var par in Settings.Parameters)
+                {
+                    <th>@par.Name</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @if (gridData != null)
+            {
+                var rowIndex = 0;
+                @foreach (DataRow row in gridData.Rows)
+                {
+                    var idx = rowIndex + (currentPage * pageSize);
+                    var altBg = rowIndex % 2 == 1 ? "background-color:#f7f7f7" : "";
+                    @if (editIndex == idx)
+                    {
+                        <tr style="@altBg">
+                            <td>
+                                <button class="btn btn-sm btn-primary" @onclick="() => SaveRow(idx)">@Utils.Translate("save")</button>
+                                <button class="btn btn-sm" @onclick="CancelEdit">@Utils.Translate("cancel")</button>
+                            </td>
+                            @if (GenerateDeleteButton)
+                            {
+                                <td></td>
+                            }
+                            @for (int c = 0; c < Settings.Parameters.Count; c++)
+                            {
+                                var colIdx = c;
+                                <td>
+                                    <input type="text" class="form-control" value="@editValues[colIdx]"
+                                           @onchange="e => editValues[colIdx] = e.Value?.ToString() ?? string.Empty" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr style="@altBg">
+                            @if (GenerateEditButton)
+                            {
+                                <td><a href="#" @onclick="() => EditRow(idx)" @onclick:preventDefault>@Utils.Translate("edit")</a></td>
+                            }
+                            @if (GenerateDeleteButton)
+                            {
+                                <td><a href="#" @onclick="() => DeleteRow(idx)" @onclick:preventDefault>@Utils.Translate("delete")</a></td>
+                            }
+                            @for (int c = 0; c < Settings.Parameters.Count; c++)
+                            {
+                                <td>@row[Settings.Parameters[c].Name]</td>
+                            }
+                        </tr>
+                    }
+                    rowIndex++;
+                }
+            }
+        </tbody>
+    </table>
+
+    @if (gridData != null && gridData.Rows.Count > pageSize)
+    {
+        var totalPages = (int)Math.Ceiling((double)gridData.Rows.Count / pageSize);
+        <nav>
+            <ul class="pagination">
+                @for (int p = 0; p < totalPages; p++)
+                {
+                    var pageNum = p;
+                    <li class="page-item @(currentPage == pageNum ? "active" : "")">
+                        <a class="page-link" href="#" @onclick="() => GoToPage(pageNum)" @onclick:preventDefault>@(pageNum + 1)</a>
+                    </li>
+                }
+            </ul>
+        </nav>
+    }
+}
+
+@code {
+    [Parameter] public string ExtensionName { get; set; } = string.Empty;
+    [Parameter] public string SettingName { get; set; } = string.Empty;
+
+    private ExtensionSettings Settings;
+    private string ErrorMsg = string.Empty;
+    private string InfoMsg = string.Empty;
+    private string ButtonText = string.Empty;
+    private bool GenerateEditButton = true;
+    private bool GenerateDeleteButton = true;
+
+    // Grid state
+    private DataTable gridData;
+    private int currentPage = 0;
+    private int pageSize = 10;
+    private int editIndex = -1;
+    private string[] editValues = Array.Empty<string>();
+
+    // Form field values
+    private Dictionary<string, string> textValues = new();
+    private Dictionary<string, bool> checkValues = new();
+    private Dictionary<string, string> dropDownValues = new();
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(ExtensionName))
+            ExtensionName = SettingName;
+
+        Settings = ExtensionManager.GetSettings(ExtensionName, SettingName);
+        if (Settings == null) return;
+
+        GenerateDeleteButton = Settings.ShowDelete;
+        GenerateEditButton = Settings.ShowEdit;
+
+        ButtonText = Settings.IsScalar ? Utils.Translate("save") : (Settings.ShowAdd ? Utils.Translate("add") : string.Empty);
+
+        if (Settings.IsScalar)
+        {
+            BindScalar();
+        }
+        else
+        {
+            BindGrid();
+        }
+    }
+
+    private string GetTextValue(string name)
+    {
+        return textValues.TryGetValue(name, out var val) ? val : string.Empty;
+    }
+
+    private bool GetBoolValue(string name)
+    {
+        return checkValues.TryGetValue(name, out var val) && val;
+    }
+
+    private string GetDropDownValue(string name)
+    {
+        return dropDownValues.TryGetValue(name, out var val) ? val : string.Empty;
+    }
+
+    private void OnTextChanged(string name, ChangeEventArgs e)
+    {
+        textValues[name] = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnCheckboxChanged(string name, ChangeEventArgs e)
+    {
+        checkValues[name] = bool.TryParse(e.Value?.ToString(), out var v) && v;
+    }
+
+    private void OnDropDownChanged(string name, ChangeEventArgs e)
+    {
+        dropDownValues[name] = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void BindScalar()
+    {
+        foreach (var par in Settings.Parameters)
+        {
+            if (par.ParamType == ParameterType.Boolean)
+            {
+                if (par.Values != null && par.Values.Count > 0)
+                    checkValues[par.Name] = bool.TryParse(par.Values[0], out var v) && v;
+            }
+            else if (par.ParamType == ParameterType.DropDown || par.ParamType == ParameterType.ListBox || par.ParamType == ParameterType.RadioGroup)
+            {
+                dropDownValues[par.Name] = par.SelectedValue ?? string.Empty;
+            }
+            else
+            {
+                if (par.Values != null)
+                    textValues[par.Name] = par.Values.Count == 0 ? string.Empty : par.Values[0];
+            }
+        }
+    }
+
+    private void BindGrid()
+    {
+        gridData = Settings.GetDataTable();
+    }
+
+    private void BtnAddClick()
+    {
+        ErrorMsg = string.Empty;
+        InfoMsg = string.Empty;
+
+        if (!IsValidForm()) return;
+
+        foreach (var par in Settings.Parameters)
+        {
+            if (par.ParamType == ParameterType.Boolean)
+            {
+                var val = checkValues.TryGetValue(par.Name, out var v) ? v.ToString() : "False";
+                Settings.UpdateScalarValue(par.Name, val);
+            }
+            else if (par.ParamType == ParameterType.DropDown || par.ParamType == ParameterType.ListBox || par.ParamType == ParameterType.RadioGroup)
+            {
+                var val = dropDownValues.TryGetValue(par.Name, out var v) ? v : string.Empty;
+                Settings.UpdateSelectedValue(par.Name, val);
+            }
+            else
+            {
+                var val = textValues.TryGetValue(par.Name, out var v) ? v : string.Empty;
+                if (Settings.IsScalar)
+                    Settings.UpdateScalarValue(par.Name, val);
+                else
+                    Settings.AddValue(par.Name, val);
+            }
+        }
+
+        ExtensionManager.SaveSettings(ExtensionName, Settings);
+
+        if (Settings.IsScalar)
+        {
+            InfoMsg = Utils.Translate("theValuesSaved");
+        }
+        else
+        {
+            // Clear text inputs for non-scalar add
+            foreach (var par in Settings.Parameters)
+            {
+                if (par.ParamType != ParameterType.Boolean &&
+                    par.ParamType != ParameterType.DropDown &&
+                    par.ParamType != ParameterType.ListBox &&
+                    par.ParamType != ParameterType.RadioGroup)
+                {
+                    textValues[par.Name] = string.Empty;
+                }
+            }
+            BindGrid();
+        }
+    }
+
+    private bool IsValidForm()
+    {
+        foreach (var par in Settings.Parameters)
+        {
+            if (par.ParamType == ParameterType.Boolean || par.ParamType == ParameterType.DropDown ||
+                par.ParamType == ParameterType.ListBox || par.ParamType == ParameterType.RadioGroup)
+                continue;
+
+            var val = textValues.TryGetValue(par.Name, out var v) ? v : string.Empty;
+
+            if (Settings.IsRequiredParameter(par.Name) && string.IsNullOrWhiteSpace(val))
+            {
+                ErrorMsg = $"\"{Settings.GetLabel(par.Name)}\" {Utils.Translate("isRequiredField")}";
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(val) && !ValidateType(par.Name, val))
+            {
+                ErrorMsg = $"\"{Settings.GetLabel(par.Name)}\" must be a {Settings.GetParameterType(par.Name)}";
+                return false;
+            }
+
+            if (!Settings.IsScalar && Settings.KeyField == par.Name && Settings.IsKeyValueExists(val.Trim()))
+            {
+                ErrorMsg = $"\"{val}\" {Utils.Translate("isAlreadyExists")}";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private bool ValidateType(string parameterName, string val)
+    {
+        try
+        {
+            switch (Settings.GetParameterType(parameterName))
+            {
+                case ParameterType.Boolean: bool.Parse(val); break;
+                case ParameterType.Integer: int.Parse(val); break;
+                case ParameterType.Long: long.Parse(val); break;
+                case ParameterType.Float: float.Parse(val); break;
+                case ParameterType.Double: double.Parse(val); break;
+                case ParameterType.Decimal: decimal.Parse(val); break;
+            }
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    private void EditRow(int idx)
+    {
+        editIndex = idx;
+        editValues = new string[Settings.Parameters.Count];
+        for (int i = 0; i < Settings.Parameters.Count; i++)
+        {
+            var par = Settings.Parameters[i];
+            if (par.Values != null && idx < par.Values.Count)
+                editValues[i] = par.Values[idx];
+            else
+                editValues[i] = string.Empty;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        editIndex = -1;
+    }
+
+    private void SaveRow(int idx)
+    {
+        ErrorMsg = string.Empty;
+        for (int i = 0; i < Settings.Parameters.Count; i++)
+        {
+            var parName = Settings.Parameters[i].Name;
+            if (Settings.IsRequiredParameter(parName) && string.IsNullOrEmpty(editValues[i]))
+            {
+                ErrorMsg = $"\"{Settings.GetLabel(parName)}\" {Utils.Translate("isRequiredField")}";
+                return;
+            }
+
+            if (parName == Settings.KeyField && Settings.IsKeyValueExists(editValues[i]))
+            {
+                if (!Settings.IsOldValue(parName, editValues[i], idx))
+                {
+                    ErrorMsg = $"\"{editValues[i]}\" {Utils.Translate("isAlreadyExists")}";
+                    return;
+                }
+            }
+            else
+            {
+                Settings.Parameters[i].Values[idx] = editValues[i];
+            }
+        }
+
+        ExtensionManager.SaveSettings(ExtensionName, Settings);
+        editIndex = -1;
+        BindGrid();
+    }
+
+    private void DeleteRow(int idx)
+    {
+        foreach (var par in Settings.Parameters)
+        {
+            par.DeleteValue(idx);
+        }
+        ExtensionManager.SaveSettings(ExtensionName, Settings);
+        BindGrid();
+    }
+
+    private void GoToPage(int page)
+    {
+        currentPage = page;
+    }
+}

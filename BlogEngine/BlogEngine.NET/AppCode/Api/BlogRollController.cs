@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class BlogRollController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class BlogRollController : ControllerBase
 {
     public BlogRollController()
     {
@@ -18,38 +20,38 @@ public class BlogRollController : ApiController
         return vm.BlogRolls;
     }
 
-    public HttpResponseMessage Get(string id)
+    public IActionResult Get(string id)
     {
         Guid gId;
         if(Guid.TryParse(id, out gId))
         {
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
         }
         else
         {
             var vm = new BlogRollVM();
             var result = vm.BlogRolls.Find(b => b.Id == gId);
-            return Request.CreateResponse(HttpStatusCode.OK, result);
+            return Ok(result);
         }
     }
 
-    public HttpResponseMessage Post(BlogRollItem item)
+    public IActionResult Post(BlogRollItem item)
     {
         if (!Security.IsAdministrator)
-            return Request.CreateResponse(HttpStatusCode.Unauthorized, item);
+            return Unauthorized();
 
         BlogEngine.Core.Providers.BlogService.InsertBlogRoll(item);
-        return Request.CreateResponse(HttpStatusCode.Created, item);
+        return Created("", item);
     }
 
     [HttpPut]
-    public HttpResponseMessage Update([FromBody]BlogRollItem item)
+    public IActionResult Update([FromBody]BlogRollItem item)
     {
         if (!Security.IsAdministrator)
-            return Request.CreateResponse(HttpStatusCode.Unauthorized, item);
+            return Unauthorized();
 
         BlogEngine.Core.Providers.BlogService.UpdateBlogRoll(item);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     private string getUrl(string url)

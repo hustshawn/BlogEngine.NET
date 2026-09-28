@@ -5,10 +5,12 @@ using BlogEngine.Core.Providers;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class FileManagerController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class FileManagerController : ControllerBase
 {
     readonly IFileManagerRepository repository;
 
@@ -23,7 +25,7 @@ public class FileManagerController : ApiController
     }
 
     [HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<FileInstance> items)
+    public IActionResult ProcessChecked([FromBody]List<FileInstance> items)
     {
         if (!Security.IsAdministrator)
         {
@@ -31,9 +33,9 @@ public class FileManagerController : ApiController
         }
 
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = Request.GetRouteData().Values["id"].ToString().ToLowerInvariant();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString().ToLowerInvariant();
 
         if (action == "delete")
         {
@@ -49,18 +51,18 @@ public class FileManagerController : ApiController
                 }
             }
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
     [HttpPut]
-    public HttpResponseMessage AddFolder(FileInstance folder)
+    public IActionResult AddFolder(FileInstance folder)
     {
         if (!Security.IsAdministrator)
         {
             throw new UnauthorizedAccessException();
         }
         BlogService.CreateDirectory(Extensions.SanitizePath(folder.FullPath) + "/" + Extensions.SanitizePath(folder.Name));
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
 }

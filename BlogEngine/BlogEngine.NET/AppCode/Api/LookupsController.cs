@@ -2,9 +2,11 @@
 using BlogEngine.Core.Data.Models;
 using System;
 using System.Net;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class LookupsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class LookupsController : ControllerBase
 {
     readonly ILookupsRepository  repository;
 
@@ -19,21 +21,21 @@ public class LookupsController : ApiController
     }
 
     [HttpPut]
-    public bool Update([FromBody]EditorOptions item)
+    public IActionResult Update([FromBody]EditorOptions item)
     {
         try
         {
             repository.SaveEditorOptions(item);
-            return true;
+            return Ok(true);
         }
         catch (UnauthorizedAccessException)
         {
-            throw new HttpResponseException(HttpStatusCode.Unauthorized);
+            return StatusCode((int)HttpStatusCode.Unauthorized);
         }
         catch (Exception ex)
         {
             BlogEngine.Core.Utils.Log("Error updating", ex);
-            throw new HttpResponseException(HttpStatusCode.InternalServerError);
+            return StatusCode((int)HttpStatusCode.InternalServerError);
         }
     }
 }

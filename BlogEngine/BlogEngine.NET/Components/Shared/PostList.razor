@@ -1,0 +1,111 @@
+@using BlogEngine.Core
+@using BlogEngine.Core.Web.Controls
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+@if (Visible)
+{
+    <div class="posts">
+        @foreach (var postView in renderedPosts)
+        {
+            <Defaults.PostView Post="@postView.Post" ShowExcerpt="@postView.ShowExcerpt"
+                               Index="@postView.Index" Location="@ServingLocation.PostList" />
+        }
+
+        @if (renderedPosts.Count == 0 && Posts != null && Posts.Count == 0)
+        {
+            <p>@Utils.Translate("none")</p>
+        }
+    </div>
+
+    <div style="clear:both; display:block">
+        <PostPager Posts="@Posts" />
+    </div>
+}
+
+@code {
+    [Parameter] public List<IPublishable> Posts { get; set; }
+    [Parameter] public ServingContentBy ContentBy { get; set; } = ServingContentBy.AllContent;
+
+    private bool Visible = true;
+    private List<PostViewData> renderedPosts = new();
+
+    private class PostViewData
+    {
+        public Post Post { get; set; }
+        public bool ShowExcerpt { get; set; }
+        public int Index { get; set; }
+    }
+
+    protected override void OnInitialized()
+    {
+        if (!Security.IsAuthorizedTo(Rights.ViewPublicPosts))
+        {
+            Visible = false;
+            return;
+        }
+
+        BindPosts();
+    }
+
+    private void BindPosts()
+    {
+        if (Posts == null)
+        {
+            Posts = Post.ApplicablePosts.ConvertAll(p => (IPublishable)p);
+        }
+
+        if (Posts.Count == 0) return;
+
+        var visiblePosts = Posts.FindAll(p => p.IsVisible);
+        var postsPerPage = BlogSettings.Instance.PostsPerPage;
+        var count = Math.Min(postsPerPage, visiblePosts.Count);
+        var page = GetPageIndex();
+        var index = page * count;
+        var stop = count;
+
+        if (index + count > visiblePosts.Count)
+            stop = visiblePosts.Count - index;
+
+        if (stop < 0 || stop + index > visiblePosts.Count)
+            return;
+
+        var showExcerpt = ShowExcerpt();
+        var counter = 0;
+
+        foreach (Post post in visiblePosts.GetRange(index, stop))
+        {
+            if (counter == stop) break;
+
+            renderedPosts.Add(new PostViewData
+            {
+                Post = post,
+                ShowExcerpt = showExcerpt,
+                Index = counter
+            });
+            counter++;
+        }
+    }
+
+    private int GetPageIndex()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            var pageStr = httpContext.Request.Query["page"].FirstOrDefault();
+            if (int.TryParse(pageStr, out int idx))
+                return idx - 1;
+        }
+        return 0;
+    }
+
+    private bool ShowExcerpt()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        var url = httpContext?.Request.Path.Value?.ToUpperInvariant() ?? string.Empty;
+        bool tagOrCategory = url.Contains("/CATEGORY/") || url.Contains("?TAG=/");
+
+        return BlogSettings.Instance.ShowDescriptionInPostList ||
+            (BlogSettings.Instance.ShowDescriptionInPostListForPostsByTagOrCategory && tagOrCategory);
+    }
+}

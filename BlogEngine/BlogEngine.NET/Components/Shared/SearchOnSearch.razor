@@ -1,0 +1,70 @@
+@using BlogEngine.Core
+@using System.Text
+@using System.Text.RegularExpressions
+@inject IHttpContextAccessor HttpContextAccessor
+
+@if (!string.IsNullOrEmpty(html))
+{
+    @((MarkupString)html)
+}
+
+@code {
+    [Parameter] public string Headline { get; set; } = string.Empty;
+    [Parameter] public string Text { get; set; } = string.Empty;
+    [Parameter] public int MaxResults { get; set; } = 5;
+
+    private string html;
+
+    private static readonly Regex RxSearchTerm = new Regex(
+        "[?&]q=([^&#]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    protected override void OnInitialized()
+    {
+        html = BuildHtml();
+    }
+
+    private bool IsSearch(string referrer)
+    {
+        return !string.IsNullOrEmpty(referrer) && RxSearchTerm.IsMatch(referrer);
+    }
+
+    private static string GetSearchTerm(string referrer)
+    {
+        var match = RxSearchTerm.Match(referrer);
+        return match.Success ? match.Groups[1].Value.Replace("+", " ") : string.Empty;
+    }
+
+    private string BuildHtml()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext == null) return null;
+
+        var referrerHeader = httpContext.Request.Headers["Referer"].FirstOrDefault();
+        if (string.IsNullOrEmpty(referrerHeader)) return null;
+
+        var referrer = referrerHeader.ToLowerInvariant();
+        if (referrer.Contains(Utils.AbsoluteWebRoot.ToString())) return null;
+        if (!IsSearch(referrer)) return null;
+
+        var searchTerm = GetSearchTerm(referrer);
+        var items = Search.Hits(searchTerm, false);
+        if (items.Count == 0) return null;
+
+        var results = MaxResults < items.Count ? MaxResults : items.Count;
+        var sb = new StringBuilder();
+        sb.Append("<div id=\"searchonsearch\">");
+        sb.AppendFormat("<h3>{0} '{1}'</h3>", Headline,
+            System.Net.WebUtility.HtmlEncode(Uri.UnescapeDataString(searchTerm)));
+        sb.AppendFormat("<p>{0}</p>", Text);
+        sb.Append("<ol>");
+
+        for (var i = 0; i < results; i++)
+        {
+            sb.AppendFormat("<li><a href=\"{0}\">{1}</a></li>", items[i].RelativeLink, items[i].Title);
+        }
+
+        sb.Append("</ol>");
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+}

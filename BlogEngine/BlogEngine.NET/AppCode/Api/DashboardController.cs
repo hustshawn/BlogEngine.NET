@@ -1,8 +1,10 @@
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.ViewModels;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class DashboardController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class DashboardController : ControllerBase
 {
     readonly IDashboardRepository repository;
 

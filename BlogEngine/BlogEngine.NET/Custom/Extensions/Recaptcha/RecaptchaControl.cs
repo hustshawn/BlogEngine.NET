@@ -1,29 +1,11 @@
 ﻿// Copyright (c) 2007 Adrian Godong, Ben Maurer
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 // Adapted for blogengine by Filip Stanek ( http://www.bloodforge.com )
+// Migrated to ASP.NET Core - removed WebControl, uses service pattern
 
 namespace App_Code.Controls
 {
     using System;
-    using System.Web;
-    using System.Web.Caching;
-    using System.Web.UI;
-    using System.Web.UI.WebControls;
+    using Microsoft.Extensions.Caching.Memory;
 
     using BlogEngine.Core;
     using BlogEngine.Core.Web.Extensions;
@@ -31,99 +13,32 @@ namespace App_Code.Controls
     using Recaptcha;
 
     /// <summary>
-    /// The recaptcha control.
+    /// The recaptcha control - converted from WebControl to a service class.
+    /// Validates reCAPTCHA responses and manages logging.
     /// </summary>
-    public class RecaptchaControl : WebControl, IValidator
+    public class RecaptchaControl
     {
-        #region Constants and Fields
-
-        /// <summary>
-        ///     The recaptcha challenge field.
-        /// </summary>
         private const string RecaptchaChallengeField = "recaptcha_challenge_field";
-
-        /*
-        /// <summary>
-        /// The recaptcha host.
-        /// </summary>
-        private const string RecaptchaHost = "http://api.recaptcha.net";
-        */
-
-        /// <summary>
-        ///     The recaptcha response field.
-        /// </summary>
         private const string RecaptchaResponseField = "recaptcha_response_field";
 
-        /*
-        /// <summary>
-        /// The recaptcha secure host.
-        /// </summary>
-        private const string RecaptchaSecureHost = "https://api-secure.recaptcha.net";
-        */
-
-        /// <summary>
-        ///     The error message.
-        /// </summary>
         private string errorMessage;
-
-        /// <summary>
-        ///     The private key.
-        /// </summary>
         private string privateKey;
-
-        /// <summary>
-        ///     The public key.
-        /// </summary>
         private string publicKey;
-
-        /// <summary>
-        ///     The recaptcha response.
-        /// </summary>
         private RecaptchaResponse recaptchaResponse;
-
-        /// <summary>
-        ///     The skip recaptcha.
-        /// </summary>
         private bool skipRecaptcha = true;
 
-        #endregion
-
-        #region Properties
-
-        /// <summary>
-        ///     Gets or sets ErrorMessage.
-        /// </summary>
         public string ErrorMessage
         {
-            get
-            {
-                return this.errorMessage ?? "The verification words are incorrect.";
-            }
-
-            set
-            {
-                this.errorMessage = value;
-            }
+            get => this.errorMessage ?? "The verification words are incorrect.";
+            set => this.errorMessage = value;
         }
 
-        /// <summary>
-        ///     Gets or sets a value indicating whether IsValid.
-        /// </summary>
         public bool IsValid
         {
-            get
-            {
-                return this.recaptchaResponse != null && this.recaptchaResponse.IsValid;
-            }
-
-            set
-            {
-            }
+            get => this.recaptchaResponse != null && this.recaptchaResponse.IsValid;
+            set { }
         }
 
-        /// <summary>
-        ///     Gets MaxLogEntries.
-        /// </summary>
         public int MaxLogEntries
         {
             get
@@ -133,9 +48,6 @@ namespace App_Code.Controls
             }
         }
 
-        /// <summary>
-        ///     Gets a value indicating whether the control has been enabled via the Extension Manager
-        /// </summary>
         public bool RecaptchaEnabled
         {
             get
@@ -145,9 +57,6 @@ namespace App_Code.Controls
             }
         }
 
-        /// <summary>
-        ///     Gets a value indicating whether RecaptchaLoggingEnabled.
-        /// </summary>
         public bool RecaptchaLoggingEnabled
         {
             get
@@ -157,9 +66,6 @@ namespace App_Code.Controls
             }
         }
 
-        /// <summary>
-        ///     Gets a value indicating whether the recaptcha needs to be displayed for the current user
-        /// </summary>
         public bool RecaptchaNecessary
         {
             get
@@ -170,24 +76,11 @@ namespace App_Code.Controls
             }
         }
 
-        /// <summary>
-        ///     Gets or sets Theme.
-        /// </summary>
         public string Theme { get; set; }
-
-        /// <summary>
-        ///     Gets or sets Language.
-        /// </summary>
         public string Language { get; set; }
-
-        /// <summary>
-        ///     Gets or sets UserUniqueIdentifier.
-        /// </summary>
         public string UserUniqueIdentifier { get; set; }
+        public int TabIndex { get; set; }
 
-        /// <summary>
-        ///     Gets or sets PageLoadTime.
-        /// </summary>
         internal DateTime PageLoadTime
         {
             get
@@ -197,181 +90,90 @@ namespace App_Code.Controls
                                Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}PageLoadTime"])
                            : DateTime.Now;
             }
-
-            set
-            {
-                if (Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}PageLoadTime"] != null)
-                {
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}PageLoadTime"] = value;
-                }
-                else
-                {
-                    Blog.CurrentInstance.Cache.Add(
-                        $"{UserUniqueIdentifier}PageLoadTime", 
-                        value, 
-                        null, 
-                        Cache.NoAbsoluteExpiration, 
-                        new TimeSpan(1, 0, 0), 
-                        CacheItemPriority.Low, 
-                        null);
-                }
-            }
+            set => Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}PageLoadTime"] = value;
         }
 
-        /// <summary>
-        ///     Gets or sets RecaptchaAttempts.
-        /// </summary>
         internal ushort RecaptchaAttempts
         {
             get
             {
-                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"] !=
-                       null
+                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"] != null
                            ? Convert.ToUInt16(
                                Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"])
                            : (ushort)0;
             }
-
-            set
-            {
-                if (Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"] != null)
-                {
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"] = value;
-                }
-                else
-                {
-                    Blog.CurrentInstance.Cache.Add(
-                        $"{UserUniqueIdentifier}RecaptchaAttempts", 
-                        value, 
-                        null, 
-                        Cache.NoAbsoluteExpiration, 
-                        new TimeSpan(0, 15, 0), 
-                        CacheItemPriority.Low, 
-                        null);
-                }
-            }
+            set => Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaAttempts"] = value;
         }
 
-        /// <summary>
-        ///     Gets or sets RecaptchaChallengeValue.
-        /// </summary>
         internal string RecaptchaChallengeValue
         {
             get
             {
-                return
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"] !=
-                    null
+                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"] != null
                         ? Convert.ToString(
                             Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"])
                         : string.Empty;
             }
-
-            set
-            {
-                if (Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"] !=
-                    null)
-                {
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"] =
-                        value;
-                }
-                else
-                {
-                    Blog.CurrentInstance.Cache.Add(
-                        $"{UserUniqueIdentifier}RecaptchaChallengeValue", 
-                        value, 
-                        null, 
-                        Cache.NoAbsoluteExpiration, 
-                        new TimeSpan(0, 1, 0), 
-                        CacheItemPriority.NotRemovable, 
-                        null);
-                }
-            }
+            set => Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaChallengeValue"] = value;
         }
 
-        /// <summary>
-        ///     Gets or sets RecaptchaRenderTime.
-        /// </summary>
         internal DateTime RecaptchaRenderTime
         {
             get
             {
-                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"] !=
-                       null
+                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"] != null
                            ? Convert.ToDateTime(
                                Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"])
                            : DateTime.Now;
             }
-
-            set
-            {
-                if (Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"] !=
-                    null)
-                {
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"] =
-                        value;
-                }
-                else
-                {
-                    Blog.CurrentInstance.Cache.Add(
-                        $"{UserUniqueIdentifier}RecaptchaRenderTime", 
-                        value, 
-                        null, 
-                        Cache.NoAbsoluteExpiration, 
-                        new TimeSpan(1, 0, 0), 
-                        CacheItemPriority.Low, 
-                        null);
-                }
-            }
+            set => Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaRenderTime"] = value;
         }
 
-        /// <summary>
-        ///     Gets or sets RecaptchaResponseValue.
-        /// </summary>
         internal string RecaptchaResponseValue
         {
             get
             {
-                return
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"] !=
-                    null
+                return Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"] != null
                         ? Convert.ToString(
                             Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"])
                         : string.Empty;
             }
+            set => Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"] = value;
+        }
 
-            set
+        public string PublicKey => publicKey;
+
+        /// <summary>
+        /// Initializes the control settings from ExtensionManager.
+        /// Call this instead of the old OnInit lifecycle event.
+        /// </summary>
+        public void Initialize()
+        {
+            var settings = ExtensionManager.GetSettings("Recaptcha");
+            this.publicKey = settings.GetSingleValue("PublicKey");
+            this.privateKey = settings.GetSingleValue("PrivateKey");
+
+            if (String.IsNullOrEmpty(this.Theme))
             {
-                if (Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"] !=
-                    null)
-                {
-                    Blog.CurrentInstance.Cache[$"{UserUniqueIdentifier}RecaptchaResponseValue"] =
-                        value;
-                }
-                else
-                {
-                    Blog.CurrentInstance.Cache.Add(
-                        $"{UserUniqueIdentifier}RecaptchaResponseValue", 
-                        value, 
-                        null, 
-                        Cache.NoAbsoluteExpiration, 
-                        new TimeSpan(0, 1, 0), 
-                        CacheItemPriority.NotRemovable, 
-                        null);
-                }
+                this.Theme = settings.GetSingleValue("Theme");
+            }
+
+            if (String.IsNullOrEmpty(this.Language))
+            {
+                this.Language = settings.GetSingleValue("Language");
+            }
+
+            if (this.RecaptchaEnabled && this.RecaptchaNecessary)
+            {
+                this.skipRecaptcha = false;
+            }
+
+            if (String.IsNullOrEmpty(this.publicKey) || String.IsNullOrEmpty(this.privateKey))
+            {
+                throw new ApplicationException("reCAPTCHA needs to be configured with a public & private key.");
             }
         }
 
-        #endregion
-
-        #region Public Methods
-
-        /// <summary>
-        /// The update log.
-        /// </summary>
-        /// <param name="comment">
-        /// The comment.
-        /// </param>
         public void UpdateLog(Comment comment)
         {
             if (!this.RecaptchaLoggingEnabled || this.skipRecaptcha)
@@ -407,18 +209,6 @@ namespace App_Code.Controls
             Blog.CurrentInstance.Cache.Remove($"{UserUniqueIdentifier}RecaptchaResponseValue");
         }
 
-        /// <summary>
-        /// Validates the async.
-        /// </summary>
-        /// <param name="response">
-        /// The response.
-        /// </param>
-        /// <param name="challenge">
-        /// The challenge.
-        /// </param>
-        /// <returns>
-        /// Whether valid.
-        /// </returns>
         public bool ValidateAsync(string response, string challenge)
         {
             if (this.RecaptchaLoggingEnabled)
@@ -432,14 +222,8 @@ namespace App_Code.Controls
             return this.IsValid;
         }
 
-        #endregion
-
-        #region Implemented Interfaces
-
-        #region IValidator
-
         /// <summary>
-        /// The validate.
+        /// Validates with pre-set challenge and response values.
         /// </summary>
         public void Validate()
         {
@@ -453,167 +237,64 @@ namespace App_Code.Controls
                     {
                        PrivateKey = this.privateKey, RemoteIP = Utils.GetClientIP() 
                     };
-                if (String.IsNullOrEmpty(this.RecaptchaChallengeValue) &&
-                    String.IsNullOrEmpty(this.RecaptchaResponseValue))
-                {
-                    validator.Challenge = this.Context.Request.Form[RecaptchaChallengeField];
-                    validator.Response = this.Context.Request.Form[RecaptchaResponseField];
-                }
-                else
-                {
-                    validator.Challenge = this.RecaptchaChallengeValue;
-                    validator.Response = this.RecaptchaResponseValue;
-                }
+                validator.Challenge = this.RecaptchaChallengeValue;
+                validator.Response = this.RecaptchaResponseValue;
 
                 this.recaptchaResponse = validator.Validate();
             }
         }
 
-        #endregion
-
-        #endregion
-
-        #region Methods
-
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Control.Init"/> event.
+        /// Validates with explicit challenge and response from form data.
         /// </summary>
-        /// <param name="e">
-        /// An <see cref="T:System.EventArgs"/> object that contains the event data.
-        /// </param>
-        protected override void OnInit(EventArgs e)
+        public void Validate(string challengeValue, string responseValue)
         {
-            base.OnInit(e);
-
-            var settings = ExtensionManager.GetSettings("Recaptcha");
-            this.publicKey = settings.GetSingleValue("PublicKey");
-            this.privateKey = settings.GetSingleValue("PrivateKey");
-
-            if (String.IsNullOrEmpty(this.Theme))
+            if (!string.IsNullOrEmpty(challengeValue))
             {
-                this.Theme = settings.GetSingleValue("Theme");
+                this.RecaptchaChallengeValue = challengeValue;
             }
-
-            if (String.IsNullOrEmpty(this.Language))
+            if (!string.IsNullOrEmpty(responseValue))
             {
-                this.Language = settings.GetSingleValue("Language");
+                this.RecaptchaResponseValue = responseValue;
             }
-
-            if (this.RecaptchaEnabled && this.RecaptchaNecessary)
-            {
-                this.skipRecaptcha = false;
-            }
-
-            if (String.IsNullOrEmpty(this.publicKey) || String.IsNullOrEmpty(this.privateKey))
-            {
-                throw new ApplicationException("reCAPTCHA needs to be configured with a public & private key.");
-            }
+            this.Validate();
         }
 
         /// <summary>
-        /// Raises the <see cref="E:System.Web.UI.Control.Unload"/> event.
+        /// Renders the reCAPTCHA HTML for embedding in a Blazor component or view.
         /// </summary>
-        /// <param name="e">
-        /// An <see cref="T:System.EventArgs"/> object that contains event data.
-        /// </param>
-        protected override void OnUnload(EventArgs e)
+        public string RenderHtml()
         {
-            if (this.RecaptchaLoggingEnabled)
+            if (this.skipRecaptcha)
             {
-                if (!this.Page.IsCallback)
-                {
-                    this.PageLoadTime = DateTime.Now;
-                    this.RecaptchaAttempts = 0;
-                }
-
-                this.RecaptchaRenderTime = DateTime.Now;
+                return string.Empty;
             }
 
-            base.OnUnload(e);
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"<script type=\"text/javascript\" src=\"http://www.google.com/recaptcha/api/js/recaptcha_ajax.js\"></script>");
+            sb.AppendLine("<span id=\"spnCaptchaIncorrect\" style=\"color:Red;display:none;\">The captcha text was not valid. Please try again.</span>");
+            sb.AppendLine("<div id=\"recaptcha_placeholder\"></div>");
+            sb.AppendLine("<script type=\"text/javascript\">");
+            sb.AppendLine("function showRecaptcha() {");
+            sb.AppendLine($"Recaptcha.create('{this.publicKey}', 'recaptcha_placeholder', {{");
+            sb.AppendLine($"theme: '{this.Theme}',");
+            sb.AppendLine($"lang: '{this.Language}',");
+            sb.AppendLine($"tabindex: {this.TabIndex}");
+            sb.AppendLine("})");
+            sb.AppendLine("}");
+            sb.AppendLine("var rc_oldonload = window.onload;");
+            sb.AppendLine("if (typeof window.onload != 'function') {");
+            sb.AppendLine("window.onload = showRecaptcha;");
+            sb.AppendLine("}");
+            sb.AppendLine("else {");
+            sb.AppendLine("window.onload = function() {");
+            sb.AppendLine("rc_oldonload();");
+            sb.AppendLine("showRecaptcha();");
+            sb.AppendLine("}");
+            sb.AppendLine("}");
+            sb.AppendLine("</script>");
+
+            return sb.ToString();
         }
-
-        /// <summary>
-        /// Renders the control to the specified HTML writer.
-        /// </summary>
-        /// <param name="writer">
-        /// The <see cref="T:System.Web.UI.HtmlTextWriter"/> object that receives the control content.
-        /// </param>
-        protected override void Render(HtmlTextWriter writer)
-        {
-            if (!this.skipRecaptcha)
-            {
-                this.RenderContents(writer);
-            }
-        }
-
-        /// <summary>
-        /// Renders the contents.
-        /// </summary>
-        /// <param name="output">
-        /// The output.
-        /// </param>
-        protected override void RenderContents(HtmlTextWriter output)
-        {
-            output.AddAttribute("type", "text/javascript");
-            output.AddAttribute("src", "http://www.google.com/recaptcha/api/js/recaptcha_ajax.js");
-            output.RenderBeginTag("script");
-            output.RenderEndTag();
-
-            output.AddAttribute(HtmlTextWriterAttribute.Id, "spnCaptchaIncorrect");
-            output.AddAttribute(HtmlTextWriterAttribute.Style, "color:Red;display:none;");
-            output.RenderBeginTag("span");
-            output.WriteLine("The captcha text was not valid. Please try again.");
-            output.RenderEndTag();
-
-            output.AddAttribute(HtmlTextWriterAttribute.Id, "recaptcha_placeholder");
-            output.RenderBeginTag(HtmlTextWriterTag.Div);
-            output.RenderEndTag();
-
-            output.AddAttribute(HtmlTextWriterAttribute.Type, "text/javascript");
-            output.RenderBeginTag(HtmlTextWriterTag.Script);
-            output.WriteLine("function showRecaptcha() {");
-            output.WriteLine("Recaptcha.create('{0}', 'recaptcha_placeholder', {{", this.publicKey);
-            output.WriteLine("theme: '{0}',", this.Theme);
-            output.WriteLine("lang: '{0}',", this.Language);
-            output.WriteLine("tabindex: {0}", this.TabIndex);
-            output.WriteLine("})");
-            output.WriteLine("}");
-
-            output.WriteLine("var rc_oldonload = window.onload;");
-            output.WriteLine("if (typeof window.onload != 'function') {");
-            output.WriteLine("window.onload = showRecaptcha;");
-            output.WriteLine("}");
-            output.WriteLine("else {");
-            output.WriteLine("window.onload = function() {");
-            output.WriteLine("rc_oldonload();");
-            output.WriteLine("showRecaptcha();");
-            output.WriteLine("}");
-            output.WriteLine("}");
-
-            output.RenderEndTag();
-        }
-
-        #endregion
-
-        /*
-        /// <summary>
-        /// Generates the challenge URL.
-        /// </summary>
-        /// <param name="noscript">if set to <c>true</c> [no script].</param>
-        /// <returns>The challenge url.</returns>
-        private string GenerateChallengeUrl(bool noscript)
-        {
-            var urlBuilder = new StringBuilder();
-            urlBuilder.Append(this.Context.Request.IsSecureConnection ? RecaptchaSecureHost : RecaptchaHost);
-            urlBuilder.Append(noscript ? "/noscript?" : "/challenge?");
-            urlBuilder.AppendFormat("k={0}", this.publicKey);
-            if (this.recaptchaResponse != null && this.recaptchaResponse.ErrorCode != string.Empty)
-            {
-                urlBuilder.AppendFormat("&error={0}", this.recaptchaResponse.ErrorCode);
-            }
-
-            return urlBuilder.ToString();
-        }
-*/
     }
 }

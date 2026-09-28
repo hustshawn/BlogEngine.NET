@@ -1,17 +1,18 @@
 ﻿using System;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http.Filters;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace BlogEngine.NET.AppCode.Api
 {
-    public class UnauthorizedAccessExceptionFilterAttribute : ExceptionFilterAttribute
+    public class UnauthorizedAccessExceptionFilterAttribute : IExceptionFilter
     {
-        public override void OnException(HttpActionExecutedContext actionExecutedContext)
+        public void OnException(ExceptionContext context)
         {
-            if (actionExecutedContext.Exception is UnauthorizedAccessException)
+            if (context.Exception is UnauthorizedAccessException)
             {
-                actionExecutedContext.Response = new HttpResponseMessage(HttpStatusCode.Unauthorized);
+                context.Result = new StatusCodeResult((int)HttpStatusCode.Unauthorized);
+                context.ExceptionHandled = true;
             }
         }
     }

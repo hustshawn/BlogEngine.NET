@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class PagesController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class PagesController : ControllerBase
 {
     readonly IPageRepository repository;
 
@@ -20,38 +22,38 @@ public class PagesController : ApiController
         return repository.Find(take, skip, filter, order);
     }
 
-    public HttpResponseMessage Get(string id)
+    public IActionResult Get(string id)
     {
         var result = repository.FindById(new Guid(id));
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.OK, result);
+        return Ok(result);
     }
 
-    public HttpResponseMessage Post([FromBody]PageDetail item)
+    public IActionResult Post([FromBody]PageDetail item)
     {
         var result = repository.Add(item);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotModified);
+            return StatusCode(304);
 
-        return Request.CreateResponse(HttpStatusCode.Created, result);
+        return Created("", result);
     }
 
     [HttpPut]
-    public HttpResponseMessage Update([FromBody]PageDetail item)
+    public IActionResult Update([FromBody]PageDetail item)
     {
         repository.Update(item, "update");
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 	
 	[HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<PageDetail> items)
+    public IActionResult ProcessChecked([FromBody]List<PageDetail> items)
     {
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = Request.GetRouteData().Values["id"].ToString().ToLowerInvariant();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString().ToLowerInvariant();
 
         foreach (var item in items)
         {
@@ -68,14 +70,14 @@ public class PagesController : ApiController
             }
         }
 
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
-    public HttpResponseMessage Delete(string id)
+    public IActionResult Delete(string id)
     {
         Guid gId;
         if (Guid.TryParse(id, out gId))
             repository.Remove(gId);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }

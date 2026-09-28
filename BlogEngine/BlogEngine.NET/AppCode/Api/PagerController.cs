@@ -1,6 +1,8 @@
-﻿using System.Web.Http;
+﻿using Microsoft.AspNetCore.Mvc;
 
-public class PagerController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class PagerController : ControllerBase
 {
     public string Get()
     {

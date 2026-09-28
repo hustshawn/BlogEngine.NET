@@ -4,10 +4,12 @@ using BlogEngine.Core.Data.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class WidgetsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class WidgetsController : ControllerBase
 {
     readonly IWidgetsRepository repository;
 
@@ -22,15 +24,15 @@ public class WidgetsController : ApiController
     }
 
     [HttpPut]
-    public HttpResponseMessage Update([FromBody]List<WidgetZone> items)
+    public IActionResult Update([FromBody]List<WidgetZone> items)
     {
         if (repository.Update(items))
         {
-            return Request.CreateResponse(HttpStatusCode.OK);
+            return Ok();
         }
         else
         {
-            return Request.CreateResponse(HttpStatusCode.InternalServerError);
+            return StatusCode(500);
         }    
     }
 

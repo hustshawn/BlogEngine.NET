@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <!-- Theme CSS (Standard theme) -->
+    <link href="Custom/Themes/Standard/src/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="Custom/Themes/Standard/src/css/font-awesome.min.css" rel="stylesheet" />
+    <link href="Custom/Themes/Standard/src/css/styles.min.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet" />
+    <!-- Syntax highlighter -->
+    <link href="scripts/syntaxhighlighter/styles/shCore.css" rel="stylesheet" />
+    <link href="scripts/syntaxhighlighter/styles/shThemeDefault.css" rel="stylesheet" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+    <!-- Syntax highlighter scripts -->
+    <script src="scripts/syntaxhighlighter/scripts/XRegExp.js"></script>
+    <script src="scripts/syntaxhighlighter/scripts/shCore.js"></script>
+    <script src="scripts/syntaxhighlighter/scripts/shAutoloader.js"></script>
+    <script src="scripts/syntaxhighlighter/shActivator.js"></script>
+    <!-- Theme scripts -->
+    <script src="Custom/Themes/Standard/src/js/popper.min.js"></script>
+    <script src="Custom/Themes/Standard/src/js/bootstrap.min.js"></script>
+    <script src="Custom/Themes/Standard/src/js/perfect-scrollbar.min.js"></script>
+    <script src="Custom/Themes/Standard/src/js/custom.js"></script>
+    <!-- Blazor framework -->
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

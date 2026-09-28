@@ -1,0 +1,85 @@
+@using BlogEngine.Core
+@using System.Text
+@inject NavigationManager Navigation
+@inject IHttpContextAccessor HttpContextAccessor
+
+<div id="searchbox">
+    <label for="searchfield" style="display:none">Search</label>
+    <input type="text" value="@searchText" id="searchfield"
+           @onkeypress="HandleKeyPress"
+           @onfocus="HandleFocus"
+           @onblur="HandleBlur"
+           @oninput="HandleInput" />
+    <input type="button" value="@BlogSettings.Instance.SearchButtonText" id="searchbutton"
+           @onclick="DoSearch" />
+
+    @if (BlogSettings.Instance.EnableCommentSearch && BlogSettings.Instance.ShowIncludeCommentsOption)
+    {
+        <div id="search-include-comments">
+            <input type="checkbox" id="searchcomments" @bind="includeComments" />
+            @if (!string.IsNullOrEmpty(BlogSettings.Instance.SearchCommentLabelText))
+            {
+                <label for="searchcomments">@BlogSettings.Instance.SearchCommentLabelText</label>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string searchText = string.Empty;
+    private string defaultText = string.Empty;
+    private bool includeComments = false;
+
+    protected override void OnInitialized()
+    {
+        defaultText = BlogSettings.Instance.SearchDefaultText;
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext != null)
+        {
+            var q = httpContext.Request.Query["q"].FirstOrDefault();
+            searchText = !string.IsNullOrEmpty(q)
+                ? System.Net.WebUtility.HtmlEncode(q)
+                : defaultText;
+
+            includeComments = httpContext.Request.Query.ContainsKey("comment");
+        }
+        else
+        {
+            searchText = defaultText;
+        }
+    }
+
+    private void HandleInput(ChangeEventArgs e)
+    {
+        searchText = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            DoSearch();
+    }
+
+    private void HandleFocus()
+    {
+        if (searchText == defaultText)
+            searchText = string.Empty;
+    }
+
+    private void HandleBlur()
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            searchText = defaultText;
+    }
+
+    private void DoSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchText) || searchText == defaultText) return;
+
+        var url = $"{Utils.RelativeWebRoot}search?q={Uri.EscapeDataString(searchText)}";
+        if (includeComments)
+            url += "&comment=true";
+
+        Navigation.NavigateTo(url, true);
+    }
+}

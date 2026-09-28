@@ -4,11 +4,10 @@ namespace App_Code.Extensions
 {
     using System;
     using System.IO;
-    using System.Web.Hosting;
+    using Microsoft.AspNetCore.Hosting;
     using System.Collections.Generic;
     using BlogEngine.Core;
     using BlogEngine.Core.Web.Controls;
-    using System.Web;
 
     /// <summary>
     /// Subscribes to Log events and records the events in a file.
@@ -60,30 +59,36 @@ namespace App_Code.Extensions
         {
             get
             {
-                // If in a BG thread, and HttpContext isn't available, then use
-                // the root of BlogConfig.StorageLocation.  In this case, want to
-                // avoid checking Blog.CurrentInstance since it may return null
-                // or throw an error without a context.
-                HttpContext context = HttpContext.Current;
-                if (context == null)
-                {
-                    return HostingEnvironment.MapPath(Path.Combine(BlogConfig.StorageLocation, BaseFilename));
-                }
+                var basePath = AppDomain.CurrentDomain.BaseDirectory;
 
-                Guid blogId = Blog.CurrentInstance.Id;
-
-                if (!blogsfileName.ContainsKey(blogId))
+                // If Blog.CurrentInstance is not available, use default storage location
+                try
                 {
-                    lock (SyncRoot)
+                    Guid blogId = Blog.CurrentInstance.Id;
+
+                    if (!blogsfileName.ContainsKey(blogId))
                     {
-                        if (!blogsfileName.ContainsKey(blogId))
+                        lock (SyncRoot)
                         {
-                            blogsfileName[blogId] = HostingEnvironment.MapPath(Path.Combine(Blog.CurrentInstance.StorageLocation, BaseFilename));
+                            if (!blogsfileName.ContainsKey(blogId))
+                            {
+                                var storagePath = Blog.CurrentInstance.StorageLocation;
+                                if (storagePath.StartsWith("~/"))
+                                    storagePath = storagePath.Substring(2);
+                                blogsfileName[blogId] = Path.Combine(basePath, storagePath, BaseFilename);
+                            }
                         }
                     }
-                }
 
-                return blogsfileName[blogId];
+                    return blogsfileName[blogId];
+                }
+                catch
+                {
+                    var storagePath = BlogConfig.StorageLocation;
+                    if (storagePath.StartsWith("~/"))
+                        storagePath = storagePath.Substring(2);
+                    return Path.Combine(basePath, storagePath, BaseFilename);
+                }
             }
         }
 
@@ -127,7 +132,7 @@ namespace App_Code.Extensions
                     using (var sw = new StreamWriter(fs))
                     {
                         sw.WriteLine(@"*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*-*");
-                        sw.WriteLine("{0}: {1}", Resources.labels.date, DateTime.Now);
+                        sw.WriteLine("{0}: {1}", "Date", DateTime.Now);
                         sw.WriteLine(logMsg);
                     }
                 }

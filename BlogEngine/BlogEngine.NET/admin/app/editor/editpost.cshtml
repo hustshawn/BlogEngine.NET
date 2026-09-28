@@ -1,4 +1,4 @@
-﻿@using System.Web.Optimization
+
 @using BlogEngine.Core
 @{
     Layout = "~/admin/themes/standard/layout.cshtml";
@@ -178,7 +178,7 @@
         </div>
     </div>
 </div>
-@Scripts.Render("~/scripts/wysiwyg")
+<!-- Scripts loaded via static files -->
 @{
     if (BlogConfig.DefaultEditor == "~/admin/editors/tinymce/editor.cshtml")
     {

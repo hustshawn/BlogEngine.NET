@@ -1,8 +1,10 @@
 ﻿using BlogEngine.Core.Data.Contracts;
 using BlogEngine.Core.Data.Models;
-using System.Web.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class StatsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class StatsController : ControllerBase
 {
     readonly IStatsRepository repository;
 

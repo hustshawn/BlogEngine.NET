@@ -1,0 +1,28 @@
+@using BlogEngine.Core
+
+@* RazorHost theme RelatedPosts *@
+
+<div id="relatedPosts" class="well-global">
+    <h3 class="well-global-title">@Labels["relatedPosts"]</h3>
+    <ul class="related-posts">
+        @foreach (var item in RelatedPostList)
+        {
+            <li class="related-posts-item">
+                <a href="@item.Link">@item.Title</a>
+                <p>@item.Description</p>
+            </li>
+        }
+    </ul>
+</div>
+
+@code {
+    [Parameter] public List<RelatedPostItem> RelatedPostList { get; set; } = new();
+    [Parameter] public Dictionary<string, string> Labels { get; set; } = new();
+
+    public class RelatedPostItem
+    {
+        public string Link { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+    }
+}

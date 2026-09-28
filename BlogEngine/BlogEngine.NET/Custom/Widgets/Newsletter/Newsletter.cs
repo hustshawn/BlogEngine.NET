@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Net.Mail;
 using System.Text;
-using System.Web.Hosting;
 using System.Xml;
 
 namespace BlogEngine.NET.Custom.Widgets
@@ -13,11 +12,20 @@ namespace BlogEngine.NET.Custom.Widgets
     public class Newsletter
     {
         private static readonly object syncRoot = new object();
-        private static string filename = HostingEnvironment.MapPath(
-            Path.Combine(Blog.CurrentInstance.StorageLocation, "newsletter.xml"));
+
+        private static string GetFilename()
+        {
+            // Use Blog.CurrentInstance.StorageLocation with ContentRootPath
+            var storagePath = Blog.CurrentInstance.StorageLocation;
+            if (storagePath.StartsWith("~/"))
+            {
+                storagePath = storagePath.Substring(2);
+            }
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, storagePath, "newsletter.xml");
+        }
 
         /// <summary>
-        /// Add subscriber emal
+        /// Add subscriber email
         /// </summary>
         /// <param name="email">Email address</param>
         public static void AddEmail(string email)
@@ -84,7 +92,6 @@ namespace BlogEngine.NET.Custom.Widgets
                         try
                         {
                             Utils.SendMailMessage(message);
-                            //Utils.Log("sent to " + email + " on - " + publishable.Title);
                         }
                         catch (Exception ex)
                         {
@@ -102,6 +109,7 @@ namespace BlogEngine.NET.Custom.Widgets
             var doc = new XmlDocument();
             try
             {
+                var filename = GetFilename();
                 lock (syncRoot)
                 {
                     if (File.Exists(filename))
@@ -123,8 +131,14 @@ namespace BlogEngine.NET.Custom.Widgets
 
         private static void SaveEmails(XmlDocument doc)
         {
+            var filename = GetFilename();
             lock (syncRoot)
             {
+                var dir = Path.GetDirectoryName(filename);
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
                 using (var ms = new MemoryStream())
                 using (var fs = File.Open(filename, FileMode.Create, FileAccess.Write))
                 {
@@ -139,8 +153,10 @@ namespace BlogEngine.NET.Custom.Widgets
             var body = new StringBuilder();
             var urlbase = Path.Combine(
                 Path.Combine(Utils.AbsoluteWebRoot.AbsoluteUri, "themes"), BlogSettings.Instance.Theme);
-            var filePath = $"~/Custom/Themes/{BlogSettings.Instance.Theme}/newsletter.html";
-            filePath = HostingEnvironment.MapPath(filePath);
+            
+            var basePath = AppDomain.CurrentDomain.BaseDirectory;
+            var filePath = Path.Combine(basePath, "Custom", "Themes", BlogSettings.Instance.Theme, "newsletter.html");
+            
             if (File.Exists(filePath))
             {
                 body.Append(File.ReadAllText(filePath));
@@ -149,7 +165,7 @@ namespace BlogEngine.NET.Custom.Widgets
             {
                 // if custom theme doesn't have email template
                 // use email template from standard theme
-                filePath = HostingEnvironment.MapPath("~/Custom/Themes/Standard/newsletter.html");
+                filePath = Path.Combine(basePath, "Custom", "Themes", "Standard", "newsletter.html");
                 if (File.Exists(filePath))
                 {
                     body.Append(File.ReadAllText(filePath));
@@ -174,10 +190,6 @@ namespace BlogEngine.NET.Custom.Widgets
         private static MailMessage CreateEmail(IPublishable publishable)
         {
             var subject = publishable.Title;
-            //var settings = GetSettings();
-
-            //if (settings["subjectPrefix"] != null)
-            //    subject = settings["subjectPrefix"] + subject;
 
             var mail = new MailMessage
             {

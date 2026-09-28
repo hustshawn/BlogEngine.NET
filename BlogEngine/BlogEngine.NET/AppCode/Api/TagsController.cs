@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class TagsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class TagsController : ControllerBase
 {
     readonly ITagRepository repository;
 
@@ -21,25 +23,25 @@ public class TagsController : ApiController
     }
 
     [HttpPut]
-    public HttpResponseMessage Update([FromBody]TagToUpdate tag)
+    public IActionResult Update([FromBody]TagToUpdate tag)
     {
         repository.Save(tag.OldTag, tag.NewTag);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
-    public HttpResponseMessage Delete(string id)
+    public IActionResult Delete(string id)
     {
         repository.Delete(id);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 	
 	[HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<TagItem> items)
+    public IActionResult ProcessChecked([FromBody]List<TagItem> items)
     {
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = Request.GetRouteData().Values["id"].ToString().ToLowerInvariant();
+        var action = HttpContext.Request.RouteValues["id"]?.ToString().ToLowerInvariant();
 
         if (action == "delete")
         {
@@ -51,7 +53,7 @@ public class TagsController : ApiController
                 }
             }
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }
 

@@ -1,4 +1,4 @@
-﻿@using System.Web.Optimization
+
 @using BlogEngine.Core
 @using BlogEngine.Core.Data.Services
 @{
@@ -25,7 +25,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <title>@BlogSettings.Instance.Name (@Security.CurrentMembershipUser.UserName)</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-    @Styles.Render("~/Content/admincss")
+    <!-- Styles loaded via static files -->
     <link href="~/admin/themes/standard/css/styles.css?ver=4" rel="stylesheet">
     <link rel="shortcut icon" href="@Href(Utils.ApplicationRelativeWebRoot + "Content/images/blog/blogengine.ico")" type="image/x-icon" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

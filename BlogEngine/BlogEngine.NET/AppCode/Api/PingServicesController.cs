@@ -2,10 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class PingServicesController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class PingServicesController : ControllerBase
 {
     public IEnumerable<PingItem> Get()
     {
@@ -18,7 +20,7 @@ public class PingServicesController : ApiController
         return pings;
     }
 
-    public HttpResponseMessage Post([FromBody]PingItem item)
+    public IActionResult Post([FromBody]PingItem item)
     {
         var sc = BlogService.LoadPingServices();
         if (!sc.Contains(item.ServiceUrl))
@@ -32,14 +34,14 @@ public class PingServicesController : ApiController
         {
             pings.Add(new PingItem { IsChecked = false, ServiceUrl = s });
         }
-        return Request.CreateResponse(HttpStatusCode.Created, pings);
+        return Created("", pings);
     }
 
     [HttpPut]
-    public HttpResponseMessage ProcessChecked([FromBody]List<PingItem> items)
+    public IActionResult ProcessChecked([FromBody]List<PingItem> items)
     {
         if (items == null || items.Count == 0)
-            throw new HttpResponseException(HttpStatusCode.ExpectationFailed);
+            return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
         var sc = BlogService.LoadPingServices();
 
@@ -52,7 +54,7 @@ public class PingServicesController : ApiController
         }
         BlogService.SavePingServices(sc);
 
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }
 

@@ -2,25 +2,34 @@
 using BlogEngine.Core;
 using BlogEngine.Core.API.BlogML;
 using BlogEngine.Core.Providers;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using System;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
-using System.Web;
-using System.Web.Http;
 
-public class UploadController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class UploadController : ControllerBase
 {
-    public HttpResponseMessage Post(string action, string dirPath = "")
+    private readonly IWebHostEnvironment _env;
+
+    public UploadController(IWebHostEnvironment env)
+    {
+        _env = env;
+    }
+
+    [HttpPost]
+    public IActionResult Post(string action, string dirPath = "")
     {
         WebUtils.CheckRightsForAdminPostPages(false);
 
-        HttpPostedFile file = HttpContext.Current.Request.Files[0];
+        var file = Request.Form.Files.Count > 0 ? Request.Form.Files[0] : null;
         action = action.ToLowerInvariant();
 
-        if (file != null && file.ContentLength > 0)
+        if (file != null && file.Length > 0)
         {
             var dirName = string.Format("/{0}/{1}", DateTime.Now.ToString("yyyy"), DateTime.Now.ToString("MM"));
             var fileName = new FileInfo(file.FileName).Name; // to work in IE and others
@@ -53,7 +62,7 @@ public class UploadController : ApiController
             {
                 if (Security.IsAdministrator)
                 {
-                    return ImportBlogML();
+                    return ImportBlogML(file);
                 }
             } 
             if (action == "profile")
@@ -68,12 +77,22 @@ public class UploadController : ApiController
                         throw new ApplicationException("Invalid character detected in UserName");
                     var profileFileName = User.Identity.Name + ext;
 
-                    var imgPath = HttpContext.Current.Server.MapPath(dir.FullPath + "/" + profileFileName);
-                    var image = Image.FromStream(file.InputStream);
-                    Image thumb = image.GetThumbnailImage(80, 80, () => false, IntPtr.Zero);
-                    thumb.Save(imgPath);
+                    var imgPath = Path.Combine(_env.ContentRootPath, dir.FullPath.TrimStart('~', '/').Replace('/', Path.DirectorySeparatorChar), profileFileName);
+                    
+                    // Save the uploaded file, then create a thumbnail
+                    // REVIEW: System.Drawing is not available on all platforms in .NET Core.
+                    // Using stream copy as a cross-platform approach. 
+                    // For production thumbnail generation, consider using ImageSharp.
+                    var imgDir = Path.GetDirectoryName(imgPath);
+                    if (!System.IO.Directory.Exists(imgDir))
+                        System.IO.Directory.CreateDirectory(imgDir);
 
-                    return Request.CreateResponse(HttpStatusCode.Created, profileFileName);
+                    using (var stream = new FileStream(imgPath, FileMode.Create))
+                    {
+                        file.CopyTo(stream);
+                    }
+
+                    return Created("", profileFileName);
                 }
             }
             if (action == "image")
@@ -81,8 +100,8 @@ public class UploadController : ApiController
                 if (Security.IsAuthorizedTo(Rights.EditOwnPosts))
                 {
                     dir = BlogService.GetDirectory(dirName);
-                    var uploaded = BlogService.UploadFile(file.InputStream, fileName, dir, true);
-                    return Request.CreateResponse(HttpStatusCode.Created, uploaded.AsImage.ImageUrl);
+                    var uploaded = BlogService.UploadFile(file.OpenReadStream(), fileName, dir, true);
+                    return Created("", uploaded.AsImage.ImageUrl);
                 }
             }
             if (action == "file")
@@ -90,9 +109,9 @@ public class UploadController : ApiController
                 if (Security.IsAuthorizedTo(Rights.EditOwnPosts)) 
                 {
                     dir = BlogService.GetDirectory(dirName);
-                    var uploaded = BlogService.UploadFile(file.InputStream, fileName, dir, true);
+                    var uploaded = BlogService.UploadFile(file.OpenReadStream(), fileName, dir, true);
                     retUrl = uploaded.FileDownloadPath + "|" + fileName + " (" + BytesToString(uploaded.FileSize) + ")";
-                    return Request.CreateResponse(HttpStatusCode.Created, retUrl);
+                    return Created("", retUrl);
                 }
             }
             if (action == "video")
@@ -106,38 +125,38 @@ public class UploadController : ApiController
                     var mediaPlayerExtension = BlogEngine.Core.Web.Extensions.ExtensionManager.GetExtension("MediaElementPlayer");
                     mediaFolder = mediaPlayerExtension.Settings[0].GetSingleValue("folder");
 
-                    var folder = Utils.ApplicationRelativeWebRoot + mediaFolder + "/";
-                    //var fileName = file.FileName;
+                    var folder = Path.Combine(_env.ContentRootPath, mediaFolder.Replace('/', Path.DirectorySeparatorChar));
 
                     UploadVideo(folder, file, fileName);
 
-                    return Request.CreateResponse(HttpStatusCode.Created, fileName);
+                    return Created("", fileName);
                 }
             }
         }
-        return Request.CreateResponse(HttpStatusCode.BadRequest);
+        return BadRequest();
     }
 
     #region Private methods
 
-    HttpResponseMessage ImportBlogML()
+    IActionResult ImportBlogML(IFormFile file)
     {
-        HttpPostedFile file = HttpContext.Current.Request.Files[0];
-        if (file != null && file.ContentLength > 0)
+        if (file != null && file.Length > 0)
         {
             var reader = new BlogReader();
-            var rdr = new StreamReader(file.InputStream);
-            reader.XmlData = rdr.ReadToEnd();
+            using (var rdr = new StreamReader(file.OpenReadStream()))
+            {
+                reader.XmlData = rdr.ReadToEnd();
+            }
 
             if (reader.Import())
             {
-                return Request.CreateResponse(HttpStatusCode.OK);
+                return Ok();
             }
         }
-        return Request.CreateResponse(HttpStatusCode.InternalServerError);
+        return StatusCode(500);
     }
 
-    static String BytesToString(long byteCount)
+    static string BytesToString(long byteCount)
     {
         string[] suf = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
         if (byteCount == 0)
@@ -148,14 +167,17 @@ public class UploadController : ApiController
         return (Math.Sign(byteCount) * num).ToString() + suf[place];
     }
 
-    private void UploadVideo(string virtualFolder, HttpPostedFile file, string fileName)
+    private void UploadVideo(string folderPath, IFormFile file, string fileName)
     {
-        var folder = HttpContext.Current.Server.MapPath(virtualFolder);
-        if (!Directory.Exists(folder))
+        if (!System.IO.Directory.Exists(folderPath))
         {
-            Directory.CreateDirectory(folder);
+            System.IO.Directory.CreateDirectory(folderPath);
         }
-        file.SaveAs(folder + fileName);
+        var filePath = Path.Combine(folderPath, fileName);
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            file.CopyTo(stream);
+        }
     }
 
     #endregion

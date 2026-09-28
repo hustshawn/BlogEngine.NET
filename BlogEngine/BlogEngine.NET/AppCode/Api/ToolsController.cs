@@ -1,38 +1,35 @@
 ﻿using App_Code;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using System;
 using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Security.Principal;
-using System.Web;
-using System.Web.Hosting;
-using System.Web.Http;
-using System.Web.UI.HtmlControls;
 
-public class ToolsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class ToolsController : ControllerBase
 {
     private static object _SyncRoot = new object();
+    private readonly IWebHostEnvironment _env;
 
-    public HttpResponseMessage Get(string id)
+    public ToolsController(IWebHostEnvironment env)
+    {
+        _env = env;
+    }
+
+    public IActionResult Get(string id)
     {
         if (id == "check1")
         {
-            var result = string.Format("ASP.NET application Identity is: {0}", WindowsIdentity.GetCurrent().Name);
-            return Request.CreateResponse(HttpStatusCode.OK, result);
+            var result = string.Format("ASP.NET application Identity is: {0}", Environment.UserName);
+            return Ok(result);
         }
         else if (id == "trust")
         {
-            var trust = GetCurrentTrustLevel();
-            if (trust == AspNetHostingPermissionLevel.High || trust == AspNetHostingPermissionLevel.Unrestricted)
-            {
-                var data = new { success = true, msg = "Trust level: " + trust.ToString() };
-                return Request.CreateResponse(HttpStatusCode.OK, data);
-            }
-            else
-            {
-                var data = new { success = false, msg = "Trust level: " + trust.ToString() };
-                return Request.CreateResponse(HttpStatusCode.OK, data);
-            }
+            // ASP.NET Core runs in full trust always; there is no CAS trust level concept
+            var data = new { success = true, msg = "Trust level: Full (ASP.NET Core)" };
+            return Ok(data);
         }
         else
         {
@@ -42,12 +39,12 @@ public class ToolsController : ApiController
             if (string.IsNullOrEmpty(processed))
             {
                 var data = new { success = true, msg = "Can create and delete file " + fileName };
-                return Request.CreateResponse(HttpStatusCode.OK, data);
+                return Ok(data);
             }
             else
             {
                 var data = new { success = false, msg = "Error creating file " + fileName };
-                return Request.CreateResponse(HttpStatusCode.OK, data);
+                return Ok(data);
             }             
         }
     }
@@ -93,7 +90,7 @@ public class ToolsController : ApiController
     {
         try
         {
-            File.Delete(file);
+            System.IO.File.Delete(file);
             return "";
         }
         catch (Exception e)
@@ -102,39 +99,17 @@ public class ToolsController : ApiController
         }
     }
 
-    private static string GetFileName(string dir)
+    private string GetFileName(string dir)
     {
-        if(dir == "root")
-            return HostingEnvironment.MapPath("~/tmp.txt");
+        var contentRoot = _env.ContentRootPath;
+
+        if (dir == "root")
+            return Path.Combine(contentRoot, "tmp.txt");
 
         if (dir == "data")
-            return HostingEnvironment.MapPath("~/App_Data/tmp.txt");
+            return Path.Combine(contentRoot, "App_Data", "tmp.txt");
 
-        return HostingEnvironment.MapPath($"~/{dir}/tmp.txt");
-    }
-
-    AspNetHostingPermissionLevel GetCurrentTrustLevel()
-    {
-        foreach (AspNetHostingPermissionLevel trustLevel in new AspNetHostingPermissionLevel[] 
-        {
-            AspNetHostingPermissionLevel.Unrestricted,
-            AspNetHostingPermissionLevel.High,
-            AspNetHostingPermissionLevel.Medium,
-            AspNetHostingPermissionLevel.Low,
-            AspNetHostingPermissionLevel.Minimal 
-        })
-        {
-            try
-            {
-                new AspNetHostingPermission(trustLevel).Demand();
-            }
-            catch (System.Security.SecurityException)
-            {
-                continue;
-            }
-            return trustLevel;
-        }
-        return AspNetHostingPermissionLevel.None;
+        return Path.Combine(contentRoot, dir, "tmp.txt");
     }
 
     #endregion

@@ -1,0 +1,224 @@
+@using BlogEngine.Core
+@inject IHttpContextAccessor HttpContextAccessor
+
+@if (!string.IsNullOrEmpty(pagerHtml))
+{
+    @((MarkupString)pagerHtml)
+}
+
+@code {
+    [Parameter] public List<IPublishable> Posts { get; set; }
+
+    private string pagerHtml = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        pagerHtml = PagerTag();
+    }
+
+    private int PageIndex()
+    {
+        var retValue = 1;
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext == null) return retValue;
+
+        var url = httpContext.Request.QueryString.Value ?? string.Empty;
+        var query = httpContext.Request.Query;
+        if (query.ContainsKey("page"))
+        {
+            if (int.TryParse(query["page"].FirstOrDefault(), out var parsed))
+                retValue = parsed;
+        }
+        return retValue;
+    }
+
+    private static IEnumerable<int> PageList(int total, int current)
+    {
+        var pages = new List<int>();
+        var midStack = new List<int>();
+
+        if (total <= 0 || current > total)
+            return pages;
+
+        const int MaxPages = 12;
+
+        if (MaxPages > total)
+        {
+            for (var i = 1; i <= total; i++)
+                pages.Add(i);
+        }
+        else
+        {
+            const int Midle = (MaxPages - 4) / 2;
+            pages.Add(1);
+            pages.Add(2);
+
+            for (var i = current - Midle; i <= (current + Midle); i++)
+            {
+                if (i > 2 && i < (total - 1))
+                    midStack.Add(i);
+            }
+
+            if (midStack.Count < (MaxPages - 2) && midStack.Count > 0)
+            {
+                var last = midStack[midStack.Count - 1];
+                for (var j = last + 1; j <= (MaxPages - 2); j++)
+                    midStack.Add(j);
+            }
+
+            if (midStack.Count < (MaxPages - 4))
+            {
+                midStack.Clear();
+                for (var k = total - MaxPages + 3; k <= (total - 2); k++)
+                    midStack.Add(k);
+            }
+
+            if (midStack.Count > 0 && midStack[0] > 3)
+                pages.Add(0);
+
+            pages.AddRange(midStack);
+
+            if (midStack.Count > 0 && midStack[midStack.Count - 1] < (total - 2))
+                pages.Add(0);
+
+            pages.Add(total - 1);
+            pages.Add(total);
+        }
+
+        return pages;
+    }
+
+    private string PageUrl()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext == null) return "?page={0}";
+
+        var path = httpContext.Request.Path.Value ?? "/";
+        var queryString = httpContext.Request.QueryString.Value ?? string.Empty;
+        var fullPath = path + queryString;
+
+        if (string.IsNullOrEmpty(BlogConfig.FileExtension))
+            fullPath = fullPath.Replace("/", string.Empty);
+
+        if (fullPath.Contains("?"))
+        {
+            if (fullPath.Contains("page="))
+            {
+                var index = fullPath.IndexOf("page=");
+                fullPath = fullPath.Substring(0, index);
+            }
+            else
+            {
+                if (!fullPath.EndsWith("?"))
+                    fullPath += "&";
+            }
+        }
+        else
+        {
+            fullPath += "?";
+        }
+
+        if (!fullPath.Contains("", StringComparison.OrdinalIgnoreCase))
+        {
+            if (fullPath.EndsWith("?") && !fullPath.EndsWith("/?"))
+                fullPath = fullPath.Replace("?", "/?");
+        }
+
+        return System.Net.WebUtility.HtmlEncode(fullPath + "page={0}");
+    }
+
+    private string PageFirstUrl()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext == null) return "/";
+
+        var path = httpContext.Request.Path.Value ?? "/";
+        var queryString = httpContext.Request.QueryString.Value ?? string.Empty;
+        var fullPath = path + queryString;
+
+        if (string.IsNullOrEmpty(BlogConfig.FileExtension))
+            fullPath = fullPath.Replace("/", string.Empty);
+
+        var index = fullPath.IndexOf("?");
+        if (index >= 0)
+        {
+            var qs = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(fullPath.Substring(index));
+            var dict = new Dictionary<string, string>();
+            foreach (var kvp in qs)
+            {
+                if (!kvp.Key.Equals("page", StringComparison.OrdinalIgnoreCase))
+                    dict[kvp.Key] = kvp.Value.ToString();
+            }
+            fullPath = fullPath.Substring(0, index);
+            if (dict.Count > 0)
+                fullPath += "?" + string.Join("&", dict.Select(kv => $"{kv.Key}={kv.Value}"));
+        }
+
+        return System.Net.WebUtility.HtmlEncode(fullPath);
+    }
+
+    private string PagerTag()
+    {
+        if (Posts == null) return string.Empty;
+
+        var postsPerPage = BlogSettings.Instance.PostsPerPage;
+        if (postsPerPage <= 0) return string.Empty;
+
+        var pageFirstUrl = PageFirstUrl();
+        var retValue = string.Empty;
+        var pageUrl = PageUrl();
+        var link = $"<li class=\"PagerLink\"><a href=\"{pageUrl}\">{{1}}</a></li>";
+        var linkNewerFirst = $"<li class=\"PagerLink\"><a href=\"{pageFirstUrl}\">{{1}}</a></li>";
+        const string LinkCurrent = "<li class=\"PagerLinkCurrent\">{0}</li>";
+        var linkFirst = $"<li class=\"PagerFirstLink\"><a href=\"{pageFirstUrl}\">{{0}}</a></li>";
+        const string LinkDisabled = "<li class=\"PagerLinkDisabled\">{0}</li>";
+
+        var currentPage = PageIndex();
+        var visiblePosts = Posts.FindAll(p => p.IsVisible);
+        var postCnt = visiblePosts.Count;
+        var pagesTotal = postCnt % postsPerPage == 0 ? postCnt / postsPerPage : (postCnt / postsPerPage) + 1;
+
+        if (pagesTotal == 0) pagesTotal = 1;
+        if (currentPage > pagesTotal)
+            return $"<p>{Utils.Translate("noPostsMatchedYourCriteria")}</p>";
+
+        if (postCnt > 0 && pagesTotal > 1)
+        {
+            retValue = "<ul id=\"PostPager\">";
+
+            if (currentPage == 1)
+                retValue += string.Format(LinkDisabled, Utils.Translate("nextPosts"));
+            else if (currentPage == 2)
+                retValue += string.Format(linkNewerFirst, currentPage - 1, Utils.Translate("nextPosts"));
+            else
+                retValue += string.Format(link, currentPage - 1, Utils.Translate("nextPosts"));
+
+            var pages = PageList(pagesTotal, currentPage);
+            foreach (var i in pages)
+            {
+                if (i == 0)
+                {
+                    retValue += "<li class=\"PagerEllipses\">...</li>";
+                }
+                else
+                {
+                    if (i == currentPage)
+                        retValue += string.Format(LinkCurrent, i);
+                    else if (i == 1)
+                        retValue += string.Format(linkFirst, i);
+                    else
+                        retValue += string.Format(link, i, i);
+                }
+            }
+
+            if (currentPage == pagesTotal)
+                retValue += string.Format(LinkDisabled, Utils.Translate("previousPosts"));
+            else
+                retValue += string.Format(link, currentPage + 1, Utils.Translate("previousPosts"));
+
+            retValue += "</ul>";
+        }
+
+        return retValue;
+    }
+}

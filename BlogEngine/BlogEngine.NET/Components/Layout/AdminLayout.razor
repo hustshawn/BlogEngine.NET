@@ -1,0 +1,83 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+
+@* AdminLayout.razor — converted from admin/admin.master + admin.master.cs
+   This is the master page for extension settings pages.
+   Ports the Security.IsAuthenticated check from OnInit and the
+   SiteVars JavaScript injection + SetStatus method from code-behind. *@
+
+<HeadContent>
+    <title>BlogEngine.NET Admin</title>
+    <link href="Content/bootstrap.css" rel="stylesheet" />
+    <style>
+        .alert-info { margin-right: 10px; }
+        input[type="checkbox"] { margin-right: 6px !important; }
+    </style>
+</HeadContent>
+
+@if (!isAuthorized)
+{
+    <p>Redirecting to login...</p>
+}
+else
+{
+    <div id="StatusBox">
+        @if (!string.IsNullOrEmpty(statusMessage))
+        {
+            <div id="AdminStatus" class="@statusCssClass">
+                @((MarkupString)statusHtml)
+            </div>
+        }
+    </div>
+    @Body
+}
+
+@code {
+    private bool isAuthorized;
+    private string statusCssClass = string.Empty;
+    private string statusMessage = string.Empty;
+    private string statusHtml = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // Ported from ExtensionsMasterPage.OnInit:
+        // Check authentication and redirect if not authorized
+        if (!Security.IsAuthenticated)
+        {
+            // Redirect to login page for unauthorized access
+            var loginUrl = Utils.RelativeWebRoot + "Account/login?ReturnURL=" +
+                           Uri.EscapeDataString(Navigation.Uri);
+            Navigation.NavigateTo(loginUrl, forceLoad: true);
+            return;
+        }
+
+        isAuthorized = true;
+    }
+
+    /// <summary>
+    /// Ported from ExtensionsMasterPage.SetStatus — allows child pages to display
+    /// status messages in the admin status bar.
+    /// </summary>
+    public void SetStatus(string status, string msg)
+    {
+        statusCssClass = status;
+        statusMessage = msg;
+        statusHtml = System.Net.WebUtility.HtmlEncode(msg) +
+            "<a href=\"javascript:void(0)\" onclick=\"document.getElementById('AdminStatus').style.display='none'\" style=\"width:20px;float:right\">X</a>";
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Returns the SiteVars JavaScript object that the admin pages expect.
+    /// Child pages that need this can call GetSiteVarsJson() and inject it via IJSRuntime.
+    /// </summary>
+    public string GetSiteVarsJson()
+    {
+        return $@"var SiteVars = {{
+            ApplicationRelativeWebRoot: '{Utils.ApplicationRelativeWebRoot}',
+            RelativeWebRoot: '{Utils.RelativeWebRoot}',
+            BlogInstanceId: '{Blog.CurrentInstance.Id}'
+        }};";
+    }
+}

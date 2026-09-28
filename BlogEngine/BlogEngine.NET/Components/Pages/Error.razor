@@ -1,0 +1,50 @@
+@page "/error"
+@using System.Net
+@using BlogEngine.Core
+@using Microsoft.AspNetCore.Components.Authorization
+
+<PageTitle>@Utils.Translate("Error")</PageTitle>
+
+<div class="post page-global">
+    <h2 class="page-global-title">@BlogSettings.Instance.ErrorTitle</h2>
+    @((MarkupString)BlogSettings.Instance.ErrorText)
+
+    @if (showErrorDetails && !string.IsNullOrEmpty(errorDetails))
+    {
+        <div id="divErrorDetails">
+            <h2>Error Details:</h2>
+            <p>@((MarkupString)errorDetailsHtml)</p>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthState { get; set; }
+
+    private bool showErrorDetails;
+    private string errorDetails = string.Empty;
+    private string errorDetailsHtml = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user has rights to view detailed error messages
+        // REVIEW: behavior inferred from usage — verify Security.IsAuthorizedTo is available
+        bool isAuthorized = Security.IsAuthorizedTo(Rights.ViewDetailedErrorMessages);
+
+        if (isAuthorized)
+        {
+            // In the original code, error details came from HttpContext.Current.Items["LastErrorDetails"].
+            // In Blazor Server, this is typically not available during interactive rendering.
+            // We attempt to read it during initial SSR if available.
+            // REVIEW: error details passing mechanism may need adaptation for Blazor pipeline
+            errorDetails = string.Empty;
+        }
+
+        if (!string.IsNullOrEmpty(errorDetails))
+        {
+            showErrorDetails = true;
+            errorDetailsHtml = WebUtility.HtmlEncode(errorDetails).Replace(Environment.NewLine, "<br /><br />");
+        }
+    }
+}

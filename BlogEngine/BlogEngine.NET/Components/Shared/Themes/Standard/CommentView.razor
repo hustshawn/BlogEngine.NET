@@ -1,0 +1,43 @@
+@using BlogEngine.Core
+
+@* Standard theme CommentView - single comment display *@
+
+<ul id="id_@Comment.Id">
+    <li class="comment-item">
+        <div class="comment-content @(Post.Author.Equals(Comment.Author, StringComparison.OrdinalIgnoreCase) ? " self" : "")">
+            @((MarkupString)GravatarHtml)
+            <div class="comment-author">
+                @if (Comment.Website != null)
+                {
+                    <a href="@Comment.Website" rel="nofollow" class="url fn">@Comment.Author</a>
+                }
+                else
+                {
+                    <a class="fn">@Comment.Author</a>
+                }
+            </div>
+            <div class="comment-text">
+                @((MarkupString)Text)
+            </div>
+            <div class="comment-replylink">
+                <span>@Comment.DateCreated.ToString("dd MMMM yyyy")</span> - @((MarkupString)ReplyToLink)
+            </div>
+            <div class="comment-adminlinks">
+                @((MarkupString)(AdminLinks.Length > 2 ? AdminLinks.Substring(2) : AdminLinks))
+            </div>
+        </div>
+        <div id="replies_@Comment.Id" style="@((Comment.Comments.Count == 0 || Comment.Email == "pingback" || Comment.Email == "trackback") ? "display:none;" : "")">
+            @ChildContent
+        </div>
+    </li>
+</ul>
+
+@code {
+    [Parameter] public Comment Comment { get; set; }
+    [Parameter] public Post Post { get; set; }
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public string GravatarHtml { get; set; } = "";
+    [Parameter] public string ReplyToLink { get; set; } = "";
+    [Parameter] public string AdminLinks { get; set; } = "";
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

@@ -3,10 +3,12 @@ using BlogEngine.Core.Data.Models;
 using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
-using System.Web.Http;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
-public class CustomFieldsController : ApiController
+[ApiController]
+[Route("api/[controller]")]
+public class CustomFieldsController : ControllerBase
 {
     readonly ICustomFieldRepository repository;
 
@@ -21,7 +23,7 @@ public class CustomFieldsController : ApiController
         return repository.Find(filter);
     }
 
-    public HttpResponseMessage Post([FromBody]CustomField item)
+    public IActionResult Post([FromBody]CustomField item)
     {
         if (item == null) throw new ApplicationException("Custom field is required");
 
@@ -34,12 +36,12 @@ public class CustomFieldsController : ApiController
 
         var result = repository.Add(item);
         if (result == null)
-            return Request.CreateResponse(HttpStatusCode.NotFound);
+            return NotFound();
 
-        return Request.CreateResponse(HttpStatusCode.Created, result);
+        return Created("", result);
     }
 
-    public HttpResponseMessage Put([FromBody]List<CustomField> items)
+    public IActionResult Put([FromBody]List<CustomField> items)
     {
         if (items != null && items.Count > 0)
         {
@@ -50,12 +52,12 @@ public class CustomFieldsController : ApiController
                 repository.Add(item);
             }
         }
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 
-    public HttpResponseMessage Delete([FromBody]CustomField item)
+    public IActionResult Delete([FromBody]CustomField item)
     {
         repository.Remove(item.CustomType, item.ObjectId, item.Key);
-        return Request.CreateResponse(HttpStatusCode.OK);
+        return Ok();
     }
 }
