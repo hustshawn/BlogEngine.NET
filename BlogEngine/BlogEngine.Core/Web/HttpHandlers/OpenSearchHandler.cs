@@ -27,6 +27,10 @@
         {
             var settings = new XmlWriterSettings { Indent = true };
 
+            context.Response.ContentType = "text/xml; charset=UTF-8";
+            context.Response.Headers.Expires = DateTime.Now.AddDays(30).ToString("R");
+            context.Response.Headers["ETag"] = Guid.NewGuid().ToString();
+
             using (var writer = XmlWriter.Create(context.Response.Body, settings))
             {
                 writer.WriteStartDocument();
@@ -56,9 +60,6 @@
                 writer.WriteEndElement();
             }
 
-            context.Response.ContentType = "text/xml; charset=UTF-8";
-            context.Response.Headers.Expires = DateTime.Now.AddDays(30).ToString("R");
-            context.Response.Headers["ETag"] = Guid.NewGuid().ToString();
 
             await Task.CompletedTask;
         }

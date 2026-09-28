@@ -17,7 +17,7 @@
         /// </summary>
         public static IEndpointRouteBuilder MapRatingHandler(this IEndpointRouteBuilder endpoints)
         {
-            endpoints.MapGet("/rate.axd", HandleAsync);
+            endpoints.MapGet("/rating.axd", HandleAsync);
             return endpoints;
         }
 

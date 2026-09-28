@@ -53,7 +53,7 @@
         public static IEndpointRouteBuilder MapFoafHandler(this IEndpointRouteBuilder endpoints)
         {
             endpoints.MapGet("/foaf.axd", HandleAsync);
-            endpoints.MapGet("/{name}.axd", HandleFoafNameAsync);
+            endpoints.MapGet("/foaf_{name}.axd", HandleFoafNameAsync);
             return endpoints;
         }
 

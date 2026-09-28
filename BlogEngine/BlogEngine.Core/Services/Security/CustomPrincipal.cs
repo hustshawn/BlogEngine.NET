@@ -14,7 +14,7 @@ using System.Security.Claims;
         /// <summary>
         /// Gets the identity of the current principal.
         /// </summary>
-        public IIdentity Identity
+        public override IIdentity Identity
         {
             get { return _identity; }
         }
@@ -24,7 +24,7 @@ using System.Security.Claims;
         /// </summary>
         /// <param name="roleName">The name of the role for which to check membership.</param>
         /// <returns>true if the current principal is a member of the specified role; otherwise, false.</returns>
-        public bool IsInRole(string roleName)
+        public override bool IsInRole(string roleName)
         {
             if (Identity == null || !Identity.IsAuthenticated || string.IsNullOrEmpty(Identity.Name))
                 return false;

@@ -35,7 +35,11 @@ namespace BlogEngine.Core
             if (string.IsNullOrWhiteSpace(virtualPath))
                 return ContentRootPath;
 
-            var relative = virtualPath.Replace("~/", string.Empty).Replace("~", string.Empty);
+            if (virtualPath.StartsWith(ContentRootPath, StringComparison.Ordinal))
+                return virtualPath; // already a physical path
+
+            // "~/App_Data", "/Custom/Themes" (application relative) and "App_Data" map below the content root
+            var relative = virtualPath.Replace("~/", string.Empty).Replace("~", string.Empty).TrimStart('/', '\\');
             relative = relative.Replace('/', System.IO.Path.DirectorySeparatorChar);
             return System.IO.Path.Combine(ContentRootPath, relative);
         }

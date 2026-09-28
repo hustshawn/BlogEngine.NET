@@ -1125,11 +1125,59 @@
         /// </returns>
         public static string Translate(string text, string defaultValue, CultureInfo culture)
         {
-            // In modern .NET, use IStringLocalizer for localization.
-            // This fallback implementation returns the text or defaultValue.
-            return string.IsNullOrEmpty(defaultValue)
-                ? text
-                : defaultValue;
+            string resource = null;
+            var manager = LabelsResourceManager;
+            if (manager != null && !string.IsNullOrEmpty(text))
+            {
+                try
+                {
+                    resource = manager.GetString(text, culture ?? CultureInfo.CurrentUICulture);
+                }
+                catch (System.Resources.MissingManifestResourceException)
+                {
+                    resource = null;
+                }
+            }
+
+            return resource ?? (string.IsNullOrEmpty(defaultValue) ? $"Missing Resource [{text}]" : defaultValue);
+        }
+
+        private static readonly Lazy<System.Resources.ResourceManager> labelsResourceManager =
+            new Lazy<System.Resources.ResourceManager>(FindLabelsResourceManager);
+
+        /// <summary>
+        /// Resource manager for the global "labels" resources (replaces App_GlobalResources/labels.resx).
+        /// The resources are embedded in the web application assembly as "{Assembly}.Resources.labels".
+        /// </summary>
+        public static System.Resources.ResourceManager LabelsResourceManager => labelsResourceManager.Value;
+
+        private static System.Resources.ResourceManager FindLabelsResourceManager()
+        {
+            const string suffix = ".labels.resources";
+            var candidates = new[] { Assembly.GetEntryAssembly() }
+                .Concat(AppDomain.CurrentDomain.GetAssemblies())
+                .Where(a => a != null && !a.IsDynamic);
+
+            foreach (var assembly in candidates)
+            {
+                string name;
+                try
+                {
+                    name = assembly.GetManifestResourceNames()
+                        .FirstOrDefault(n => n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+                }
+                catch (NotSupportedException)
+                {
+                    continue;
+                }
+
+                if (name != null)
+                {
+                    return new System.Resources.ResourceManager(name.Substring(0, name.Length - ".resources".Length), assembly);
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -1290,7 +1338,9 @@
         private static IEnumerable<Assembly> GetCompiledExtensions()
         {
             var assemblies = new List<Assembly>();
-            var s = Path.Combine(BlogConfig.MapPath("~/"), "bin");
+            // the application's bin folder (~/bin in ASP.NET), where the web project with the
+            // Custom/Extensions code and any extension assemblies are deployed
+            var s = AppContext.BaseDirectory;
             var fileEntries = Directory.GetFiles(s);
             foreach (var asm in from fileName in fileEntries
                                 where fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)

@@ -420,13 +420,14 @@ using Microsoft.AspNetCore.Http;
                 if (context != null)
                 {
                     var request = context.Request;
-                    if (request.Query["theme"].ToString() != null)
+                    var queryTheme = request.Query["theme"].ToString();
+                    if (!string.IsNullOrEmpty(queryTheme))
                     {
-                        return request.Query["theme"].ToString().SanitizePath();
+                        return queryTheme.SanitizePath();
                     }
 
                     request.Cookies.TryGetValue(this.ThemeCookieName, out var cookieVal);
-                    if (cookieVal != null)
+                    if (!string.IsNullOrEmpty(cookieVal))
                     {
                         return cookieVal.SanitizePath();
                     }
