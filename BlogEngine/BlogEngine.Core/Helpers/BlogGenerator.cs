@@ -189,24 +189,24 @@ namespace BlogEngine.Core
                 string pubDate = DateTime.Now.ToString(
                         "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
-                var usersFile = newBlogFolderPath + @"\users.xml";
+                var usersFile = Path.Combine(newBlogFolderPath, "users.xml");
                 ReplaceInFile(usersFile, "[UserName]", userName);
                 ReplaceInFile(usersFile, "[Password]", Utils.HashPassword(password));
                 ReplaceInFile(usersFile, "[Email]", email);
 
-                var rolesFile = newBlogFolderPath + @"\roles.xml";
+                var rolesFile = Path.Combine(newBlogFolderPath, "roles.xml");
                 ReplaceInFile(rolesFile, "[UserName]", userName);
 
-                var settingsFile = newBlogFolderPath + @"\settings.xml";
+                var settingsFile = Path.Combine(newBlogFolderPath, "settings.xml");
                 ReplaceInFile(settingsFile, "[BlogName]", blogName);
                 ReplaceInFile(settingsFile, "[Description]", BlogGeneratorConfig.BlogDescription);
 
                 // generate unique category id
-                var categoriesFile = newBlogFolderPath + @"\categories.xml";
+                var categoriesFile = Path.Combine(newBlogFolderPath, "categories.xml");
                 var catId = Guid.NewGuid().ToString();
                 ReplaceInFile(categoriesFile, "[CategoryId]", catId);
 
-                var postFile = newBlogFolderPath + @"\posts\" + BlogGeneratorConfig.PostsFileName;
+                var postFile = Path.Combine(newBlogFolderPath, "posts", BlogGeneratorConfig.PostsFileName);
                 ReplaceInFile(postFile, "[CategoryId]", catId);
                 ReplaceInFile(postFile, "[PubDate]", pubDate);
                 ReplaceInFile(postFile, "[Author]", userName);
@@ -236,7 +236,7 @@ namespace BlogEngine.Core
                 }
 
                 // update post with new GUID
-                var newPostFile = newBlogFolderPath + @"\posts\" + Guid.NewGuid().ToString() + ".xml";
+                var newPostFile = Path.Combine(newBlogFolderPath, "posts", Guid.NewGuid().ToString() + ".xml");
                 File.Move(postFile, newPostFile);
             }
             catch (Exception ex)
