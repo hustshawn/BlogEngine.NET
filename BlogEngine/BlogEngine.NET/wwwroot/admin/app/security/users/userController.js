@@ -8,7 +8,7 @@
 
     $scope.load = function () {
         if (!$scope.security.canManageUsers == true) {
-            window.location.replace("../Account/Login.aspx");
+            window.location.replace("../Account/login");
         }
         dataService.getItems('/api/users', { take: 0, skip: 0, filter: "1 == 1", order: "UserName" })
         .success(function (data) {

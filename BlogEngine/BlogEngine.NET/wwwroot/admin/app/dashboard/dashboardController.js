@@ -115,7 +115,7 @@
 
     $scope.load = function () {
         if ($rootScope.security.showTabDashboard === false) {
-            window.location = "../Account/Login.aspx";
+            window.location = "../Account/login";
         }
         $("#versionMsg").hide();
         spinOn();

@@ -5,7 +5,7 @@
 
     $scope.load = function () {
         if (!$scope.security.canManageUsers == true) {
-            window.location.replace("../Account/Login.aspx");
+            window.location.replace("../Account/login");
         }
         spinOn();
         dataService.getItems('/api/tools/check1')
@@ -21,7 +21,7 @@
 
     $scope.check = function () {
         if (!$scope.security.canManageUsers == true) {
-            window.location.replace("../Account/Login.aspx");
+            window.location.replace("../Account/login");
         }
         $("#msgList").empty();
 
