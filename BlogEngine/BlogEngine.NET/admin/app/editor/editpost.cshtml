@@ -1,11 +1,7 @@
-
-@using BlogEngine.Core
+@page "/admin/app/editor/editpost.cshtml"
+@model EditorPageModel
 @{
     Layout = "~/admin/themes/standard/layout.cshtml";
-    if (!Security.IsAuthorizedTo(Rights.EditOwnPosts))
-    {
-        Security.RedirectForUnauthorizedRequest();
-    }
 }
 <div class="content" ng-controller="PostEditorController">
     <button tabindex="-1" class="sidebar-toggle"><span></span><span></span><span></span></button>
@@ -109,7 +105,7 @@
                 <div class="newpost-wrapper">
                     <div class="newpost-content">
                         <div class="newpost-title"><input type="text" id="txtTitle" name="txtTitle" autocomplete="off" placeholder="{{lbl.titleOfPost}}..." class="form-control" data-ng-model="post.Title" /></div>
-                        <div class="editor-wrapper">@RenderPage(BlogConfig.DefaultEditor)</div>
+                        <div class="editor-wrapper">@await Html.PartialAsync(BlogConfig.DefaultEditor)</div>
                         <div class="newpost-widget" data-ng-show="lookups.PostOptions.ShowSlug">
                             <label class="newpost-widget-title">{{lbl.slug}}</label>
                             <input type="text" class="form-control form-control-sm" id="txtSlug" data-ng-model="post.Slug" />
@@ -178,11 +174,9 @@
         </div>
     </div>
 </div>
-<!-- Scripts loaded via static files -->
-@{
-    if (BlogConfig.DefaultEditor == "~/admin/editors/tinymce/editor.cshtml")
-    {
-        <script src="~/admin/editors/tinymce/tinymce.min.js"></script>
-        <script src="~/admin/editors/tinymce/editor.js"></script>
-    }
+@await Html.PartialAsync("~/admin/Shared/_WysiwygScripts.cshtml")
+@if (BlogConfig.DefaultEditor == AdminEditors.TinyMce)
+{
+    <script src="~/admin/editors/tinymce/tinymce.min.js"></script>
+    <script src="~/admin/editors/tinymce/editor.js"></script>
 }

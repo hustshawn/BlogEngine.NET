@@ -1,39 +1,26 @@
-
-@using BlogEngine.Core
-@using BlogEngine.Core.Data.Services
+@using System.Text.Encodings.Web
 @{
-    if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
-    {
-        Security.RedirectForUnauthorizedRequest();
-    }
-    string loginUrl = Href(Utils.RelativeWebRoot + "Account/login.aspx");
-    var userRights = string.Join("','", Security.CurrentUserRights().Select(r => r.Flag).ToArray());
-
-    var name = Security.CurrentUser.Identity.Name;
-    var email = Membership.Provider.GetUser(name, true).Email;
-    var profile = new AuthorProfile(name);
-    var src = profile.PhotoUrl;
-    if (string.IsNullOrEmpty(src))
-    {
-        src = Avatar.GetSrc(email);
-    }
+    // Authorization (Rights.AccessAdminPages) is enforced by AdminPageModel before the page renders.
+    var js = JavaScriptEncoder.Default;
+    var userRights = string.Join("','", Security.CurrentUserRights().Select(r => r.Flag.ToString()));
 }
+<!DOCTYPE html>
 <html ng-app="blogAdmin">
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>@BlogSettings.Instance.Name (@Security.CurrentMembershipUser.UserName)</title>
+    <title>@BlogSettings.Instance.Name (@Security.CurrentMembershipUser?.UserName)</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:400,500,700" rel="stylesheet">
-    <!-- Styles loaded via static files -->
+    @await Html.PartialAsync("~/admin/Shared/_AdminStyles.cshtml")
     <link href="~/admin/themes/standard/css/styles.css?ver=4" rel="stylesheet">
-    <link rel="shortcut icon" href="@Href(Utils.ApplicationRelativeWebRoot + "Content/images/blog/blogengine.ico")" type="image/x-icon" />
+    <link rel="shortcut icon" href="@(Utils.ApplicationRelativeWebRoot)Content/images/blog/blogengine.ico" type="image/x-icon" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="format-detection" content="telephone=no" />
     <script type="text/javascript">
-        var UserVars = { Name: '@Html.Raw(Security.CurrentUser.Identity.Name)', IsAdmin: '@Security.IsAdministrator', Rights: ['@Html.Raw(userRights)'] };
-        var ActiveTheme = '@BlogSettings.Instance.Theme'
+        var UserVars = { Name: '@Html.Raw(js.Encode(Security.CurrentUser.Identity.Name ?? string.Empty))', IsAdmin: '@Security.IsAdministrator', Rights: ['@Html.Raw(userRights)'] };
+        var ActiveTheme = '@Html.Raw(js.Encode(BlogSettings.Instance.Theme ?? string.Empty))'
         var UsageScenario = '@BlogConfig.UsageScenario'
         var ServerTime = '@DateTime.Now'
         var UtcTime = '@DateTime.UtcNow'
@@ -45,11 +32,11 @@
         }
     </script>
 </head>
-<body class="@Resources.labels.LangDirection-dir">
-    <script type="text/javascript" src="admin.res.axd"></script>
+<body class="@Utils.Translate("LangDirection")-dir">
+    <script type="text/javascript" src="@(Utils.RelativeWebRoot)admin.res.axd"></script>
     <div class="main-wrapper">
         <div class="main-sidebar">
-            @RenderPage("sidebar.cshtml")
+            @await Html.PartialAsync("~/admin/themes/standard/sidebar.cshtml")
         </div>
         <div class="main-content">
             @RenderBody()

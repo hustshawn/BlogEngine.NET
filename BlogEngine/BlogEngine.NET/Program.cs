@@ -1,6 +1,7 @@
 using BlogEngine.Core;
 using BlogEngine.Core.Data;
 using BlogEngine.Core.Data.Contracts;
+using BlogEngine.Core.Web.HttpHandlers;
 using BlogEngine.NET.AppCode.Api;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
@@ -28,6 +29,13 @@ builder.Services.AddControllers(options =>
         options.SuppressMapClientErrors = true;
     });
 builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IApplicationModelProvider, WebApiRoutingProvider>());
+
+// Admin SPA shell pages (admin/*.cshtml) keep their legacy URLs via explicit @page routes
+builder.Services.AddRazorPages(options =>
+{
+    options.RootDirectory = "/admin";
+    options.Conventions.AddPageRoute("/index", "admin/index.cshtml");
+});
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
@@ -81,6 +89,9 @@ builder.Services.AddLocalization(options => options.ResourcesPath = "Resources")
 
 var app = builder.Build();
 
+// Localized labels (former App_GlobalResources/labels.resx) used by Utils.Translate and the admin.res.axd script
+Utils.LabelResources = new System.Resources.ResourceManager("BlogEngine.NET.Resources.labels", typeof(Program).Assembly);
+
 // Resolve provider singletons eagerly so the static BlogService/Security accessors are initialized
 app.Services.GetRequiredService<BlogEngine.Core.Providers.IBlogProvider>();
 app.Services.GetRequiredService<BlogEngine.Core.Providers.IBlogFileSystemProvider>();
@@ -133,6 +144,8 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapControllers();
+app.MapRazorPages();
+app.MapResourceHandler();
 app.MapUpdaterEndpoints();
 app.MapRazorComponents<BlogEngine.NET.Components.App>()
     .AddInteractiveServerRenderMode();

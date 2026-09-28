@@ -1,46 +1,18 @@
-
-@using BlogEngine.Core
-@using BlogEngine.Core.Providers
+@page "/admin/about.cshtml"
+@model AdminPageModel
+@inject BlogEngine.Core.Providers.IBlogProvider BlogProvider
+@inject BlogEngine.Core.Services.Security.IMembershipService MembershipService
+@inject BlogEngine.Core.Services.Security.IRoleService RoleService
 @{
     Layout = "~/admin/themes/standard/layout.cshtml";
-    if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
-    {
-        Security.RedirectForUnauthorizedRequest();
-    }
     var usage = "Single blog";
     if (BlogConfig.UsageScenario == "multiusers") { usage = "Multiple users"; }
     if (BlogConfig.UsageScenario == "multiblogs") { usage = "Multiple blogs"; }
-
-    var blogProviderSection = (BlogProviderSection)WebConfigurationManager.GetSection("BlogEngine/blogProvider");
-    var membershipSection = (MembershipSection)WebConfigurationManager.GetSection("system.web/membership");
-    var roleSection = (RoleManagerSection)WebConfigurationManager.GetSection("system.web/roleManager");
-
-    var trust = AspNetHostingPermissionLevel.None;
-    foreach (AspNetHostingPermissionLevel trustLevel in new AspNetHostingPermissionLevel[]
-    {
-        AspNetHostingPermissionLevel.Unrestricted,
-        AspNetHostingPermissionLevel.High,
-        AspNetHostingPermissionLevel.Medium,
-        AspNetHostingPermissionLevel.Low,
-        AspNetHostingPermissionLevel.Minimal
-    })
-    {
-        try
-        {
-            new AspNetHostingPermission(trustLevel).Demand();
-            trust = trustLevel;
-            break;
-        }
-        catch (System.Security.SecurityException)
-        {
-            continue;
-        }
-    };
 }
 <div class="about-view content">
     <button tabindex="-1" class="sidebar-toggle"><span></span><span></span><span></span></button>
     <div class="main-header clearfix">
-        <h2 class="page-title pull-left">@Resources.labels.about</h2>
+        <h2 class="page-title pull-left">@Utils.Translate("about")</h2>
     </div>
     <div class="content-inner">
         <div class="about-section">
@@ -75,22 +47,22 @@
                     <span>Configuration:</span> @usage
                 </li>
                 <li class="list-group-item">
-                    <span>Trust level:</span> @trust
+                    <span>Runtime:</span> @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
                 </li>
                 <li class="list-group-item">
-                    <span>Identity:</span> @System.Security.Principal.WindowsIdentity.GetCurrent().Name
+                    <span>Identity:</span> @Environment.UserName
                 </li>
                 <li class="list-group-item">
-                    <span>Blog provider:</span> @blogProviderSection.DefaultProvider
+                    <span>Blog provider:</span> @BlogProvider.GetType().Name
                 </li>
                 <li class="list-group-item">
-                    <span>Membership provider:</span> @membershipSection.DefaultProvider
+                    <span>Membership provider:</span> @MembershipService.GetType().Name
                 </li>
                 <li class="list-group-item">
-                    <span>Role provider:</span> @roleSection.DefaultProvider
+                    <span>Role provider:</span> @RoleService.GetType().Name
                 </li>
             </ul>
         </div>
     </div>
 </div>
-<!-- Scripts loaded via static files -->
+@await Html.PartialAsync("~/admin/Shared/_BlogAdminScripts.cshtml")

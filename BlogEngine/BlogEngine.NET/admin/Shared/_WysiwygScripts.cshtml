@@ -1,0 +1,35 @@
+@* Replaces the System.Web.Optimization "~/scripts/wysiwyg" bundle (same order), including the
+   editor specific scripts that were appended to it depending on BlogConfig.DefaultEditor.
+   TinyMCE is not bundled (its plugins load relative to tinymce.min.js); see AdminEditors.TinyMceScripts. *@
+@{
+    var editor = BlogConfig.DefaultEditor;
+}
+<script src="~/Scripts/jquery-2.1.4.min.js"></script>
+<script src="~/Scripts/jquery.form.js"></script>
+<script src="~/Scripts/jquery.validate.min.js"></script>
+<script src="~/Scripts/toastr.min.js"></script>
+<script src="~/Scripts/angular.min.js"></script>
+<script src="~/Scripts/angular-route.min.js"></script>
+<script src="~/Scripts/angular-sanitize.min.js"></script>
+<script src="~/Scripts/bootstrap.min.js"></script>
+<script src="~/Scripts/textext.js"></script>
+<script src="~/Scripts/moment.min.js"></script>
+<script src="~/admin/app/app.js"></script>
+<script src="~/admin/app/grid-helpers.js"></script>
+<script src="~/admin/app/editor/editor-helpers.js"></script>
+<script src="~/admin/app/editor/posteditorController.js"></script>
+<script src="~/admin/app/editor/pageeditorController.js"></script>
+<script src="~/admin/app/editor/filemanagerController.js"></script>
+<script src="~/admin/app/common.js"></script>
+<script src="~/admin/app/data-service.js"></script>
+@if (editor == AdminEditors.BootstrapWysiwyg)
+{
+    <script src="~/admin/editors/bootstrap-wysiwyg/jquery.hotkeys.js"></script>
+    <script src="~/admin/editors/bootstrap-wysiwyg/bootstrap-wysiwyg.js"></script>
+    <script src="~/admin/editors/bootstrap-wysiwyg/editor.js"></script>
+}
+else if (editor != AdminEditors.TinyMce)
+{
+    <script src="~/admin/editors/summernote/summernote.js"></script>
+    <script src="~/admin/editors/summernote/editor.js"></script>
+}
