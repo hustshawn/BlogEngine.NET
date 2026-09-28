@@ -105,15 +105,6 @@ namespace BlogEngine.Core
             services.AddSingleton<SecurityInitializer>();
 
 
-            // Register cookie authentication for Security.AuthenticateUser/SignOut
-            services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
-                .AddCookie(options =>
-                {
-                    options.Cookie.Name = Security.AuthCookieName;
-                    options.Cookie.HttpOnly = true;
-                    options.LoginPath = "/Account/login";
-                });
-
             // Wire up static context holders on first resolution
             services.AddMemoryCache();
             var sp = services.BuildServiceProvider();

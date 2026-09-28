@@ -227,12 +227,12 @@ namespace BlogEngine.Core
             get
             {
                 var context = CurrentHttpContext;
-                if (context?.User != null)
+                if (context?.User?.Identity?.IsAuthenticated == true)
                 {
                     return context.User;
                 }
 
-                // Return an unauthenticated principal if no context
+                // Anonymous: like System.Web, expose an empty (not null) user name
                 var identity = new CustomIdentity(string.Empty, false);
                 return new CustomPrincipal(identity);
             }

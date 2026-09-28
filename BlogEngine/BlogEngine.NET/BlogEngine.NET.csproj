@@ -10,9 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="10.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="10.0.12" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />
-    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.7.3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,6 +30,11 @@
   <ItemGroup>
     <None Include="admin\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
     <None Include="Custom\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Runtime data and theme/widget folders live under the content root (read and written by BlogEngine.Core) -->
+  <ItemGroup>
+    <None Update="App_Data\**;Custom\**" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

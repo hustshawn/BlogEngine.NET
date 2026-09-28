@@ -3,6 +3,10 @@ using BlogEngine.Core.Data;
 using BlogEngine.Core.Data.Contracts;
 using BlogEngine.NET.AppCode.Api;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
+using Newtonsoft.Json.Serialization;
 using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,12 +15,26 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Add MVC controllers with Newtonsoft.Json for API compatibility
-builder.Services.AddControllers()
-    .AddNewtonsoftJson();
+// Add MVC controllers with Web API 2 compatible routing, filters and JSON (PascalCase, as the admin SPA expects)
+builder.Services.AddControllers(options =>
+    {
+        options.Filters.Add<UnauthorizedAccessExceptionFilterAttribute>();
+        options.Filters.Add<UnhandledExceptionLogger>();
+    })
+    .AddNewtonsoftJson(options => options.SerializerSettings.ContractResolver = new DefaultContractResolver())
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.SuppressModelStateInvalidFilter = true;
+        options.SuppressMapClientErrors = true;
+    });
+builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IApplicationModelProvider, WebApiRoutingProvider>());
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
+
+// Register BlogEngine.Core providers (blog, file system, membership, roles)
+builder.Services.SetBlogEngineContentRoot(builder.Environment.ContentRootPath);
+builder.Services.AddBlogEngineCore(builder.Configuration);
 
 // Register DI services (replaces SimpleInjector RegisterDiContainer)
 builder.Services.AddScoped<ISettingsRepository, SettingsRepository>();
@@ -63,6 +81,11 @@ builder.Services.AddLocalization(options => options.ResourcesPath = "Resources")
 
 var app = builder.Build();
 
+// Resolve provider singletons eagerly so the static BlogService/Security accessors are initialized
+app.Services.GetRequiredService<BlogEngine.Core.Providers.IBlogProvider>();
+app.Services.GetRequiredService<BlogEngine.Core.Providers.IBlogFileSystemProvider>();
+app.Services.GetRequiredService<SecurityInitializer>();
+
 // Initialize BlogEngine extensions (ported from Global.asax Application_BeginRequest)
 var initialized = false;
 var initLock = new object();
@@ -95,12 +118,20 @@ app.Use(async (context, next) =>
 });
 
 app.UseCookiePolicy();
-app.UseStaticFiles();
+
+// Themes, widgets and extensions keep their legacy /Custom URLs; the folder stays under the
+// content root because BlogEngine.Core reads and installs themes there at runtime
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(Path.Combine(app.Environment.ContentRootPath, "Custom")),
+    RequestPath = "/Custom"
+});
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.MapStaticAssets();
 app.MapControllers();
 app.MapUpdaterEndpoints();
 app.MapRazorComponents<BlogEngine.NET.Components.App>()
