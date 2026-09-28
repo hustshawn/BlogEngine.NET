@@ -1,161 +1,109 @@
 @page "/Account/login"
 @layout AccountLayout
-@using BlogEngine.Core
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@using System.Security.Claims
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
+
+@* Port of Account/login.aspx as a static SSR form. Sign-in happens in Security.AuthenticateUserAsync
+   during the POST; "?logoff" signs out like the original Page_Load. *@
 
 <PageTitle>@Utils.Translate("login")</PageTitle>
 
-<h1 class="account-title">@Utils.Translate("login")</h1>
-<div class="account-body">
-    <div class="form-group">
-        <label>Username</label>
-        <input type="text" @bind="userName" class="textEntry ltr-dir" />
-    </div>
-    <div class="form-group">
-        <label>Password</label>
-        <input type="password" @bind="password" class="passwordEntry ltr-dir" />
-    </div>
-    <div class="form-group with-icon">
-        <span class="icon-form-group">
-            <input type="checkbox" @bind="rememberMe" />
-        </span>
-        <label class="label-title">@Utils.Translate("rememberMe")</label>
-    </div>
-    <button class="btn btn-success btn-block btn-lg" @onclick="HandleLogin">@Utils.Translate("login")</button>
-    @if (BlogSettings.Instance.EnablePasswordReset)
-    {
-        <div class="small-link">
-            <a href="/Account/password-retrieval" class="text-muted">@Utils.Translate("forgotPassword")</a>
+<AccountStatus Message="@statusMessage" />
+
+<EditForm Model="Input" FormName="login" method="post" OnSubmit="HandleLoginAsync">
+    <h1 class="account-title">@Utils.Translate("login")</h1>
+    <div class="account-body">
+        <div class="form-group">
+            <label for="UserName">Username</label>
+            <InputText id="UserName" @bind-Value="Input.UserName" class="textEntry ltr-dir" autocomplete="username" autofocus />
         </div>
-    }
-</div>
+        <div class="form-group">
+            <label for="Password">Password</label>
+            <InputText id="Password" type="password" @bind-Value="Input.Password" class="passwordEntry ltr-dir" autocomplete="current-password" />
+        </div>
+        <div class="form-group with-icon">
+            <span class="icon-form-group">
+                <InputCheckbox id="RememberMe" @bind-Value="Input.RememberMe" />
+            </span>
+            <label for="RememberMe" class="label-title">@Utils.Translate("rememberMe")</label>
+        </div>
+        <button type="submit" id="LoginButton" class="btn btn-success btn-block btn-lg">@Utils.Translate("login")</button>
+        @if (BlogSettings.Instance.EnablePasswordReset)
+        {
+            <div class="small-link">
+                <a href="@(Utils.RelativeWebRoot)Account/password-retrieval" class="text-muted">@Utils.Translate("forgotPassword")</a>
+            </div>
+        }
+    </div>
+</EditForm>
 
 @if (BlogSettings.Instance.EnableSelfRegistration)
 {
     <hr />
     <div id="LoginRegister" class="text-center account-body text-uppercase">
         @Utils.Translate("dontHaveAccount")
-        <a href="@registerUrl">@Utils.Translate("createNow")</a>
+        <a href="@RegisterUrl">@Utils.Translate("createNow")</a>
     </div>
 }
 
-@if (!string.IsNullOrEmpty(errorMessage))
-{
-    <div class="alert alert-warning">@errorMessage</div>
-}
-
 @code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; }
+
     [SupplyParameterFromQuery(Name = "ReturnUrl")]
-    public string ReturnUrl { get; set; }
+    private string ReturnUrl { get; set; }
 
-    [SupplyParameterFromQuery(Name = "logoff")]
-    public string LogOff { get; set; }
+    [SupplyParameterFromForm(FormName = "login")]
+    private LoginModel Input { get; set; }
 
-    private string userName = string.Empty;
-    private string password = string.Empty;
-    private bool rememberMe;
-    private string errorMessage = string.Empty;
-    private string registerUrl = string.Empty;
+    private string statusMessage;
+
+    private string RegisterUrl => Utils.RelativeWebRoot + "Account/register?ReturnUrl=" + Uri.EscapeDataString(ReturnUrl ?? string.Empty);
 
     protected override async Task OnInitializedAsync()
     {
-        registerUrl = Utils.RelativeWebRoot + "Account/register?ReturnUrl=" + Uri.EscapeDataString(ReturnUrl ?? "");
+        Input ??= new LoginModel();
 
-        // Handle logoff via query string (original: ?logoff)
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
+        // Original: login.aspx?logoff signs out and goes back to the referrer (unless it is an admin page)
+        if (HttpMethods.IsGet(HttpContext.Request.Method) && HttpContext.Request.QueryString.Value == "?logoff")
         {
-            var queryString = httpContext.Request.QueryString.Value;
-            if (queryString == "?logoff")
-            {
-                Security.SignOut();
-                await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-
-                var referer = httpContext.Request.Headers["Referer"].ToString();
-                if (!string.IsNullOrEmpty(referer))
-                {
-                    var refUri = new Uri(referer);
-                    if (refUri.LocalPath.IndexOf("/admin/", StringComparison.OrdinalIgnoreCase) == -1)
-                    {
-                        Navigation.NavigateTo(referer, forceLoad: true);
-                        return;
-                    }
-                }
-
-                Navigation.NavigateTo(Utils.RelativeWebRoot, forceLoad: true);
-                return;
-            }
-
-            // If already authenticated, no need to show login
-            if (Security.IsAuthenticated)
-            {
-                Navigation.NavigateTo(ReturnUrl ?? Utils.RelativeWebRoot, forceLoad: true);
-                return;
-            }
+            await Security.SignOutAsync();
+            Navigation.NavigateTo(GetLogoffRedirectUrl());
         }
     }
 
-    private async Task HandleLogin()
+    private async Task HandleLoginAsync()
     {
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext == null)
+        if (await Security.AuthenticateUserAsync(Input.UserName, Input.Password, Input.RememberMe))
         {
-            errorMessage = Utils.Translate("loginFailed");
+            // Only local return urls are honored (open redirect protection)
+            Navigation.NavigateTo(Security.GetSafeReturnUrl(ReturnUrl));
             return;
         }
 
-        // Use BlogEngine.Core Security to authenticate
-        bool authenticated = Security.AuthenticateUser(userName, password, rememberMe);
+        statusMessage = Utils.Translate("loginFailed");
+    }
 
-        if (authenticated || Security.IsAuthenticated)
+    /// <summary>
+    /// Referrer of the same site that is not the login page itself or an admin page; otherwise the blog root.
+    /// </summary>
+    private string GetLogoffRedirectUrl()
+    {
+        var request = HttpContext.Request;
+        if (Uri.TryCreate(request.Headers.Referer.ToString(), UriKind.Absolute, out var referrer) &&
+            string.Equals(referrer.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase) &&
+            referrer.AbsolutePath.IndexOf("/admin/", StringComparison.OrdinalIgnoreCase) == -1 &&
+            referrer.AbsolutePath.IndexOf("/Account/login", StringComparison.OrdinalIgnoreCase) == -1)
         {
-            // Create claims principal for cookie auth
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.Name, userName)
-            };
-
-            // Add role claims
-            try
-            {
-                var roles = BlogEngine.Core.Roles.GetRolesForUser(userName);
-                foreach (var role in roles)
-                {
-                    claims.Add(new Claim(ClaimTypes.Role, role));
-                }
-            }
-            catch
-            {
-                // Roles provider may not be available
-            }
-
-            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-            var principal = new ClaimsPrincipal(identity);
-
-            await httpContext.SignInAsync(
-                CookieAuthenticationDefaults.AuthenticationScheme,
-                principal,
-                new AuthenticationProperties
-                {
-                    IsPersistent = rememberMe,
-                    ExpiresUtc = rememberMe ? DateTimeOffset.UtcNow.AddDays(90) : null
-                });
-
-            var redirectUrl = ReturnUrl;
-            if (string.IsNullOrEmpty(redirectUrl))
-            {
-                redirectUrl = Utils.RelativeWebRoot;
-            }
-
-            Navigation.NavigateTo(redirectUrl, forceLoad: true);
+            return Security.GetSafeReturnUrl(referrer.PathAndQuery);
         }
-        else
-        {
-            errorMessage = Utils.Translate("loginFailed");
-        }
+
+        return Utils.RelativeWebRoot;
+    }
+
+    private sealed class LoginModel
+    {
+        public string UserName { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public bool RememberMe { get; set; }
     }
 }

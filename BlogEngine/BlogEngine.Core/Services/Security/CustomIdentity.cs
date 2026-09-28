@@ -62,45 +62,11 @@
             if (String.IsNullOrWhiteSpace(password))
                 throw new ArgumentNullException(nameof(password));
 
-            // Use the membership service registered with Security to validate
-            var membershipUser = Security.CurrentMembershipUser;
-
-            // Validate via a fresh call to the membership service
-            // We access it through a helper since the service is static on Security
-            bool validated = ValidateViaService(username, password);
+            bool validated = Security.MembershipService?.ValidateUser(username, password) ?? false;
             if (!validated) { return; }
 
             _isAuthenticated = true;
             _name = username;
-        }
-
-        /// <summary>
-        /// Validates credentials using the membership service.
-        /// </summary>
-        private static bool ValidateViaService(string username, string password)
-        {
-            // The membership service is accessible via the Security class internals.
-            // Since CustomIdentity needs to validate users, we expose a validation path.
-            try
-            {
-                // Use the static membership service reference
-                var field = typeof(Security).GetField("_membershipService",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-                if (field != null)
-                {
-                    var service = field.GetValue(null) as IMembershipService;
-                    if (service != null)
-                    {
-                        return service.ValidateUser(username, password);
-                    }
-                }
-            }
-            catch
-            {
-                // Fall through
-            }
-
-            return false;
         }
     }
 }

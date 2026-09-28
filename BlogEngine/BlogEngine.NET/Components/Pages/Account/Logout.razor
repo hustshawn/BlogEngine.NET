@@ -1,38 +1,19 @@
 @page "/Account/logout"
-@using BlogEngine.Core
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
+@layout AccountLayout
 @inject NavigationManager Navigation
-@inject IHttpContextAccessor HttpContextAccessor
 
-@* This page handles logout. It runs during SSR to sign the user out via HttpContext,
-   then redirects to the home page or ReturnUrl. *@
+@* Port of Account/Logout.cshtml: signs out during the SSR request, then redirects
+   to the (local) ReturnUrl or the blog root. *@
 
 <PageTitle>Logging out...</PageTitle>
-<p>Logging out...</p>
 
 @code {
     [SupplyParameterFromQuery(Name = "ReturnUrl")]
-    public string ReturnUrl { get; set; }
+    private string ReturnUrl { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        var httpContext = HttpContextAccessor.HttpContext;
-        if (httpContext != null)
-        {
-            // Sign out from BlogEngine.Core
-            Security.SignOut();
-
-            // Sign out from ASP.NET Core cookie authentication
-            await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        }
-
-        var redirectUrl = ReturnUrl;
-        if (string.IsNullOrEmpty(redirectUrl))
-        {
-            redirectUrl = Utils.RelativeWebRoot;
-        }
-
-        Navigation.NavigateTo(redirectUrl, forceLoad: true);
+        await Security.SignOutAsync();
+        Navigation.NavigateTo(Security.GetSafeReturnUrl(ReturnUrl));
     }
 }

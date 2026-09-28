@@ -1,0 +1,29 @@
+@using Microsoft.AspNetCore.Components.Sections
+
+@* Port of AccountMasterPage.SetStatus: renders a "warning"/"success" status box into the
+   AccountLayout status area. Renders nothing when Message is empty. *@
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <SectionContent SectionName="@SectionName">
+        <div id="AdminStatus" class="@Status" role="alert">
+            @Message<a href="#" onclick="document.getElementById('AdminStatus').style.display='none';return false;" style="width:20px;float:right">X</a>
+        </div>
+    </SectionContent>
+}
+
+@code {
+    public const string SectionName = "account-status";
+
+    /// <summary>
+    /// CSS class of the status box: "warning" or "success".
+    /// </summary>
+    [Parameter]
+    public string Status { get; set; } = "warning";
+
+    /// <summary>
+    /// The (plain text, HTML-encoded on output) message.
+    /// </summary>
+    [Parameter]
+    public string Message { get; set; }
+}

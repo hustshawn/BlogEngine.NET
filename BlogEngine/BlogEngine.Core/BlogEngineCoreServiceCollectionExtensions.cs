@@ -152,6 +152,8 @@ namespace BlogEngine.Core
             IHttpContextAccessor httpContextAccessor)
         {
             Security.Initialize(roleService, membershipService, httpContextAccessor);
+            Membership.SetProvider(membershipService);
+            Roles.SetProvider(roleService);
             Right.Initialize(roleService, membershipService);
         }
     }
