@@ -207,3 +207,6 @@ app.MapGet("/robots.txt", () => Results.File(Path.Combine(app.Environment.Conten
 app.MapRazorComponents<BlogEngine.NET.Components.App>();
 
 app.Run();
+
+// Exposed for WebApplicationFactory integration tests
+public partial class Program;
