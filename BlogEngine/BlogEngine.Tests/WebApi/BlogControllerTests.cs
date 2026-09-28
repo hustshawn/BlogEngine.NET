@@ -51,7 +51,7 @@ namespace BlogEngine.Tests.WebApi
             var blog = createdResult.Value as BlogEngine.Core.Data.Models.Blog;
 
             Assert.IsNotNull(blog);
-            Assert.IsTrue(blog.Id != Guid.Empty && blog.Id != null);
+            Assert.AreNotEqual(Guid.Empty, blog.Id);
         }
 
         [TestMethod]

@@ -632,12 +632,7 @@
         /// </returns>
         public static string HashPassword(string plainMessage)
         {
-            var data = Encoding.UTF8.GetBytes(plainMessage);
-            using (HashAlgorithm sha = new SHA256Managed())
-            {
-                sha.TransformFinalBlock(data, 0, data.Length);
-                return Convert.ToBase64String(sha.Hash);
-            }
+            return Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(plainMessage)));
         }
 
         /// <summary>

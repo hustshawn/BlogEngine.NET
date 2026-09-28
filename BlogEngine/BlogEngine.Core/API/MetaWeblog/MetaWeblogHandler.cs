@@ -30,7 +30,12 @@
             {
                 var rootUrl = Utils.AbsoluteWebRoot.ToString();
 
-                var input = new XMLRPCRequest(context);
+                // the request body is a forward-only stream in ASP.NET Core; read it asynchronously
+                string requestXml;
+                using (var reader = new System.IO.StreamReader(context.Request.Body, System.Text.Encoding.UTF8))
+                    requestXml = await reader.ReadToEndAsync();
+
+                var input = new XMLRPCRequest(requestXml);
                 var output = new XMLRPCResponse(input.MethodName);
 
                 Security.ImpersonateUser(input.UserName, input.Password);
@@ -324,7 +329,7 @@
 
             return Category.Categories.Select(cat => new MWACategory
                 {
-                    title = cat.Title, description = cat.Title, htmlUrl = cat.AbsoluteLink.ToString(), rssUrl = cat.FeedAbsoluteLink.ToString()
+                    id = cat.Id.ToString(), title = cat.Title, description = cat.Title, htmlUrl = cat.AbsoluteLink.ToString(), rssUrl = cat.FeedAbsoluteLink.ToString()
                 }).ToList();
         }
 

@@ -28,14 +28,13 @@ using Microsoft.AspNetCore.Http;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="XMLRPCRequest"/> class. 
-        /// Loads XMLRPCRequest object from HttpContext
+        /// Loads XMLRPCRequest object from the request body
         /// </summary>
-        /// <param name="input">
-        /// incoming HttpContext
+        /// <param name="inputXml">
+        /// the XML-RPC request body
         /// </param>
-        public XMLRPCRequest(HttpContext input)
+        public XMLRPCRequest(string inputXml)
         {
-            var inputXml = ParseRequest(input);
 
             // LogMetaWeblogCall(inputXml);
             this.LoadXmlRequest(inputXml); // Loads Method Call and Associated Variables
@@ -482,26 +481,6 @@ using Microsoft.AspNetCore.Http;
                     }
                 }
         */
-
-        /// <summary>
-        /// Retrieves the content of the input stream
-        ///     and return it as plain text.
-        /// </summary>
-        /// <param name="context">
-        /// The context.
-        /// </param>
-        /// <returns>
-        /// The parse request.
-        /// </returns>
-        private static string ParseRequest(HttpContext context)
-        {
-            var buffer = new byte[context.Request.Body.Length];
-
-            context.Request.Body.Position = 0;
-            context.Request.Body.Read(buffer, 0, buffer.Length);
-
-            return Encoding.UTF8.GetString(buffer);
-        }
 
         #endregion
     }

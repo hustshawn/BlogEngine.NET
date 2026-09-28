@@ -50,7 +50,7 @@ namespace BlogEngine.Tests.WebApi
             var item = createdResult.Value as PageDetail;
 
             Assert.IsNotNull(item);
-            Assert.IsTrue(item.Id != Guid.Empty && item.Id != null);
+            Assert.AreNotEqual(Guid.Empty, item.Id);
         }
 
         [TestMethod]
