@@ -44,7 +44,9 @@ public class CommentFilterController : ControllerBase
         if (items == null || items.Count == 0)
             return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = HttpContext.Request.RouteValues["id"]?.ToString();
+        var action = RouteData.Values["id"]?.ToString();
+        if (string.IsNullOrEmpty(action))
+            return BadRequest();
 
         if (action.ToLower() == "delete")
         {

@@ -24,7 +24,7 @@ public class LogsController : ControllerBase
         if (!Security.IsAuthorizedTo(BlogEngine.Core.Rights.AccessAdminPages))
             throw new System.UnauthorizedAccessException();
 
-        var action = HttpContext.Request.RouteValues["id"]?.ToString();
+        var action = RouteData.Values["id"]?.ToString();
 
         switch (action)
         {

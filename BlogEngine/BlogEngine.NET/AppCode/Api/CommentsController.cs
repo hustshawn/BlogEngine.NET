@@ -61,7 +61,9 @@ public class CommentsController : ControllerBase
         if (items == null || items.Count == 0)
             return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = HttpContext.Request.RouteValues["id"]?.ToString().ToLowerInvariant();
+        var action = RouteData.Values["id"]?.ToString().ToLowerInvariant();
+        if (string.IsNullOrEmpty(action))
+            return BadRequest();
 
         foreach (var item in items)
         {
@@ -84,7 +86,9 @@ public class CommentsController : ControllerBase
     [HttpPut]
     public IActionResult DeleteAll([FromBody]CommentItem item)
     {
-        var action = HttpContext.Request.RouteValues["id"]?.ToString();
+        var action = RouteData.Values["id"]?.ToString();
+        if (string.IsNullOrEmpty(action))
+            return BadRequest();
 
         if (action.ToLower() == "pending" || action.ToLower() == "spam")
         {

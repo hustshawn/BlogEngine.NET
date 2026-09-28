@@ -35,7 +35,9 @@ public class FileManagerController : ControllerBase
         if (items == null || items.Count == 0)
             return StatusCode((int)HttpStatusCode.ExpectationFailed);
 
-        var action = HttpContext.Request.RouteValues["id"]?.ToString().ToLowerInvariant();
+        var action = RouteData.Values["id"]?.ToString().ToLowerInvariant();
+        if (string.IsNullOrEmpty(action))
+            return BadRequest();
 
         if (action == "delete")
         {
