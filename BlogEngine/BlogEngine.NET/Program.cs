@@ -6,7 +6,9 @@ using BlogEngine.NET.AppCode;
 using BlogEngine.NET.AppCode.Api;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using Newtonsoft.Json.Serialization;
@@ -32,6 +34,9 @@ builder.Services.AddControllers(options =>
         options.SuppressMapClientErrors = true;
     });
 builder.Services.TryAddEnumerable(ServiceDescriptor.Transient<IApplicationModelProvider, WebApiRoutingProvider>());
+builder.Services.AddOptions<MvcOptions>()
+    .Configure<IOptions<MvcNewtonsoftJsonOptions>>((options, json) =>
+        options.InputFormatters.Insert(0, new WebApiJsonInputFormatter(json.Value.SerializerSettings)));
 
 // Admin SPA shell pages (admin/*.cshtml) keep their legacy URLs via explicit @page routes
 builder.Services.AddRazorPages(options =>
