@@ -1,16 +1,11 @@
-
-@using BlogEngine.Core
-<!DOCTYPE html>
+@page "/admin/app/editor/filemanager.cshtml"
+@model FileManagerPageModel
+@using System.Text.Encodings.Web
 @{
-    if (!Security.IsAuthorizedTo(Rights.EditOwnPosts))
-    {
-        Security.RedirectForUnauthorizedRequest();
-    }
-    string loginUrl = Href(Utils.RelativeWebRoot + "Account/login.aspx");
-    var userRights = string.Join("','", Security.CurrentUserRights().Select(r => r.Flag).ToArray());
-    var id = Request["id"];
-    var returnUrl = Request["return"];
-    if (string.IsNullOrEmpty(returnUrl)) { returnUrl = Utils.RelativeWebRoot + "admin/#/content"; }
+    Layout = null;
+    var js = JavaScriptEncoder.Default;
+    var userRights = string.Join("','", Security.CurrentUserRights().Select(r => r.Flag.ToString()));
+    var id = Request.Query["id"].ToString();
     var imgHandler = "image.axd?picture=";
     if (string.IsNullOrEmpty(Blog.CurrentInstance.StorageContainerName))
     {
@@ -21,21 +16,22 @@
         imgHandler = Blog.CurrentInstance.RelativeWebRoot + Blog.CurrentInstance.StorageContainerName + "/" + imgHandler;
     }
 }
+<!DOCTYPE html>
 <html data-ng-app="blogAdmin">
 <head>
     <meta charset="utf-8" />
     <link href='https://fonts.googleapis.com/css?family=Roboto:300,400,500' rel='stylesheet' type='text/css'>
-    <!-- Styles loaded via static files -->
+    @await Html.PartialAsync("~/admin/Shared/_AdminStyles.cshtml")
     <link href="~/admin/themes/standard/css/styles.css" rel="stylesheet" type="text/css" />
     <script type="text/javascript">
-        var UserVars = { Name: '@Security.CurrentUser.Identity.Name', IsAdmin: '@Security.IsAdministrator', Rights: ['@Html.Raw(userRights)'] };
-        var editVars = { id: '@id', storageLocation: '@BlogConfig.StorageLocation' };
+        var UserVars = { Name: '@Html.Raw(js.Encode(Security.CurrentUser.Identity.Name ?? string.Empty))', IsAdmin: '@Security.IsAdministrator', Rights: ['@Html.Raw(userRights)'] };
+        var editVars = { id: '@Html.Raw(js.Encode(id))', storageLocation: '@Html.Raw(js.Encode(BlogConfig.StorageLocation))' };
     </script>
-    <script type="text/javascript" src="admin.res.axd"></script>
+    <script type="text/javascript" src="@(Utils.RelativeWebRoot)admin.res.axd"></script>
 </head>
-<body class=" @Resources.labels.LangDirection-dir" ng-controller="FileManagerController">
+<body class=" @Utils.Translate("LangDirection")-dir" ng-controller="FileManagerController">
     <div class="filemanager">
-        <!-- Scripts loaded via static files -->
+        @await Html.PartialAsync("~/admin/Shared/_WysiwygScripts.cshtml")
         <form id="form" action="" class="file-form">
             <div id="modal-form" class="modal fade">
                 <div class="modal-dialog">

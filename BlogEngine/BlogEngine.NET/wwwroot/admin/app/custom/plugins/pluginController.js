@@ -45,7 +45,7 @@
             angular.copy(data, $scope.package);
             $scope.selectedRating = $scope.package.Rating;
 
-            $scope.extEditSrc = SiteVars.RelativeWebRoot + "admin/Extensions/Settings.aspx?ext=" + $scope.id + "&enb=False";
+            $scope.extEditSrc = SiteVars.RelativeWebRoot + "admin/Extensions/Settings?ext=" + $scope.id + "&enb=False";
             if ($scope.package.SettingsUrl) {
                 $scope.extEditSrc = $scope.package.SettingsUrl.replace("~/", SiteVars.RelativeWebRoot);
             }
@@ -59,7 +59,7 @@
 
     $scope.showPluginSettings = function (id) {
         $scope.editId = id;
-        $scope.extEditSrc = SiteVars.RelativeWebRoot + "admin/Extensions/Settings.aspx?ext=" + id + "&enb=False";
+        $scope.extEditSrc = SiteVars.RelativeWebRoot + "admin/Extensions/Settings?ext=" + id + "&enb=False";
 
         for (var i = 0, len = $scope.items.length; i < len; i++) {
             if ($scope.items[i].Id === id) {

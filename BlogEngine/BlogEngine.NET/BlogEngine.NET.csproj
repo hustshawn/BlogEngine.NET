@@ -19,16 +19,14 @@
   </ItemGroup>
 
   <!-- Exclude legacy WebPages .cshtml files from Razor compilation.
-       These are admin SPA layout templates, widget templates, and RazorHost
-       theme templates that use WebPages syntax (RenderPage, Request,
-       Resources.labels, IsPost, Validator) which is not compatible with
-       ASP.NET Core Razor compilation. They are served as content files. -->
+       These are widget templates and RazorHost theme templates that use WebPages
+       syntax (RenderPage, Request, Resources.labels, IsPost, Validator) which is not
+       compatible with ASP.NET Core Razor compilation. They are served as content files.
+       (The admin/*.cshtml shell pages are ASP.NET Core Razor Pages and are compiled.) -->
   <ItemGroup>
-    <Content Remove="admin\**\*.cshtml" />
     <Content Remove="Custom\**\*.cshtml" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="admin\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
     <None Include="Custom\**\*.cshtml" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

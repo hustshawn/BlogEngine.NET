@@ -420,7 +420,7 @@ using Microsoft.AspNetCore.Http;
                 if (context != null)
                 {
                     var request = context.Request;
-                    if (request.Query["theme"].ToString() != null)
+                    if (!string.IsNullOrEmpty(request.Query["theme"]))
                     {
                         return request.Query["theme"].ToString().SanitizePath();
                     }
