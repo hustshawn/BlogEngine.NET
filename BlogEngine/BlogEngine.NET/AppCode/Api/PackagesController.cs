@@ -49,7 +49,10 @@ public class PackagesController : ControllerBase
                 foreach (var item in items)
                 {
                     if (!repository.Install(item.Id))
+                    {
+                        BlogEngine.Core.Utils.Log("Error processing package " + item.Id);
                         return StatusCode((int)HttpStatusCode.InternalServerError);
+                    }
                 }
             }
             if (action == "uninstall")
@@ -57,7 +60,10 @@ public class PackagesController : ControllerBase
                 foreach (var item in items)
                 {
                     if (!repository.Uninstall(item.Id))
+                    {
+                        BlogEngine.Core.Utils.Log("Error processing package " + item.Id);
                         return StatusCode((int)HttpStatusCode.InternalServerError);
+                    }
                 }
             }
 

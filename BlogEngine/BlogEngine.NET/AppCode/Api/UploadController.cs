@@ -5,6 +5,8 @@ using BlogEngine.Core.Providers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 using System;
 using System.IO;
 using System.Linq;
@@ -24,7 +26,8 @@ public class UploadController : ControllerBase
     [HttpPost]
     public IActionResult Post(string action, string dirPath = "")
     {
-        WebUtils.CheckRightsForAdminPostPages(false);
+        if (!WebUtils.CheckRightsForAdminPostPages(true))
+            return Unauthorized();
 
         var file = Request.Form.Files.Count > 0 ? Request.Form.Files[0] : null;
         action = action.ToLowerInvariant();
@@ -79,17 +82,15 @@ public class UploadController : ControllerBase
 
                     var imgPath = Path.Combine(_env.ContentRootPath, dir.FullPath.TrimStart('~', '/').Replace('/', Path.DirectorySeparatorChar), profileFileName);
                     
-                    // Save the uploaded file, then create a thumbnail
-                    // REVIEW: System.Drawing is not available on all platforms in .NET Core.
-                    // Using stream copy as a cross-platform approach. 
-                    // For production thumbnail generation, consider using ImageSharp.
                     var imgDir = Path.GetDirectoryName(imgPath);
                     if (!System.IO.Directory.Exists(imgDir))
                         System.IO.Directory.CreateDirectory(imgDir);
 
-                    using (var stream = new FileStream(imgPath, FileMode.Create))
+                    // 80x80 thumbnail, as the original System.Drawing GetThumbnailImage(80, 80)
+                    using (var image = Image.Load(file.OpenReadStream()))
                     {
-                        file.CopyTo(stream);
+                        image.Mutate(x => x.Resize(80, 80));
+                        image.Save(imgPath);
                     }
 
                     return Created("", profileFileName);
@@ -125,7 +126,7 @@ public class UploadController : ControllerBase
                     var mediaPlayerExtension = BlogEngine.Core.Web.Extensions.ExtensionManager.GetExtension("MediaElementPlayer");
                     mediaFolder = mediaPlayerExtension.Settings[0].GetSingleValue("folder");
 
-                    var folder = Path.Combine(_env.ContentRootPath, mediaFolder.Replace('/', Path.DirectorySeparatorChar));
+                    var folder = Path.Combine(_env.ContentRootPath, mediaFolder.TrimStart('~', '/').Replace('/', Path.DirectorySeparatorChar));
 
                     UploadVideo(folder, file, fileName);
 

@@ -34,6 +34,9 @@ public class ToolsController : ControllerBase
         else
         {
             string fileName = GetFileName(id);
+            if (fileName == null)
+                return BadRequest();
+
             var processed = Process(fileName);
 
             if (string.IsNullOrEmpty(processed))
@@ -109,7 +112,10 @@ public class ToolsController : ControllerBase
         if (dir == "data")
             return Path.Combine(contentRoot, "App_Data", "tmp.txt");
 
-        return Path.Combine(contentRoot, dir, "tmp.txt");
+        // Only folders inside the application, as the original MapPath("~/" + dir) enforced
+        var root = Path.GetFullPath(contentRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var path = Path.GetFullPath(Path.Combine(root, dir ?? string.Empty, "tmp.txt"));
+        return path.StartsWith(root, StringComparison.Ordinal) ? path : null;
     }
 
     #endregion

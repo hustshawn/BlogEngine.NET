@@ -5,7 +5,19 @@
     <AssemblyName>BlogEngine.Core</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
+    <!-- From the original Properties/AssemblyInfo.cs; BlogSettings.Version reads the assembly version -->
+    <Version>3.3.8.0</Version>
+    <Product>BlogEngine.NET</Product>
+    <Description>BlogEngine.NET</Description>
+    <Copyright>Copyright @ 2007-2019</Copyright>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.CLSCompliantAttribute">
+      <_Parameter1>false</_Parameter1>
+      <_Parameter1_IsLiteral>true</_Parameter1_IsLiteral>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

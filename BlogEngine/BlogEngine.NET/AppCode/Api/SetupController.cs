@@ -1,20 +1,15 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/[controller]")]
 public class SetupController : ControllerBase
 {
-    private readonly IWebHostEnvironment _env;
-
-    public SetupController(IWebHostEnvironment env)
-    {
-        _env = env;
-    }
-
+    /// <summary>
+    /// Dashboard "new version available" check. Upstream releases are .NET Framework builds, so the
+    /// in-place auto-upgrade (setup/upgrade) was removed with the .NET 10 migration; never offer one.
+    /// </summary>
     public string Get(string version)
     {
-        var updater = new BlogEngine.Core.Data.Services.Updater(_env.ContentRootPath);
-        return updater.Check(version);
+        return string.Empty;
     }
 }

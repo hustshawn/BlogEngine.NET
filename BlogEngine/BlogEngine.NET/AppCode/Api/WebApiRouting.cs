@@ -45,8 +45,9 @@ namespace BlogEngine.NET.AppCode.Api
 
                     foreach (var parameter in action.Parameters.Where(IsUriParameter))
                     {
+                        // "action"/"controller" are always route values in ASP.NET Core; Web API 2 read them from the query string
                         parameter.BindingInfo ??= new BindingInfo();
-                        parameter.BindingInfo.BindingSource = BindingSource.ModelBinding;
+                        parameter.BindingInfo.BindingSource = IsReservedRouteKey(parameter.ParameterName) ? BindingSource.Query : BindingSource.ModelBinding;
                     }
                 }
             }
@@ -77,6 +78,9 @@ namespace BlogEngine.NET.AppCode.Api
             selector.EndpointMetadata.Add(new HttpMethodMetadata(verbs));
             return selector;
         }
+
+        internal static bool IsReservedRouteKey(string name) =>
+            string.Equals(name, "action", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "controller", StringComparison.OrdinalIgnoreCase);
 
         static bool IsUriParameter(ParameterModel parameter) =>
             parameter.BindingInfo?.BindingSource == null && WebApiParameterConstraint.IsSimpleType(parameter.ParameterType);
@@ -110,7 +114,7 @@ namespace BlogEngine.NET.AppCode.Api
             var names = new HashSet<string>(routeContext.HttpContext.Request.Query.Keys, StringComparer.OrdinalIgnoreCase);
             foreach (var value in routeContext.RouteData.Values)
             {
-                if (value.Value != null && value.Key != "controller" && value.Key != "action")
+                if (value.Value != null && !WebApiRoutingProvider.IsReservedRouteKey(value.Key))
                     names.Add(value.Key);
             }
             return names;
@@ -122,7 +126,8 @@ namespace BlogEngine.NET.AppCode.Api
             var matched = 0;
             foreach (var parameter in action.Parameters.OfType<ControllerParameterDescriptor>())
             {
-                if (parameter.BindingInfo?.BindingSource != BindingSource.ModelBinding)
+                var source = parameter.BindingInfo?.BindingSource;
+                if (source != BindingSource.ModelBinding && source != BindingSource.Query)
                     continue;
 
                 if (available.Contains(parameter.Name))

@@ -20,6 +20,8 @@ builder.Services.AddControllers(options =>
     {
         options.Filters.Add<UnauthorizedAccessExceptionFilterAttribute>();
         options.Filters.Add<UnhandledExceptionLogger>();
+        // Web API 2 serialized string results as JSON strings
+        options.OutputFormatters.RemoveType<Microsoft.AspNetCore.Mvc.Formatters.StringOutputFormatter>();
     })
     .AddNewtonsoftJson(options => options.SerializerSettings.ContractResolver = new DefaultContractResolver())
     .ConfigureApiBehaviorOptions(options =>
@@ -133,7 +135,6 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapControllers();
-app.MapUpdaterEndpoints();
 app.MapRazorComponents<BlogEngine.NET.Components.App>()
     .AddInteractiveServerRenderMode();
 
