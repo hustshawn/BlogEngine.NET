@@ -325,8 +325,13 @@
         /// <returns>New object, as oppose to object reference</returns>
         public static T Copy(object objectToCopy)
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(objectToCopy);
-            return System.Text.Json.JsonSerializer.Deserialize<T>(json);
+            // BinaryFormatter no longer exists; extension settings are persisted with XmlSerializer,
+            // so an XML round trip copies exactly what saving and loading them does
+            var serializer = new System.Xml.Serialization.XmlSerializer(typeof(T));
+            using var buffer = new MemoryStream();
+            serializer.Serialize(buffer, objectToCopy);
+            buffer.Position = 0;
+            return (T)serializer.Deserialize(buffer);
         }
     }
 }

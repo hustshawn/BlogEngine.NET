@@ -1,4 +1,4 @@
-@page "/admin/Extensions/Settings"
+﻿@page "/admin/Extensions/Settings"
 @layout BlogEngine.NET.Components.Layout.AdminLayout
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
 @using BlogEngine.Core
@@ -28,11 +28,19 @@
     [SupplyParameterFromQuery(Name = "ext")]
     public string ExtensionName { get; set; }
 
+    [CascadingParameter] public HttpContext HttpContext { get; set; }
+
     private ManagedExtension extension;
 
     protected override void OnInitialized()
     {
-        Security.DemandUserHasRight(Rights.AccessAdminPages, true);
+        // Original Security.DemandUserHasRight redirected and ended the request (Response.Redirect).
+        // In static SSR only NavigateTo stops rendering and the form handlers, so redirect with it.
+        if (!Security.IsAuthorizedTo(Rights.AccessAdminPages))
+        {
+            Navigation.NavigateTo($"{Utils.RelativeWebRoot}Account/login?ReturnURL={Uri.EscapeDataString(Utils.GetRawUrl(HttpContext))}");
+            return;
+        }
 
         if (string.IsNullOrEmpty(ExtensionName)) return;
 

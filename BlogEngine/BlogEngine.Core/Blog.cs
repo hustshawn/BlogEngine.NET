@@ -423,16 +423,14 @@ namespace BlogEngine.Core
         }
 
         /// <summary>
-        /// Marked as ThreadStatic so each thread has its own value.
-        /// Need to be careful with this since when using ThreadPool.QueueUserWorkItem,
-        /// after a thread is used, it is returned to the thread pool and
-        /// any ThreadStatic values (such as this field) are not cleared, they will persist.
+        /// Per logical flow (request or background work item). The original was [ThreadStatic], which
+        /// equalled "per request" when System.Web ran a request on one thread; ASP.NET Core requests
+        /// resume on arbitrary pool threads after await, so the value must flow with the async context.
         /// 
-        /// This value is reset in WwwSubdomainModule.BeginRequest.
+        /// This value is reset per request in WwwSubDomainMiddleware.
         /// 
         /// </summary>
-        [ThreadStatic]
-        private static Guid _InstanceIdOverride;
+        private static readonly AsyncLocal<Guid> _InstanceIdOverride = new AsyncLocal<Guid>();
 
         /// <summary>
         /// This is a thread-specific Blog Instance ID to override.
@@ -443,8 +441,8 @@ namespace BlogEngine.Core
         /// </summary>
         public static Guid InstanceIdOverride
         {
-            get { return _InstanceIdOverride; }
-            set { _InstanceIdOverride = value; }
+            get { return _InstanceIdOverride.Value; }
+            set { _InstanceIdOverride.Value = value; }
         }
 
         /// <summary>
@@ -481,9 +479,9 @@ namespace BlogEngine.Core
         {
             get
             {
-                if (_InstanceIdOverride != Guid.Empty)
+                if (InstanceIdOverride != Guid.Empty)
                 {
-                    Blog overrideBlog = Blogs.FirstOrDefault(b => b.Id == _InstanceIdOverride);
+                    Blog overrideBlog = Blogs.FirstOrDefault(b => b.Id == InstanceIdOverride);
                     if (overrideBlog != null)
                     {
                         return overrideBlog;
