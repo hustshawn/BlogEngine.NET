@@ -45,6 +45,30 @@ BlogEngine runs on **.NET 10** (ASP.NET Core) on Linux, macOS or Windows.
    Password: admin (change it right away)
    <br><br>
 
+## Docker
+
+```bash
+docker build -t blogengine .
+docker run -d --name blogengine -p 8080:8080 \
+  -v blogengine-data:/app/App_Data \
+  -v blogengine-custom:/app/Custom \
+  blogengine
+```
+
+- The container runs as the non-root `app` user on port 8080 in the Production environment.
+- `App_Data` (posts, comments, users, uploads, Data Protection keys) and `Custom` (themes, widgets,
+  extension settings) are written at runtime. Mount them on persistent storage; new named volumes are
+  seeded with the sample data from the image on first start.
+- With the default XML storage run a single instance. To scale out, use SQL Server
+  (`BlogEngine__DefaultProvider=DbBlogProvider`, `ConnectionStrings__BlogEngine=...`) and share `Custom`
+  and `App_Data/DataProtection-Keys` between instances.
+- Behind a reverse proxy or load balancer that terminates TLS (e.g. CloudFront -> internal ALB -> container),
+  start the container with `-e ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so the app honours
+  `X-Forwarded-Proto` / `X-Forwarded-For` (secure cookies, `https://` links in feeds and e-mails). Forward the
+  viewer `Host` header to the origin (CloudFront origin request policy) so generated links use the blog's
+  domain. Only enable this when the container is reachable through the proxy alone, since the headers are
+  trusted from any caller.
+
 ## Configuration
 
 Settings live in `appsettings.json` (or environment variables such as `BlogEngine__DefaultProvider`):

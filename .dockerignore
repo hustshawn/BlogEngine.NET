@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/TestResults/
+**/App_Data/DataProtection-Keys/
+.git
+.claude
+artifacts/
+tasks/
+Dockerfile
+.dockerignore
