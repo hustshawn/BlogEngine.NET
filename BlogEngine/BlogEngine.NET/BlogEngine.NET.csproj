@@ -33,6 +33,8 @@
   <!-- Runtime data and theme/widget folders live under the content root (read and written by BlogEngine.Core) -->
   <ItemGroup>
     <None Update="App_Data\**;Custom\**" CopyToPublishDirectory="PreserveNewest" />
+    <!-- the local Data Protection key ring must never ship with a build -->
+    <None Update="App_Data\DataProtection-Keys\**" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
 </Project>

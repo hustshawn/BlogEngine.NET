@@ -196,3 +196,6 @@ checklist-convert-*.md
 progress.json
 migration-summary.md
 nextsteps.md
+
+# ASP.NET Core Data Protection key ring (replaces web.config machineKey) - never commit
+BlogEngine/BlogEngine.NET/App_Data/DataProtection-Keys/

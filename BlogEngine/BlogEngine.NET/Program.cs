@@ -6,6 +6,7 @@ using BlogEngine.NET.AppCode;
 using BlogEngine.NET.AppCode.Api;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.Options;
@@ -46,6 +47,12 @@ builder.Services.AddRazorPages(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
+
+// Replaces web.config <machineKey>: keys protecting auth/antiforgery cookies live with the blog data,
+// so sessions survive restarts and redeployments (App_Data is the persistent, non-public folder)
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtection-Keys")))
+    .SetApplicationName("BlogEngine.NET");
 builder.Services.AddMemoryCache();
 
 // Register BlogEngine.Core providers (blog, file system, membership, roles)
